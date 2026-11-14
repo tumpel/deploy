@@ -23,6 +23,7 @@ Commands, for bootstrap only:
 
 - `npm run deploy` applies the infra of the stage, refuses a plan that destroys anything, applies D1 migrations, deploys the Worker with `ACCESS_ISSUER` and `ACCESS_AUD` taken from the tofu outputs and sets the three R2 Worker secrets.
 - `npm run deploy:migrate` applies D1 migrations only.
+- `npm run proof:e2e` validates a stage after its deploy: it runs the twelve steps of EDD-006 against the stage's Worker and the host `TUMPEL_PROOF_HOST` (default `tumpel-host`) with the release binaries from `cargo build --release -p tumpel` and `npm run supervisor:build`, and loads the provider credential named by `TUMPEL_PROOF_CREDENTIAL` (`dotfiles:<key name>`, default `dotfiles:claude-setup-token-personal`, or `claude-credentials[:<path>]`) in process.
 - `npm run proof -- <command>` runs a command with `TUMPEL_PROOF_CLIENT_ID` and `TUMPEL_PROOF_CLIENT_SECRET` read from the stage's tofu outputs. It prints neither value.
 
 Sign a terminal in with `tumpel login --endpoint https://tumpel-control-plane-dev.matthijs-f49.workers.dev`.
