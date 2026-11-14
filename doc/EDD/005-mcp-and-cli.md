@@ -24,7 +24,7 @@ The API runs under a version prefix. TypeSpec generates the OpenAPI document, th
 
 ## Config as code
 
-`TenantConfig` holds personas, secret sets, harness pins and host labels. A secret entry names the environment variable its value comes from. A persona names its harness, its secret set by name and its files, each as `{ path, from }`. `path` is where the harness reads the file under its home in the box. `from` is the local file's path from the config file's directory.
+`TenantConfig` holds personas, secret sets, harness pins and host labels. A secret entry names the environment variable its value comes from. A persona names its harness, its secret set by name, its `gitAuthorName` and `gitAuthorEmail`, and its files, each as `{ path, from }`. `path` is where the harness reads the file under its home in the box. `from` is the local file's path from the config file's directory.
 
 1. `tumpel config init` writes a file from the tenant's current state.
 2. `tumpel config validate` prints each schema error with its JSON pointer.
@@ -44,6 +44,10 @@ A persona carries files, each a row in the tenant's database with its path, size
 | Pi.dev      | `.pi/agent/settings.json`, `.pi/agent/models.json`, `.pi/agent/AGENTS.md` |
 
 `PersonaFileLimit` caps a file sent inline at 65,536 bytes and a persona's files at 262,144 bytes. A larger file goes up through a presigned upload URL and is then named by digest. The control plane checks the stored object with a HEAD before it accepts the write.
+
+## Tickets
+
+`npm run ticket -- <issue url> --persona <name>` works one GitHub issue into a draft pull request. It reads the issue with gh, starts a session on the issue's repository and streams the turn. The prompt asks the harness for a branch named after the issue and a draft pull request from it. The script then finds the pull request by that branch and prints its URL. A failed turn exits non-zero with its reason. `doc/personas/ticket-worker/README.md` holds a persona and secret set for it.
 
 ## FAQ
 

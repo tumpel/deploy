@@ -64,7 +64,7 @@ When a turn completes, the supervisor stores the box's changed files in object s
 
 ### Proof
 
-After every deploy, agents prove the stage on a real host. They sign in, enrol the host, run real turns on a real harness and restore a session from its snapshots, with no person in a browser.
+After every deploy, agents prove the stage on a real host. They sign in, enrol the host, run real turns on a real harness and restore a session from its snapshots, with no person in a browser. The proof passed all twelve steps against `dev` on `tumpel-host`.
 
 ## Requirements
 
@@ -77,7 +77,7 @@ After every deploy, agents prove the stage on a real host. They sign in, enrol t
 
 ### Functional requirements for accounts and hosts
 
-- **FR-1 Sign up.** A person signs up with their email through Cloudflare Access. The first sign-in creates a tenant with that person as owner. (BR-1)
+- **FR-1 Sign up.** A person signs up with their email through Cloudflare Access. The first sign-in creates a tenant with that person as owner. Sign-up also sets the git author name and email of the tenant's default persona. (BR-1)
 - **FR-2 Sign a client in.** The CLI signs in through a device code approved in a browser, and an MCP client signs in through OAuth. A tenant member lists its devices and revokes any of them. (BR-2)
 - **FR-3 Enrol a host.** A tenant member mints a one-time enrolment token. The host that presents it makes a key pair, spends the token and reads Online. A host without KVM refuses to enrol and names what is missing. Revoking a host closes its connection at once. (BR-1)
 - **FR-4 Harness catalog.** The catalog lists Claude Code, Codex, OpenCode and Pi.dev at pinned versions, and Mistral's coding agent joins it later. A tenant pins the version each harness runs. (BR-3)
@@ -88,7 +88,7 @@ After every deploy, agents prove the stage on a real host. They sign in, enrol t
 - **FR-6 Send.** A send to an idle session answers with the new turn id. While a turn runs, a send is refused, and the refusal quotes the running turn's id. (BR-2)
 - **FR-7 Concurrency.** A tenant runs any number of sessions across its hosts, with more than one box per host. Each session runs one turn at a time. (BR-4)
 - **FR-8 Read.** A read returns harness-native lines after a cursor, for the session or for one turn. The cursor stays valid across snapshots, fresh boxes and host moves. (BR-2)
-- **FR-9 Stop and archive.** A stop snapshots the session at once, then tears its box down and leaves the session Stopped. A failed or unanswered stop returns the session to Idle. An archive takes a Stopped session only. It deletes the snapshots, keeps the transcript readable and refuses later sends with `SessionArchived`. (BR-4)
+- **FR-9 Stop and archive.** A stop snapshots the session at once, then tears its box down and leaves the session Stopped. A failed or unanswered stop returns the session to Idle and records a stop failure, which `tumpel session stop-failures` lists. An archive takes a Stopped session only. It deletes the snapshots, keeps the transcript readable and refuses later sends with `SessionArchived`. (BR-4)
 - **FR-10 Warm window.** After each turn the box stays paused for a warm window, 15 minutes by default and set per host. A turn inside the window resumes the paused box. (BR-2)
 
 ### Functional requirements for credentials and configuration
@@ -144,7 +144,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 ### Runtime and surface
 
-**Budgets.** A host claims a turn within 60 s, writes its first line within 120 s, and finishes within 3,600 s. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
+**Budgets.** A host claims a turn within 60 s, writes its first line within 120 s of the box holding the repository, and finishes within 3,600 s. The clone has its own 120 s limit, the image's `cloneSeconds`. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
 
 **Channel ordering and reconnect.** Every message carries a sequence number and an acknowledgement. After a reconnect, each side resends what the other has not acknowledged, and the receiver drops duplicates.
 
@@ -152,7 +152,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. That pool is the host's box capacity, `boxCapacity`, 8 by default.
 
-**Repository access is a secret.** The box clones the session's repository with a git token from the persona's secret set.
+**Repository access is a secret.** On its first turn, the box clones the session's repository with `GITHUB_TOKEN` from the persona's secret set.
 
 **MCP and CLI parity is a build check.** Every signed-in operation is one MCP tool and one CLI command on the same handler. The build fails on a gap.
 
@@ -238,6 +238,8 @@ model Persona {
   name: DisplayName;
   harness: Harness;
   secretSetId: EntityId;
+  gitAuthorName: DisplayName;
+  gitAuthorEmail: EmailAddress;
   files: PersonaFile[];
   createdAt: int64;
   updatedAt: int64;

@@ -16,6 +16,10 @@ For a harness that reads turns as a stream, as Claude Code does, the agent keeps
 
 Each turn offer carries the persona's file list with a download URL per digest. The supervisor caches the files by digest and passes them to the guest over vsock. The guest writes them under the harness home before the harness starts.
 
+## Repository
+
+The images carry pinned git and gh. Before the harness starts, the guest clones the session's repository into the working directory `/root/workspace`. A directory that holds the repository already skips the clone. Git reads `GITHUB_TOKEN` from the environment through a credential helper, so the token stays out of the URL and off the disk. The clone runs within the image's `cloneSeconds`, 120 s. A clone that fails or runs out of time ends the turn `RepositoryCloneFailed` with what git reported. The guest then sends `RepositoryReady`, and the first-line budget starts there. Commits carry the persona's `gitAuthorName` and `gitAuthorEmail`, and gh reads the token as `GH_TOKEN`. An image whose `cloneSeconds` is not below the runtime's `budgets.turnSeconds` fails the turn `BoxBootFailed` with `CloneOutlastsTurn` before its box boots.
+
 ## Warm window
 
 Turns for different sessions run in parallel. When a turn ends, the supervisor pauses the box's vCPUs and arms a timer for that box. The timer runs for `warmWindowSeconds` from the host's runtime config, 900 s by default. A turn inside the window cancels the timer and resumes the paused process. Once the timer has fired and the box's last turn is in a snapshot, the supervisor stops the box and deletes its drive. A session stop ends the window early: the supervisor tears the box down on BoxTeardown (EDD-004).
@@ -46,7 +50,7 @@ The host masquerades the box's traffic to the internet. The guest filter drops f
 - 172.16.0.0/12
 - 192.168.0.0/16
 
-Those ranges cover the LAN, the hypervisor and every other box. On the host itself, the filter accepts a box's packets only at that box's gateway. IPv6 forwarding is off. The guest resolves names through 1.1.1.1 and 9.9.9.9.
+Those ranges cover the LAN, the hypervisor and every other box. On the host itself, the filter drops every packet a box sends, so a box reaches no host service. IPv6 forwarding is off. The guest resolves names through 1.1.1.1 and 9.9.9.9.
 
 ## Measured numbers
 

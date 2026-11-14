@@ -26,14 +26,28 @@ The test run holds a Cloudflare Access service token. Access issues a JWT for it
 6. Snapshot. After the quiet delay the snapshot reads Stored.
 7. Restore. `tumpel session stop` leaves the session Stopped. A send then boots a fresh box, and a file the first turn wrote is present.
 8. Concurrency. Two sessions run a turn each on the host at the same time.
-9. Isolation. A Shell box reaches a public website. It fails to reach the host, the other box and every private range.
-10. Secrecy. A search of the host's disk and of every transcript finds no copy of the credential. The audit record lists the variable names.
+9. Isolation. A box reaches a public website. It fails to reach the host, the other box and every private range.
+10. Secrecy. A search of the host's disk, its journal and every transcript finds no copy of the credential. `tumpel session handovers` lists the variable names.
 11. Refused credential. A secret set with an invalid key fails its turn with a reason that names the set and how to replace the value.
 12. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
 
 ## Passing
 
 A run passes when all twelve steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
+
+## Result
+
+`npm run proof:e2e` passed all twelve steps against `dev` on `tumpel-host`. The run signed in with the service token. Its persona file of 69,653 bytes went up through the presigned upload, and its credential was a subscription token.
+
+| Measure                                  | Time         |
+| ---------------------------------------- | ------------ |
+| First line, cold box                     | 25 to 35 s   |
+| First line, warm box                     | 0.6 to 0.8 s |
+| Snapshot stored after the turn           | about 31 s   |
+| Snapshot capture and upload              | about 1 s    |
+| `session stop`, then first line restored | 5.6 s, 19 s  |
+
+The session also restored on a fresh box after its warm window ran out. Step 9 ran its probe in a Claude Code box, because the Shell harness stays out of the catalog. Step 10 found zero copies of the credential.
 
 ## FAQ
 
