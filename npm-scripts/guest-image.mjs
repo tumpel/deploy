@@ -56,6 +56,10 @@ mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
 if ! mount -t ext4 -o noatime /dev/vdb /overlay 2>/dev/null; then
   mkfs.ext4 -q -F /dev/vdb
   mount -t ext4 -o noatime /dev/vdb /overlay
+  mkdir -p /overlay/upper
+  if [ -b /dev/vdc ]; then
+    tar -x -p --numeric-owner -f /dev/vdc -C /overlay/upper
+  fi
 fi
 mkdir -p /overlay/upper /overlay/work
 mount -t overlay overlay -o lowerdir=/,upperdir=/overlay/upper,workdir=/overlay/work /mnt
