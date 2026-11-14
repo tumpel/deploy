@@ -144,7 +144,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 ### Runtime and surface
 
-**Budgets.** A host claims a turn within 60 s, writes its first line within 120 s of the box holding the repository, and finishes within 3,600 s. The clone gets its own 120 s: the image's `cloneSeconds` on the host and `turnCloneBudgetSeconds` on the control plane. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
+**Budgets.** A host claims a turn within 60 s, writes its first line within 120 s of the box holding the repository, and finishes within 3,600 s. The clone gets its own 120 s, the image's `cloneSeconds`, which the host sends to the control plane on the claim. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
 
 **Channel ordering and reconnect.** Every message carries a sequence number and an acknowledgement. After a reconnect, each side resends what the other has not acknowledged, and the receiver drops duplicates.
 
