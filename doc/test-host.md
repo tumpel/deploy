@@ -31,7 +31,7 @@ ssh tumpel-host ./tumpel-supervisor install
 The installer:
 
 1. checks that `mvhenten` can open `/dev/kvm`, and adds the user to group `kvm` when not;
-2. writes `~/.local/state/tumpel-supervisor/runtime.json` (`SupervisorRuntime`) with defaults when it is missing;
+2. writes `~/.local/state/tumpel-supervisor/runtime.json` (`SupervisorRuntime`) with defaults when it is missing, and brings an older one to the current schema: it adds missing fields with their defaults and drops fields the schema no longer has;
 3. downloads Firecracker v1.18.0 to `firecrackerPath` and the guest kernel to `imageCacheDir`, each checked against the digest pinned in `crates/tumpel-supervisor/src/install.rs`;
 4. writes the guest filter `/etc/tumpel-guest-filter.nft` and the unit `tumpel-guest-filter.service` that loads it at boot;
 5. makes the TAP pool through systemd-networkd: `boxCapacity` devices, 8 by default. Device `tumpel<k>` is owned by `mvhenten` and has gateway 172.16.<k>.1/30 with IPv4 masquerade out of `enp1s0`, for guest 172.16.<k>.2;
