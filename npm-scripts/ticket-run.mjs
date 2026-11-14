@@ -5,7 +5,6 @@ import { PersonaSchema, StartedSessionSchema } from "@tumpel/api/schemas";
 import { z } from "zod";
 
 const TUMPEL = process.env.TUMPEL_BIN ?? "tumpel";
-const DEFAULT_MODEL = "claude-opus-4-5";
 
 const ISSUE_URL = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/issues\/([1-9][0-9]*)$/;
 
@@ -13,7 +12,7 @@ const ArgsSchema = z.object({
   issueUrl: z.string().regex(ISSUE_URL, "pass a GitHub issue URL such as https://github.com/acme/app/issues/12"),
   persona: z.string().min(1, "pass --persona <name>, a persona tumpel persona list shows"),
   endpoint: z.url().optional(),
-  model: z.string().min(1),
+  model: z.string().min(1, "pass --model <name>, the model the session runs"),
 });
 
 const IssueSchema = z.object({
@@ -78,13 +77,13 @@ const main = async () => {
     options: {
       persona: { type: "string" },
       endpoint: { type: "string" },
-      model: { type: "string", default: DEFAULT_MODEL },
+      model: { type: "string" },
     },
   });
   const args = parsed(
     ArgsSchema,
     { issueUrl: positionals[0], persona: values.persona, endpoint: values.endpoint, model: values.model },
-    "npm run ticket -- <issue url> --persona <name> [--endpoint <url>] [--model <name>]",
+    "npm run ticket -- <issue url> --persona <name> --model <name> [--endpoint <url>]",
   );
   const [, owner, repo] = args.issueUrl.match(ISSUE_URL);
   const env = args.endpoint ? { ...process.env, TUMPEL_ENDPOINT: args.endpoint } : process.env;

@@ -43,7 +43,7 @@ Each budget runs as one timer of its session and ends with the turn.
 
 The first line counts from TurnRepositoryReady, which the host sends once the box holds the repository. Before it, the clone runs within the image's cloneSeconds and fails RepositoryCloneFailed (EDD-001).
 
-A turn also fails BoxBootFailed, PoolExhausted, HarnessExited, CredentialRefused, SnapshotUnreadable or TranscriptGap. CredentialRefused means the provider refused the credential. Every failure carries a detail that states what failed and what fixes it, with the tail of the harness's standard error when the harness wrote any. The budgets sit in one schema-checked settings object of the control plane.
+A turn also fails BoxBootFailed, PoolExhausted, HarnessExited, HarnessReportedError, CredentialRefused, SnapshotUnreadable or TranscriptGap. CredentialRefused means the provider refused the credential. Every failure carries a detail that states what failed and what fixes it, with the tail of the harness's standard error when the harness wrote any. The budgets sit in one schema-checked settings object of the control plane.
 
 ## Backends
 
