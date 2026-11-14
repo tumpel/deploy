@@ -2,46 +2,9 @@
 
 A Claude Code persona that works one GitHub issue and opens a draft pull request. Its box clones the session's repository with the `GITHUB_TOKEN` member of its secret set; `gh` reads the same token as `GH_TOKEN`. Claude Code already runs with permissions skipped in the image, and `settings.json` keeps it that way. `CLAUDE.md` holds the house rules for a ticket.
 
-Add these entries to your tenant config file, with each `from` path read from that file's folder, then run `tumpel config apply <file>`:
+The persona and its secret set live in [`doc/personas/proof-tenant.json`](../proof-tenant.json), the one tenant config of the proof tenant, next to the `proof` and `refused` personas of `npm run proof:e2e`. Both scripts apply that file before they start a session, and apply deletes whatever it leaves out, so a persona for the proof tenant goes into that file. Every secret value comes from the environment: `npm-scripts/proof-tenant.mjs` loads the subscription token from the dotfiles key `claude-setup-token-personal` (or `TUMPEL_PROOF_CREDENTIAL`) and `GITHUB_TOKEN` from `gh auth token` in process.
 
-```json
-{
-  "personas": [
-    {
-      "name": "ticket-worker",
-      "harness": "ClaudeCode",
-      "secretSetName": "ticket-worker",
-      "gitAuthorName": "Tumpel Ticket Worker",
-      "gitAuthorEmail": "ticket-worker@users.noreply.github.com",
-      "files": [
-        { "path": ".claude/settings.json", "from": "doc/personas/ticket-worker/settings.json" },
-        { "path": ".claude/CLAUDE.md", "from": "doc/personas/ticket-worker/CLAUDE.md" }
-      ]
-    }
-  ],
-  "secretSets": [
-    {
-      "name": "ticket-worker",
-      "secrets": [
-        {
-          "kind": "SubscriptionToken",
-          "name": "CLAUDE_CODE_OAUTH_TOKEN",
-          "provider": "Anthropic",
-          "expiresAt": "2027-11-14T00:00:00+00:00",
-          "valueFrom": { "env": "TICKET_WORKER_CLAUDE_CODE_OAUTH_TOKEN" }
-        },
-        {
-          "kind": "Variable",
-          "name": "GITHUB_TOKEN",
-          "valueFrom": { "env": "TICKET_WORKER_GITHUB_TOKEN" }
-        }
-      ]
-    }
-  ]
-}
-```
-
-Set `expiresAt` to the expiry of the token `claude setup-token` printed; with an Anthropic API key, use an `ApiKey` member named `ANTHROPIC_API_KEY` instead. `GITHUB_TOKEN` is a fine-grained token with read and write access to contents and pull requests of the repositories the persona works on. Export both variables before `apply`; the values never go in the file.
+Set `expiresAt` to the expiry of the token `claude setup-token` printed. `GITHUB_TOKEN` needs read and write access to contents and pull requests of the repositories the persona works on.
 
 Work an issue from a signed-in terminal:
 
@@ -49,4 +12,4 @@ Work an issue from a signed-in terminal:
 npm run ticket -- <issue url> --persona ticket-worker --model <model> [--endpoint <url>]
 ```
 
-It reads the issue with `gh issue view`, starts a session on the issue's repository, streams the turn's lines, and prints the pull request URL. `--model` is required: the catalog pins the harness version, and the start names the model. A failed turn exits non-zero with its failure reason.
+It reads the issue with `gh issue view`, applies the proof tenant config, starts a session on the issue's repository, streams the turn's lines, and prints the pull request URL. `--model` is required: the catalog pins the harness version, and the start names the model. A failed turn exits non-zero with its failure reason.

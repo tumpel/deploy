@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { INLINE_CAP, loadCredential, PROOF_TENANT_FILE, proofTenantApply } from "./proof-tenant.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const WORK = join(ROOT, ".tmp", "proof-e2e");
 const STAGE = process.env.TUMPEL_STAGE ?? "dev";
 const HOST = process.env.TUMPEL_PROOF_HOST ?? "tumpel-host";
 const ENDPOINT = process.env.TUMPEL_PROOF_ENDPOINT;
@@ -22,7 +21,6 @@ const SUPERVISOR =
   join(ROOT, "target", "x86_64-unknown-linux-gnu", "release", "tumpel-supervisor");
 const STATE_DIR = ".local/state/tumpel-supervisor";
 const REVOKE_DIR = "development/.tmp/tumpel-proof-revoke";
-const INLINE_CAP = 65_536;
 const MARKER = `tumpel-proof-${randomBytes(4).toString("hex")}`;
 
 const die = (message) => {
@@ -45,15 +43,6 @@ const fail = (message) => {
 };
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const parseCredentials = (path) => {
-  const text = readFileSync(path, "utf8");
-  try {
-    return JSON.parse(text);
-  } catch {
-    return die(`${path} is not valid JSON; sign in to Claude Code again to rewrite it`);
-  }
-};
-
 const collect = (command, args) =>
   new Promise((resolve) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -69,39 +58,6 @@ const collect = (command, args) =>
     });
     child.on("close", (code) => resolve({ code, firstAt, out, err }));
   });
-
-const loadCredential = () => {
-  const [source, ...rest] = CREDENTIAL.split(":");
-  const reference = rest.join(":");
-  if (source === "dotfiles") {
-    const result = spawnSync(
-      "bash",
-      ["-o", "pipefail", "-c", 'dotfiles-key decrypt "$1" -o /dev/fd/3 3>&1 1>/dev/null | cat', "decrypt", reference],
-      { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
-    );
-    if (result.status !== 0) die(`dotfiles-key decrypt ${reference} exited ${result.status}; run dotfiles-key unlock`);
-    const lines = result.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const assigned = lines.find((line) => /^[A-Z_]+=/.test(line));
-    const value = assigned ? assigned.slice(assigned.indexOf("=") + 1) : lines[0];
-    if (!value) die(`dotfiles key ${reference} is empty`);
-    const subscription = value.startsWith("sk-ant-oat");
-    return {
-      value,
-      kind: subscription ? "SubscriptionToken" : "ApiKey",
-      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
-    };
-  }
-  if (source === "claude-credentials") {
-    const path = reference || join(homedir(), ".claude", ".credentials.json");
-    const oauth = parseCredentials(path).claudeAiOauth;
-    if (!oauth?.accessToken || !oauth?.expiresAt) die(`${path} holds no claudeAiOauth access token with its expiry`);
-    return { value: oauth.accessToken, kind: "SubscriptionToken", expiresAt: new Date(oauth.expiresAt).toISOString() };
-  }
-  return die(`TUMPEL_PROOF_CREDENTIAL ${CREDENTIAL} must be dotfiles:<key name> or claude-credentials[:<path>]`);
-};
 
 const tumpel = (args, env = {}) => {
   const result = spawnSync(CLI, args, { encoding: "utf8", env: { ...process.env, ...env }, timeout: 600_000 });
@@ -213,69 +169,7 @@ const enrol = (name, envPrefix) => {
 };
 
 const state = {};
-const credential = (() => {
-  mkdirSync(WORK, { recursive: true });
-  return loadCredential();
-})();
-
-const writeTenantConfig = () => {
-  const files = join(WORK, "files");
-  mkdirSync(files, { recursive: true });
-  writeFileSync(join(files, "settings.json"), `${JSON.stringify({ includeCoAuthoredBy: false }, null, 2)}\n`);
-  const lines = ["# Proof persona", "", "Answer briefly. Do what the prompt asks and nothing more.", ""];
-  for (let index = 1; lines.join("\n").length <= INLINE_CAP + 4096; index += 1) {
-    lines.push(`- Note ${index}: padding that sends this file through the presigned upload route.`);
-  }
-  writeFileSync(join(files, "CLAUDE.md"), `${lines.join("\n")}\n`);
-  const credentialMember =
-    credential.kind === "SubscriptionToken"
-      ? {
-          kind: "SubscriptionToken",
-          name: "CLAUDE_CODE_OAUTH_TOKEN",
-          provider: "Anthropic",
-          expiresAt: credential.expiresAt,
-          valueFrom: { env: "PROOF_CREDENTIAL" },
-        }
-      : { kind: "ApiKey", name: "ANTHROPIC_API_KEY", provider: "Anthropic", valueFrom: { env: "PROOF_CREDENTIAL" } };
-  const tenant = {
-    $schema: "https://raw.githubusercontent.com/mvhenten/tumpel/main/packages/api/generated/TenantConfig.json",
-    personas: [
-      {
-        name: "proof",
-        harness: "ClaudeCode",
-        secretSetName: "proof",
-        gitAuthorName: "Tumpel proof",
-        gitAuthorEmail: "proof@tumpel.invalid",
-        files: [
-          { path: ".claude/settings.json", from: "files/settings.json" },
-          { path: ".claude/CLAUDE.md", from: "files/CLAUDE.md" },
-        ],
-      },
-      {
-        name: "refused",
-        harness: "ClaudeCode",
-        secretSetName: "refused",
-        gitAuthorName: "Tumpel proof",
-        gitAuthorEmail: "proof@tumpel.invalid",
-        files: [{ path: ".claude/settings.json", from: "files/settings.json" }],
-      },
-    ],
-    secretSets: [
-      { name: "proof", secrets: [credentialMember] },
-      {
-        name: "refused",
-        secrets: [
-          { kind: "ApiKey", name: "ANTHROPIC_API_KEY", provider: "Anthropic", valueFrom: { env: "PROOF_REFUSED_KEY" } },
-        ],
-      },
-    ],
-    harnessPins: [],
-    hosts: [],
-  };
-  const file = join(WORK, "tumpel.json");
-  writeFileSync(file, `${JSON.stringify(tenant, null, 2)}\n`);
-  return file;
-};
+const credential = loadCredential(CREDENTIAL, die);
 
 const probeCommand = (capacity) => {
   const boxes = Array.from({ length: capacity }, (_, k) => [`172.16.${k}.1:22`, `172.16.${k}.2:22`]).flat();
@@ -342,12 +236,9 @@ const steps = [
     name: "Configure",
     gate: true,
     run: async () => {
-      const file = writeTenantConfig();
+      const apply = proofTenantApply(credential, die);
       const t0 = Date.now();
-      tumpel(["config", "apply", file, "--rewrite-secrets", "proof", "--rewrite-secrets", "refused"], {
-        PROOF_CREDENTIAL: credential.value,
-        PROOF_REFUSED_KEY: `proof-invalid-${randomBytes(16).toString("hex")}`,
-      });
+      tumpel(apply.args, apply.env);
       const applyMs = Date.now() - t0;
       const personas = tumpelJson(["persona", "list"]);
       const proof = personas.find((persona) => persona.name === "proof");
@@ -355,10 +246,11 @@ const steps = [
       if (!proof || !refused) fail("apply left no persona proof or refused");
       const large = proof.files.find((entry) => entry.path === ".claude/CLAUDE.md");
       if (!large || large.sizeBytes <= INLINE_CAP) fail(".claude/CLAUDE.md did not land above the inline cap");
-      if (!tumpel(["config", "plan", file]).includes("no changes")) fail("plan after apply still lists changes");
+      if (!tumpel(["config", "plan", PROOF_TENANT_FILE]).includes("no changes"))
+        fail("plan after apply still lists changes");
       state.personaId = proof.personaId;
       state.refusedPersonaId = refused.personaId;
-      return `${credential.kind} credential, CLAUDE.md ${large.sizeBytes} B uploaded, apply ${applyMs} ms`;
+      return `SubscriptionToken credential, CLAUDE.md ${large.sizeBytes} B uploaded, apply ${applyMs} ms`;
     },
   },
   {
@@ -518,7 +410,7 @@ const steps = [
       const runtime = hostRuntime();
       const disk = ssh(
         `read -r P; grep -rlaF -f <(printf '%s\\n' "$P") ${STATE_DIR} ${runtime.dataDir} 2>/dev/null | wc -l; journalctl --user -u tumpel-supervisor --no-pager | grep -cF -f <(printf '%s\\n' "$P") || true`,
-        `${credential.value}\n`,
+        `${credential}\n`,
       )
         .trim()
         .split("\n")
@@ -528,19 +420,17 @@ const steps = [
       for (const session of tumpelJson(["session", "list"])) {
         for (const turn of tumpelJson(["turn", "list", session.sessionId])) {
           turns += 1;
-          if (tumpel(["transcript", "read", turn.turnId, "--limit", "1000"]).includes(credential.value))
-            transcriptHits += 1;
+          if (tumpel(["transcript", "read", turn.turnId, "--limit", "1000"]).includes(credential)) transcriptHits += 1;
         }
       }
-      const expectedVariable =
-        credential.kind === "SubscriptionToken" ? "CLAUDE_CODE_OAUTH_TOKEN" : "ANTHROPIC_API_KEY";
+      const expectedVariable = "CLAUDE_CODE_OAUTH_TOKEN";
       const handovers = tumpelJson(["session", "handovers", state.first.sessionId]);
       if (handovers.length === 0 || handovers.some((handover) => !handover.variableNames.includes(expectedVariable))) {
         fail(
           `the handovers of session ${state.first.sessionId} do not all name ${expectedVariable}: ${JSON.stringify(handovers)}`,
         );
       }
-      if (JSON.stringify(handovers).includes(credential.value)) fail("a handover lists the credential value");
+      if (JSON.stringify(handovers).includes(credential)) fail("a handover lists the credential value");
       const [files, journal] = disk;
       if (files + journal + transcriptHits > 0) {
         fail(

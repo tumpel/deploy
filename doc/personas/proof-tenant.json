@@ -1,0 +1,79 @@
+{
+  "$schema": "https://raw.githubusercontent.com/mvhenten/tumpel/main/packages/api/generated/TenantConfig.json",
+  "personas": [
+    {
+      "name": "proof",
+      "harness": "ClaudeCode",
+      "secretSetName": "proof",
+      "gitAuthorName": "Tumpel proof",
+      "gitAuthorEmail": "proof@tumpel.invalid",
+      "files": [
+        { "path": ".claude/settings.json", "from": "proof/settings.json" },
+        { "path": ".claude/CLAUDE.md", "from": "../../.tmp/proof-tenant/CLAUDE.md" }
+      ]
+    },
+    {
+      "name": "refused",
+      "harness": "ClaudeCode",
+      "secretSetName": "refused",
+      "gitAuthorName": "Tumpel proof",
+      "gitAuthorEmail": "proof@tumpel.invalid",
+      "files": [{ "path": ".claude/settings.json", "from": "proof/settings.json" }]
+    },
+    {
+      "name": "ticket-worker",
+      "harness": "ClaudeCode",
+      "secretSetName": "ticket-worker",
+      "gitAuthorName": "Tumpel Ticket Worker",
+      "gitAuthorEmail": "ticket-worker@users.noreply.github.com",
+      "files": [
+        { "path": ".claude/settings.json", "from": "ticket-worker/settings.json" },
+        { "path": ".claude/CLAUDE.md", "from": "ticket-worker/CLAUDE.md" }
+      ]
+    }
+  ],
+  "secretSets": [
+    {
+      "name": "proof",
+      "secrets": [
+        {
+          "kind": "SubscriptionToken",
+          "name": "CLAUDE_CODE_OAUTH_TOKEN",
+          "provider": "Anthropic",
+          "expiresAt": "2027-11-14T00:00:00+00:00",
+          "valueFrom": { "env": "PROOF_CLAUDE_CODE_OAUTH_TOKEN" }
+        }
+      ]
+    },
+    {
+      "name": "refused",
+      "secrets": [
+        {
+          "kind": "ApiKey",
+          "name": "ANTHROPIC_API_KEY",
+          "provider": "Anthropic",
+          "valueFrom": { "env": "PROOF_REFUSED_KEY" }
+        }
+      ]
+    },
+    {
+      "name": "ticket-worker",
+      "secrets": [
+        {
+          "kind": "SubscriptionToken",
+          "name": "CLAUDE_CODE_OAUTH_TOKEN",
+          "provider": "Anthropic",
+          "expiresAt": "2027-11-14T00:00:00+00:00",
+          "valueFrom": { "env": "PROOF_CLAUDE_CODE_OAUTH_TOKEN" }
+        },
+        {
+          "kind": "Variable",
+          "name": "GITHUB_TOKEN",
+          "valueFrom": { "env": "PROOF_GITHUB_TOKEN" }
+        }
+      ]
+    }
+  ],
+  "harnessPins": [],
+  "hosts": []
+}

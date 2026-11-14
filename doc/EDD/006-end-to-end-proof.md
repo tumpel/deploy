@@ -20,7 +20,7 @@ The test run holds a Cloudflare Access service token. Access issues a JWT for it
 
 1. Sign in. `tumpel whoami` names the test tenant.
 2. Enrol. The installer and the release binaries set up the host, which enrols with a freshly minted token and reads Online.
-3. Configure. `tumpel config apply` writes a Claude Code persona and its secret set. The set's `ApiKey` or `SubscriptionToken` member takes its value from the runner's environment.
+3. Configure. `tumpel config apply doc/personas/proof-tenant.json` writes the proof tenant's personas and secret sets, the ticket run's included. The set's `ApiKey` or `SubscriptionToken` member takes its value from the runner's environment.
 4. First turn. A start names the persona, a model, a small test repository and a prompt, and returns ids before the first line. Lines arrive, and the turn reads Completed.
 5. Warm turn. A second turn inside the warm window resumes the paused box and reaches the same harness process.
 6. Snapshot. After the quiet delay the snapshot reads Stored.
