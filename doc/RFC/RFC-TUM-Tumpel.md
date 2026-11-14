@@ -14,15 +14,16 @@ Tumpel runs coding agent harnesses on machines a tenant owns, including desktops
 ## Tenets
 
 - **Harnesses on any hardware.** Harnesses run on any hardware, including desktops at home, driven over MCP.
-- **Rust out of sight.** Rust for everything that runs out of sight (the host supervisor, workers and agents on the host) and for the CLI. Stable, distributable binaries.
+- **Rust out of sight.** Rust for everything that runs out of sight (the host supervisor, workers and agents on the host) and for the CLI.
 - **TypeSpec first.** Radical shift left on the API: everything is modelled in TypeSpec first. Generate SDKs, types and anything else we can.
-- **Every input has a schema.** Config, options and CLI arguments are all interfaces that have a schema, and each one is versioned. A tenant keeps its config file in a git repo.
+- **Every input has a schema.** Config, options and CLI arguments each have a versioned schema. A tenant keeps its config file in a git repo.
 - **All primitives get wrapped.** The channel from the supervisor to the backend works the same on any compute: a Cloudflare Worker or a Lambda with WebSockets. Define the general protocol first, then plug in one backend.
-- **Workers in TypeScript.** Cloudflare Workers in TypeScript: fastest, simplest, lowest maintenance. Only what sign-in and routing need before the tenant is known is stored centrally; everything else per tenant, in its own SQLite database. TypeScript packages stay platform-neutral, and each platform composes them with its own adapters.
+- **Workers in TypeScript.** Cloudflare Workers in TypeScript: fastest, simplest, lowest maintenance. Only what sign-in and routing need before the tenant is known is stored centrally; everything else per tenant, in its own SQLite database.
 - **No standing secrets.** No shared secrets anywhere, and no standing credential on a host.
 - **Events drive the lifecycle.** Nothing sweeps and nothing polls.
 - **Every phase has a time limit and a named failure.** Fail fast, with no retries and no fallbacks.
 - **Agents prove it.** No human browser step is a precondition for the proof that the system works.
+- **Design for end-to-end validation in every stage.** `npm run proof:e2e` runs the EDD-006 proof against each stage after its deploy.
 
 ## Problem statement
 
@@ -63,7 +64,7 @@ When a turn completes, the supervisor stores the box's changed files in object s
 
 ### Proof
 
-Agents prove each release on a real host. They sign in, enrol the host, run real turns on a real harness and restore a session from its snapshots, with no person in a browser.
+After every deploy, agents prove the stage on a real host. They sign in, enrol the host, run real turns on a real harness and restore a session from its snapshots, with no person in a browser.
 
 ## Requirements
 
@@ -87,7 +88,7 @@ Agents prove each release on a real host. They sign in, enrol the host, run real
 - **FR-6 Send.** A send to an idle session answers with the new turn id. While a turn runs, a send is refused, and the refusal quotes the running turn's id. (BR-2)
 - **FR-7 Concurrency.** A tenant runs any number of sessions across its hosts, with more than one box per host. Each session runs one turn at a time. (BR-4)
 - **FR-8 Read.** A read returns harness-native lines after a cursor, for the session or for one turn. The cursor stays valid across snapshots, fresh boxes and host moves. (BR-2)
-- **FR-9 Stop and archive.** A stop snapshots the session and frees its box. An archive deletes the snapshots, keeps the transcript readable and refuses later sends. (BR-4)
+- **FR-9 Stop and archive.** A stop snapshots the session at once, then tears its box down and leaves the session Stopped. A failed or unanswered stop returns the session to Idle. An archive takes a Stopped session only. It deletes the snapshots, keeps the transcript readable and refuses later sends with `SessionArchived`. (BR-4)
 - **FR-10 Warm window.** After each turn the box stays paused for a warm window, 15 minutes by default and set per host. A turn inside the window resumes the paused box. (BR-2)
 
 ### Functional requirements for credentials and configuration
@@ -115,7 +116,7 @@ Agents prove each release on a real host. They sign in, enrol the host, run real
 - **OR-1 Install once.** One command installs a host with admin rights. The supervisor never escalates afterwards, and one command updates it. (BR-1)
 - **OR-2 Static binaries.** The installer, the supervisor and the CLI ship as static binaries for Linux on x86_64 only for now. (BR-1)
 - **OR-3 Audit.** Every credential handover records the turn, host, box and secret names. (BR-3)
-- **OR-4 Agents prove each release.** Agents run the proof on a real host before a release ships. (BR-2)
+- **OR-4 Agents prove each stage.** Agents run the proof on a real host against every stage after its deploy. (BR-2)
 
 ## Decisions
 

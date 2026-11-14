@@ -1,6 +1,6 @@
 # Deploy
 
-A push to `main` deploys the `dev` stage: Cloudflare Workers Builds runs `npm run deploy` on the Worker `tumpel-control-plane-dev`, which applies the infra, migrates D1, deploys the Worker and sets its secrets. The trigger is declared in `cloudflare-builds-bootstrap` (`infra/projects.auto.tfvars.json`, project `tumpel`) with the build variables `NODE_VERSION`, `TUMPEL_STAGE` and `TUMPEL_ACCOUNT_ID`. The deploy needs Node and OpenTofu (it downloads a checksummed binary) but not cargo, so the build installs the npm workspaces only. Do not deploy from a checkout; the commands below are for bootstrapping an account or a new stage.
+A push to `main` deploys the `dev` stage: Cloudflare Workers Builds runs `npm run deploy` on the Worker `tumpel-control-plane-dev`, which applies the infra, migrates D1, deploys the Worker and sets its secrets. The trigger is declared in `cloudflare-builds-bootstrap` (`infra/projects.auto.tfvars.json`, project `tumpel`) with the build variables `NODE_VERSION`, `TUMPEL_STAGE` and `TUMPEL_ACCOUNT_ID`. The deploy needs Node and OpenTofu (it downloads a checksummed binary) but not cargo, so the build installs the npm workspaces only. After every deploy of a stage, `npm run proof:e2e` runs the twelve-step proof of EDD-006 against that stage (`doc/EDD/006-end-to-end-proof.md`), on the host that `TUMPEL_PROOF_HOST` names. Do not deploy from a checkout; the commands below are for bootstrapping an account or a new stage.
 
 The control plane deploys per stage; the stage is `TUMPEL_STAGE` and defaults to `dev`. The `dev` stage runs at https://tumpel-control-plane-dev.matthijs-f49.workers.dev.
 
@@ -23,7 +23,7 @@ Commands, for bootstrap only:
 
 - `npm run deploy` applies the infra of the stage, refuses a plan that destroys anything, applies D1 migrations, deploys the Worker with `ACCESS_ISSUER` and `ACCESS_AUD` taken from the tofu outputs and sets the three R2 Worker secrets.
 - `npm run deploy:migrate` applies D1 migrations only.
-- `npm run proof -- <command>` runs a command with `TUMPEL_PROOF_CLIENT_ID` and `TUMPEL_PROOF_CLIENT_SECRET` read from the stage's tofu outputs, never printed.
+- `npm run proof -- <command>` runs a command with `TUMPEL_PROOF_CLIENT_ID` and `TUMPEL_PROOF_CLIENT_SECRET` read from the stage's tofu outputs. It prints neither value.
 
 Sign a terminal in with `tumpel login --endpoint https://tumpel-control-plane-dev.matthijs-f49.workers.dev`.
 

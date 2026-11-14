@@ -18,7 +18,7 @@ Each turn offer carries the persona's file list with a download URL per digest. 
 
 ## Warm window
 
-Turns for different sessions run in parallel. When a turn ends, the supervisor pauses the box's vCPUs and arms a timer for that box. The timer runs for `warmWindowSeconds` from the host's runtime config, 900 s by default. A turn inside the window cancels the timer and resumes the paused process. Once the timer has fired and the box's last turn is in a snapshot, the supervisor stops the box and deletes its drive.
+Turns for different sessions run in parallel. When a turn ends, the supervisor pauses the box's vCPUs and arms a timer for that box. The timer runs for `warmWindowSeconds` from the host's runtime config, 900 s by default. A turn inside the window cancels the timer and resumes the paused process. Once the timer has fired and the box's last turn is in a snapshot, the supervisor stops the box and deletes its drive. A session stop ends the window early: the supervisor tears the box down on BoxTeardown (EDD-004).
 
 The warm state is the paused process in host memory. The supervisor writes no memory file to disk.
 

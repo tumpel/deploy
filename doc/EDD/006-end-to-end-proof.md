@@ -4,11 +4,13 @@ An appendix of [RFC: Tumpel](../RFC/RFC-TUM-Tumpel.md).
 
 ## Summary
 
-Agents prove each release against the deployed control plane and a real host, with no mocks and no person in a browser. A test run signs in, enrols the host, runs turns on Claude Code, restores a session from its snapshots and checks isolation and secrecy. The release passes when every step passes in one run.
+Agents prove every stage after its deploy, against that stage's control plane and a real host, with no mocks and no person in a browser. A test run signs in, enrols the host, runs turns on Claude Code, restores a session from its snapshots and checks isolation and secrecy. The stage passes when every step passes in one run.
 
 ## Where it runs
 
-The reference host is a Linux VM on the hypervisor `box`, with a host-passthrough CPU so it exposes KVM, 4 vCPU and 8 GiB. The control plane is the deployed Worker. An agent on the development machine drives the release's CLI and the hosted MCP server.
+The reference host is a Linux VM on the hypervisor `box`, with a host-passthrough CPU so it exposes KVM, 4 vCPU and 8 GiB. The control plane is the stage's deployed Worker. An agent on the development machine drives the release's CLI and the hosted MCP server.
+
+`npm run proof:e2e` runs the twelve steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage.
 
 ## Signing in
 
@@ -22,7 +24,7 @@ The test run holds a Cloudflare Access service token. Access issues a JWT for it
 4. First turn. A start names the persona, a model, a small test repository and a prompt, and returns ids before the first line. Lines arrive, and the turn reads Completed.
 5. Warm turn. A second turn inside the warm window resumes the paused box and reaches the same harness process.
 6. Snapshot. After the quiet delay the snapshot reads Stored.
-7. Restore. A stop, then a send, boots a fresh box. A file the first turn wrote is present.
+7. Restore. `tumpel session stop` leaves the session Stopped. A send then boots a fresh box, and a file the first turn wrote is present.
 8. Concurrency. Two sessions run a turn each on the host at the same time.
 9. Isolation. A Shell box reaches a public website. It fails to reach the host, the other box and every private range.
 10. Secrecy. A search of the host's disk and of every transcript finds no copy of the credential. The audit record lists the variable names.
