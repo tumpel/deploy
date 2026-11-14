@@ -29,6 +29,7 @@
     "deploy:infra": "node npm-scripts/deploy.mjs infra",
     "deploy:migrate": "node npm-scripts/deploy.mjs migrate",
     "proof": "node npm-scripts/proof-env.mjs",
+    "ticket": "node npm-scripts/ticket-run.mjs",
     "guest:build": "RUSTFLAGS=\"-C target-feature=+crt-static\" cargo build --release -p tumpel-guest --target x86_64-unknown-linux-gnu",
     "guest:image": "node npm-scripts/guest-image.mjs"
   },

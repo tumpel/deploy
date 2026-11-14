@@ -5,12 +5,27 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/mvhenten/tumpel/main/packages/api/generated/TenantConfig.json",
-  "personas": [{ "name": "Reviewer", "instructions": "Review the diff.", "settings": "{}", "mcpServers": [] }],
+  "personas": [
+    {
+      "name": "Reviewer",
+      "harness": "ClaudeCode",
+      "secretSetName": "prod",
+      "gitAuthorName": "Tumpel Reviewer",
+      "gitAuthorEmail": "reviewer@users.noreply.github.com",
+      "files": [{ "path": ".claude/CLAUDE.md", "from": "reviewer/CLAUDE.md" }]
+    }
+  ],
   "secretSets": [
     {
       "name": "prod",
       "secrets": [
-        { "name": "ANTHROPIC_API_KEY", "provider": "Anthropic", "valueFrom": { "env": "PROD_ANTHROPIC_API_KEY" } }
+        {
+          "kind": "ApiKey",
+          "name": "ANTHROPIC_API_KEY",
+          "provider": "Anthropic",
+          "valueFrom": { "env": "PROD_ANTHROPIC_API_KEY" }
+        },
+        { "kind": "Variable", "name": "GITHUB_TOKEN", "valueFrom": { "env": "PROD_GITHUB_TOKEN" } }
       ]
     }
   ],
@@ -19,7 +34,7 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
 }
 ```
 
-The file holds no secret value. `valueFrom.env` names the environment variable `apply` reads it from.
+The file holds no secret value. `valueFrom.env` names the environment variable `apply` reads it from. A box clones the session's repository with the set's `GITHUB_TOKEN` Variable, and commits as the persona's `gitAuthorName` and `gitAuthorEmail`; a public repository needs no token. `doc/personas/ticket-worker` is a persona that works a GitHub issue.
 
 - `tumpel config init <file>` writes a new file from the tenant's current state.
 - `tumpel config validate <file>` prints every schema error with its JSON pointer.

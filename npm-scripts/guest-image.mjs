@@ -37,6 +37,26 @@ const NODE = {
   url: "https://nodejs.org/dist/v24.22.3/node-v24.22.3-linux-x64.tar.xz",
   digest: "4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb",
 };
+const LAUNCHPAD = "https://launchpad.net/ubuntu/+archive/primary/+files";
+const GIT = {
+  name: "git",
+  version: "2.43.0-1ubuntu7.4",
+  url: `${LAUNCHPAD}/git_2.43.0-1ubuntu7.4_amd64.deb`,
+  digest: "c79b7948ef9860c97ec74293a90178676e63368a0711c95c28a55af4edf1adab",
+};
+const LIBCURL_GNUTLS = {
+  name: "libcurl3t64-gnutls",
+  version: "8.5.0-2ubuntu10.16",
+  url: `${LAUNCHPAD}/libcurl3t64-gnutls_8.5.0-2ubuntu10.16_amd64.deb`,
+  digest: "f3993897876cd03ea10941c9b364965ff95d0226459f31f6c5f5b93562c80798",
+};
+const GH = {
+  name: "gh",
+  version: "2.103.3",
+  url: "https://github.com/cli/cli/releases/download/v2.103.3/gh_2.103.3_linux_amd64.tar.gz",
+  digest: "4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d",
+};
+const WORKING_DIRECTORY = "/root/workspace";
 const CLAUDE_FLAGS = [
   "-p",
   "--input-format",
@@ -95,7 +115,7 @@ const tool = (name) => {
   const found = [...(process.env.PATH ?? "").split(":"), "/usr/sbin", "/sbin"]
     .map((dir) => join(dir, name))
     .find((path) => existsSync(path));
-  if (!found) die(`${name} is not installed; install e2fsprogs and squashfs-tools on the build machine`);
+  if (!found) die(`${name} is not installed; install e2fsprogs, squashfs-tools and dpkg on the build machine`);
   return found;
 };
 
@@ -137,7 +157,7 @@ const recipeFor = (name) => {
         harnessVersion: "1",
         protocol: "ShellLines",
         command: ["/bin/sh", "-s"],
-        workingDirectory: "/root",
+        workingDirectory: WORKING_DIRECTORY,
       }),
       install: async () => [],
     };
@@ -158,7 +178,7 @@ const recipeFor = (name) => {
       harnessVersion: entry.harnessVersion,
       protocol: "ClaudeStreamJson",
       command: ["/opt/tumpel/node/bin/node", `/opt/tumpel/harness/node_modules/${name_}/cli.js`, ...CLAUDE_FLAGS],
-      workingDirectory: "/root",
+      workingDirectory: WORKING_DIRECTORY,
     }),
     install: async (tree) => {
       const node = join(tree, "opt", "tumpel", "node");
@@ -184,6 +204,23 @@ const recipeFor = (name) => {
       return [NODE];
     },
   };
+};
+
+const installGit = async (tree) => {
+  const dpkgDeb = tool("dpkg-deb");
+  for (const deb of [GIT, LIBCURL_GNUTLS]) run(dpkgDeb, ["-x", await download(deb), tree]);
+  const local = join(tree, "usr", "local");
+  run("tar", [
+    "-xzf",
+    await download(GH),
+    "-C",
+    local,
+    "--strip-components=1",
+    "--no-same-owner",
+    "--wildcards",
+    "*/bin/gh",
+  ]);
+  return [GIT, LIBCURL_GNUTLS, GH];
 };
 
 const ownByRoot = (tree, image) => {
@@ -237,7 +274,7 @@ const main = async () => {
     writeFileSync(join(tree, "etc/tumpel/guest.json"), `${JSON.stringify(recipe.harness, null, 2)}\n`);
     rmSync(join(tree, "etc/resolv.conf"), { force: true });
     writeFileSync(join(tree, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 9.9.9.9\n");
-    const components = await recipe.install(tree);
+    const components = [...(await installGit(tree)), ...(await recipe.install(tree))];
     run("chmod", ["-R", "u+rwX", tree]);
     const image = join(work, "image.ext4");
     const mib = Math.ceil((treeBytes(tree) * 1.3) / 2 ** 20) + 256;
