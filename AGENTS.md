@@ -5,7 +5,7 @@
 - [ ] TypeSpec first: change `packages/api/main.tsp`, run `npm run generate`, commit `packages/api/generated` and `crates/tumpel-api/src`. Never hand-write a generated type.
 - [ ] Keys are `<entity>Id`; business dates are ISO 8601 strings with an offset; enums are PascalCase.
 - [ ] Every config file and input is defined by a schema.
-- [ ] One SQLite database per tenant; only tenant configuration is stored centrally.
+- [ ] One SQLite database per tenant; only what sign-in and routing need before the tenant is known is stored centrally; everything else per tenant.
 - [ ] No sweeps or polling: lifecycle is event-driven.
 - [ ] No shared secrets, no standing credentials on hosts.
 - [ ] Every phase has a time limit and a named failure.
