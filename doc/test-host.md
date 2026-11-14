@@ -18,6 +18,14 @@ qemu-img resize /mnt/nvme/vms/tumpel-host.qcow2 40G
 $V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V start tumpel-host && $V domifaddr tumpel-host
 ```
 
+## Second host
+
+`tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. Reach it from `sandbox` with `ssh tumpel-host-2` (192.168.122.217, user `mvhenten`, network `default`).
+
+It was made with the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `/mnt/nvme/vms/tumpel-host-2.qcow2` from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `~/vm-staging/tumpel-host-2-seed/tumpel-host-2.xml` and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
+
+It is set up like the first host, with `tumpel-supervisor install` and the guest images in `~/development/.tmp/tumpel-images`.
+
 ## Host setup
 
 `tumpel-supervisor install` turns the host into a Tumpel host in one run. Run it as `mvhenten`, never as root. It asks for admin rights only for its one-time setup, and a second run changes nothing that is already in place. The running supervisor never escalates.
