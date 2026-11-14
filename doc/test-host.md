@@ -79,7 +79,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now tumpel-guest-filter.service
 ```
 
-The guest image has an empty `/etc/resolv.conf` and the host serves DNS only on 127.0.0.53, so the guest resolves no names through the gateway. A resolver added to the image must be a public one: the libvirt resolver 192.168.122.1 is blocked.
+The guest image writes `/etc/resolv.conf` with the public resolvers 1.1.1.1 and 9.9.9.9. The host serves DNS only on 127.0.0.53 and the libvirt resolver 192.168.122.1 is blocked, so the guest cannot use either.
 
 Check: `systemctl is-active tumpel-guest-filter` is `active` after a reboot and `sudo nft list table inet tumpel_guest` shows both chains. To test with real traffic, swap the TAP for a veth named `tumpel0` with its peer in a namespace (networkd configures it as it would the TAP), ping from the guest side, then put the TAP back. No box may be running.
 

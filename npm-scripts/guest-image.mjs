@@ -237,6 +237,8 @@ const main = async () => {
       join(tree, "etc/systemd/system/multi-user.target.wants/tumpel-guest.service"),
     );
     writeFileSync(join(tree, "etc/tumpel/guest.json"), `${JSON.stringify(recipe.harness, null, 2)}\n`);
+    rmSync(join(tree, "etc/resolv.conf"), { force: true });
+    writeFileSync(join(tree, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 9.9.9.9\n");
     const components = await recipe.install(tree);
     run("chmod", ["-R", "u+rwX", tree]);
     const image = join(work, "image.ext4");
