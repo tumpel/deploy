@@ -41,6 +41,8 @@ Each budget runs as one timer of its session and ends with the turn.
 | Host reconnect      | 30 s    | HostOffline       |
 | Credential handover | 300 s   | CredentialRefused |
 
+The first line counts from TurnRepositoryReady, sent once the box holds the repository; the clone before it has its own limit, the image's cloneSeconds, and fails RepositoryCloneFailed.
+
 A turn also fails BoxBootFailed, PoolExhausted, HarnessExited, SnapshotUnreadable or TranscriptGap. Every failure carries a detail that states what failed and what fixes it, with the tail of the harness's standard error when the harness wrote any. The budgets sit in one schema-checked settings object of the control plane.
 
 ## Backends
