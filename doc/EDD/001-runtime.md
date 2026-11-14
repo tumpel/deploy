@@ -18,7 +18,7 @@ Each turn offer carries the persona's file list with a download URL per digest. 
 
 ## Repository
 
-The images carry pinned git and gh. Before the harness starts, the guest clones the session's repository into the working directory `/root/workspace`. A directory that holds the repository already skips the clone. Git reads `GITHUB_TOKEN` from the environment through a credential helper, so the token stays out of the URL and off the disk. The clone runs within the image's `cloneSeconds`, 120 s. A clone that fails or runs out of time ends the turn `RepositoryCloneFailed` with what git reported. The guest then sends `RepositoryReady`, and the first-line budget starts there. Commits carry the persona's `gitAuthorName` and `gitAuthorEmail`, and gh reads the token as `GH_TOKEN`. An image whose `cloneSeconds` is not below the runtime's `budgets.turnSeconds` fails the turn `BoxBootFailed` with `CloneOutlastsTurn` before its box boots.
+The images carry pinned git and gh. Before the harness starts, the guest clones the session's repository into the working directory `/root/workspace`. A directory that holds the repository already skips the clone. Git reads `GITHUB_TOKEN` from the environment through a credential helper, so the token stays out of the URL and off the disk. The clone runs within the image's `cloneSeconds`, 120 s. A clone that fails or runs out of time ends the turn `RepositoryCloneFailed` with what git reported. Until the guest sends `TurnRepositoryReady`, the first line is due within `cloneSeconds` plus `budgets.firstLineSeconds`; once it arrives, the first-line budget restarts there. Commits carry the persona's `gitAuthorName` and `gitAuthorEmail`, and gh reads the token as `GH_TOKEN`.
 
 ## Warm window
 
