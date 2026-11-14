@@ -24,7 +24,7 @@ Every turn offer lists the session's stored snapshots in order, each with a down
 
 ## Known limits
 
-The delta does not carry overlay opaque directories. Change detection compares modification times to the nanosecond.
+Change detection compares modification times to the nanosecond.
 
 ## Transcripts
 

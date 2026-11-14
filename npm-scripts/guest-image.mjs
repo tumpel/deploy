@@ -78,7 +78,7 @@ if ! mount -t ext4 -o noatime /dev/vdb /overlay 2>/dev/null; then
   mount -t ext4 -o noatime /dev/vdb /overlay
   mkdir -p /overlay/upper
   if [ -b /dev/vdc ]; then
-    tar -x -p --numeric-owner -f /dev/vdc -C /overlay/upper
+    tar -x -p --numeric-owner --xattrs --xattrs-include='trusted.overlay.*' -f /dev/vdc -C /overlay/upper
   fi
 fi
 mkdir -p /overlay/upper /overlay/work
