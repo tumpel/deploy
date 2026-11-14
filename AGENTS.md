@@ -10,5 +10,7 @@
 - [ ] No shared secrets, no standing credentials on hosts.
 - [ ] Every phase has a time limit and a named failure.
 - [ ] Fail fast: no catch-log-rethrow, no retries, no fallbacks. Every error states what failed and the fix.
+- [ ] Every platform-specific piece is defined first as a provider-agnostic interface in TypeSpec/schema, then implemented as one swappable backend (Cloudflare first).
+- [ ] Supported harnesses: Claude Code, Codex, OpenCode, Pi.dev; Mistral's coding agent planned.
 - [ ] No comments in code.
 - [ ] `npm run check` passes before every commit (Biome, typecheck, clippy, rustfmt, generated output in sync). `npm run fix` formats.
