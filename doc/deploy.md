@@ -1,10 +1,14 @@
 # Deploy
 
+A push to `main` deploys the `dev` stage: Cloudflare Workers Builds runs `npm run deploy` on the Worker `tumpel-control-plane-dev`, which applies the infra, migrates D1, deploys the Worker and sets its secrets. The trigger is declared in `cloudflare-builds-bootstrap` (`infra/projects.auto.tfvars.json`, project `tumpel`) with the build variables `NODE_VERSION`, `TUMPEL_STAGE` and `TUMPEL_ACCOUNT_ID`. The deploy needs Node and OpenTofu (it downloads a checksummed binary) but not cargo, so the build installs the npm workspaces only. Do not deploy from a checkout; the commands below are for bootstrapping an account or a new stage.
+
 The control plane deploys per stage; the stage is `TUMPEL_STAGE` and defaults to `dev`. The `dev` stage runs at https://tumpel-control-plane-dev.matthijs-f49.workers.dev.
 
 A stage is a wrangler environment of the same name in `packages/control-plane/wrangler.jsonc`, which repeats the bindings, vars and Durable Object migrations because wrangler does not inherit them, and one OpenTofu state, `tumpel-<stage>.tfstate` in `tumpel-tfstate`. Account-wide resources carry the stage: the Worker `tumpel-control-plane-<stage>`, the R2 bucket `tumpel-sessions-<stage>`, the Access application `tumpel browser pages <stage>` and its policy. The D1 database is named `tumpel-<stage>` when a stage creates it; `dev` adopted the original database, still named `tumpel`, and OpenTofu ignores later name changes. To add a stage, add its `env` block, run `TUMPEL_STAGE=<stage> npm run deploy:infra`, copy the printed `database_id` into that block, and deploy.
 
 The account token is `tumpel-tofu`. It carries Access: Apps and Policies Write, Access: Policies Write, Access: Organizations, Identity Providers, and Groups Read, Account Settings Read, D1 Write, Workers Scripts Write and Workers R2 Storage Write. To add a permission group, PUT the token by id with the group appended, using the account's token-minting key; the token value stays the same. OpenTofu keeps its state in the R2 bucket `tumpel-tfstate`, reached with the `tumpel-tfstate` token as S3 keys. Both are stored in dotfiles as `tumpel-tofu-token` and `tumpel-tfstate-s3`. `~/.config/tumpel/cf-env` (mode 600) holds `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `TFSTATE_ACCESS_KEY_ID`, `TFSTATE_SECRET_ACCESS_KEY` and `TUMPEL_APPROVER_EMAILS` (a JSON list).
+
+The build reads its secrets from the private R2 bucket `tumpel-builder-secrets`, written once by `tofu-bootstrap tumpel --secrets <file> --debug-token-exists` with the token Builds injects: `CLOUDFLARE_TOFU_TOKEN`, `TFSTATE_ACCESS_KEY_ID`, `TFSTATE_SECRET_ACCESS_KEY` and `deploy.secrets.json` (`TUMPEL_BOOTSTRAP_API_TOKEN`, the token-minting key, and `TUMPEL_APPROVER_EMAILS`). The Builds variables API refuses account-owned tokens, so these are bucket objects rather than build secrets. `deploy` takes the bootstrap key from the `TUMPEL_BOOTSTRAP_API_TOKEN` variable when set, from `deploy.secrets.json` on Workers Builds, and from dotfiles otherwise.
 
 Bootstrap order on a new account:
 
@@ -15,7 +19,7 @@ Bootstrap order on a new account:
 
 The Worker reads its turn budgets, snapshot delay and deadline, dispatch grant lifetime and transcript chunk size from the `TUMPEL_SETTINGS` var in `wrangler.jsonc`, checked against `ControlPlaneSettings` in `packages/api/models.tsp`.
 
-Commands:
+Commands, for bootstrap only:
 
 - `npm run deploy` applies the infra of the stage, refuses a plan that destroys anything, applies D1 migrations, deploys the Worker with `ACCESS_ISSUER` and `ACCESS_AUD` taken from the tofu outputs and sets the three R2 Worker secrets.
 - `npm run deploy:migrate` applies D1 migrations only.

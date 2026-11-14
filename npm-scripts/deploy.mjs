@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,17 +24,55 @@ const mode = process.argv[2] ?? "all";
 if (!MODES.includes(mode)) die(`unknown mode ${mode}; pass one of ${MODES.join(", ")}`);
 if (!/^[a-z][a-z0-9]{1,15}$/.test(STAGE)) die(`TUMPEL_STAGE ${STAGE} must be 2 to 16 lower-case letters and digits`);
 
-if (!existsSync(ENV_FILE)) {
-  die(
-    `${ENV_FILE} is missing; decrypt tumpel-tofu-token and tumpel-tfstate-s3 from dotfiles into it (see doc/deploy.md)`,
-  );
-}
-const settings = Object.fromEntries(
-  readFileSync(ENV_FILE, "utf8")
-    .split("\n")
-    .filter((line) => line.includes("="))
-    .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1).trim()]),
-);
+const BUILDS = process.env.WORKERS_CI === "1";
+const BUILDER_BUCKET = "tumpel-builder-secrets";
+const TOFU_VERSION = "1.13.2";
+
+const builderObject = async (accountId, key) => {
+  const path = `/accounts/${accountId}/r2/buckets/${BUILDER_BUCKET}/objects/${encodeURIComponent(key)}`;
+  const response = await fetch(`${API}${path}`, {
+    headers: { authorization: `Bearer ${process.env.CLOUDFLARE_API_TOKEN}` },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) {
+    die(
+      `GET ${path} returned ${response.status}; the bucket must hold CLOUDFLARE_TOFU_TOKEN, TFSTATE_ACCESS_KEY_ID, TFSTATE_SECRET_ACCESS_KEY and deploy.secrets.json (see doc/deploy.md)`,
+    );
+  }
+  return (await response.text()).trim();
+};
+
+const readSettings = async () => {
+  if (BUILDS) {
+    const accountId =
+      process.env.TUMPEL_ACCOUNT_ID || die("TUMPEL_ACCOUNT_ID is not set on the Workers Builds trigger");
+    const deploySecrets = JSON.parse(await builderObject(accountId, "deploy.secrets.json"));
+    return {
+      CLOUDFLARE_API_TOKEN: await builderObject(accountId, "CLOUDFLARE_TOFU_TOKEN"),
+      CLOUDFLARE_ACCOUNT_ID: accountId,
+      TFSTATE_ACCESS_KEY_ID: await builderObject(accountId, "TFSTATE_ACCESS_KEY_ID"),
+      TFSTATE_SECRET_ACCESS_KEY: await builderObject(accountId, "TFSTATE_SECRET_ACCESS_KEY"),
+      TUMPEL_APPROVER_EMAILS: deploySecrets.TUMPEL_APPROVER_EMAILS,
+      TUMPEL_BOOTSTRAP_API_TOKEN: process.env.TUMPEL_BOOTSTRAP_API_TOKEN || deploySecrets.TUMPEL_BOOTSTRAP_API_TOKEN,
+    };
+  }
+  if (!existsSync(ENV_FILE)) {
+    die(
+      `${ENV_FILE} is missing; decrypt tumpel-tofu-token and tumpel-tfstate-s3 from dotfiles into it (see doc/deploy.md)`,
+    );
+  }
+  return {
+    ...Object.fromEntries(
+      readFileSync(ENV_FILE, "utf8")
+        .split("\n")
+        .filter((line) => line.includes("="))
+        .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1).trim()]),
+    ),
+    TUMPEL_BOOTSTRAP_API_TOKEN: process.env.TUMPEL_BOOTSTRAP_API_TOKEN,
+  };
+};
+
+const settings = await readSettings();
 const REQUIRED = [
   "CLOUDFLARE_API_TOKEN",
   "CLOUDFLARE_ACCOUNT_ID",
@@ -42,7 +81,7 @@ const REQUIRED = [
   "TUMPEL_APPROVER_EMAILS",
 ];
 const missing = REQUIRED.filter((name) => !settings[name]);
-if (missing.length > 0) die(`${ENV_FILE} does not set ${missing.join(", ")} (see doc/deploy.md)`);
+if (missing.length > 0) die(`the deploy settings do not set ${missing.join(", ")} (see doc/deploy.md)`);
 const token = settings.CLOUDFLARE_API_TOKEN;
 const accountId = settings.CLOUDFLARE_ACCOUNT_ID;
 
@@ -92,17 +131,53 @@ const otp = (await cfGet(`/accounts/${accountId}/access/identity_providers`)).fi
 );
 if (!otp) die("the account has no One-time PIN login method; add it under Zero Trust, Settings, Authentication");
 
-const bootstrapKeyFile = join(WORK, "bootstrap-key");
 mkdirSync(WORK, { recursive: true });
-run("dotfiles-key", ["decrypt", "reader-cloudflare-tofu-token", "-o", bootstrapKeyFile], { capture: true });
-const bootstrapKey = readFileSync(bootstrapKeyFile, "utf8")
-  .split("\n")
-  .find((line) => line.startsWith("CLOUDFLARE_TOFU_TOKEN="))
-  ?.slice("CLOUDFLARE_TOFU_TOKEN=".length)
-  .trim();
-rmSync(bootstrapKeyFile);
-if (!bootstrapKey)
-  die("dotfiles secret reader-cloudflare-tofu-token does not set CLOUDFLARE_TOFU_TOKEN; run dotfiles-key unlock");
+const dotfilesBootstrapKey = () => {
+  const bootstrapKeyFile = join(WORK, "bootstrap-key");
+  run("dotfiles-key", ["decrypt", "reader-cloudflare-tofu-token", "-o", bootstrapKeyFile], { capture: true });
+  const value = readFileSync(bootstrapKeyFile, "utf8")
+    .split("\n")
+    .find((line) => line.startsWith("CLOUDFLARE_TOFU_TOKEN="))
+    ?.slice("CLOUDFLARE_TOFU_TOKEN=".length)
+    .trim();
+  rmSync(bootstrapKeyFile);
+  return value;
+};
+const bootstrapKey =
+  settings.TUMPEL_BOOTSTRAP_API_TOKEN ||
+  (BUILDS ? undefined : dotfilesBootstrapKey()) ||
+  die(
+    "no bootstrap key: set TUMPEL_BOOTSTRAP_API_TOKEN in the build variables or deploy.secrets.json, or run dotfiles-key unlock",
+  );
+
+const installTofu = async () => {
+  const arch = { x64: "amd64", arm64: "arm64" }[process.arch] ?? die(`no OpenTofu build for ${process.arch}`);
+  const dir = join(WORK, `tofu-${TOFU_VERSION}`);
+  const binary = join(dir, "tofu");
+  if (existsSync(binary)) return binary;
+  mkdirSync(dir, { recursive: true });
+  const base = `https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}`;
+  const archive = `tofu_${TOFU_VERSION}_linux_${arch}.tar.gz`;
+  const download = async (name) => {
+    const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(120_000) });
+    if (!response.ok) die(`downloading ${name} returned ${response.status}`);
+    return Buffer.from(await response.arrayBuffer());
+  };
+  const [tarball, sums] = await Promise.all([download(archive), download(`tofu_${TOFU_VERSION}_SHA256SUMS`)]);
+  const expected = sums
+    .toString("utf8")
+    .split("\n")
+    .find((line) => line.endsWith(`  ${archive}`))
+    ?.split(" ")[0];
+  if (!expected || expected !== createHash("sha256").update(tarball).digest("hex")) {
+    die(`${archive} does not match its published SHA256 sum`);
+  }
+  writeFileSync(join(dir, archive), tarball);
+  run("tar", ["-xzf", archive, "tofu"], { cwd: dir });
+  chmodSync(binary, 0o755);
+  return binary;
+};
+const tofuBinary = await installTofu();
 
 const tofuEnv = {
   CLOUDFLARE_API_TOKEN: token,
@@ -117,7 +192,7 @@ const tofuEnv = {
   TF_VAR_approver_emails: settings.TUMPEL_APPROVER_EMAILS,
   TF_VAR_bootstrap_api_token: bootstrapKey,
 };
-const tofu = (args, options = {}) => run("tofu", args, { cwd: INFRA, env: tofuEnv, ...options });
+const tofu = (args, options = {}) => run(tofuBinary, args, { cwd: INFRA, env: tofuEnv, ...options });
 
 tofu([
   "init",
