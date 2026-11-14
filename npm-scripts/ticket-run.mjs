@@ -3,10 +3,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
 import { PersonaSchema, StartedSessionSchema } from "@tumpel/api/schemas";
 import { z } from "zod";
-import { loadCredential, PROOF_TENANT_FILE, proofTenantApply } from "./proof-tenant.mjs";
 
 const TUMPEL = process.env.TUMPEL_BIN ?? "tumpel";
-const CREDENTIAL = process.env.TUMPEL_PROOF_CREDENTIAL ?? "dotfiles:claude-setup-token-personal";
 
 const ISSUE_URL = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/issues\/([1-9][0-9]*)$/;
 
@@ -58,18 +56,6 @@ const capture = (command, args, env) => {
   return JSON.parse(result.stdout);
 };
 
-const apply = (env) => {
-  const { args, env: values } = proofTenantApply(loadCredential(CREDENTIAL, die), die);
-  const result = spawnSync(TUMPEL, args, {
-    env: { ...env, ...values },
-    encoding: "utf8",
-    stdio: ["ignore", process.stderr, "inherit"],
-  });
-  if (result.error) die(`${TUMPEL} config apply: ${result.error.message}; set TUMPEL_BIN or put tumpel on PATH`);
-  if (result.status !== 0)
-    die(`${TUMPEL} config apply ${PROOF_TENANT_FILE} exited with ${result.status ?? result.signal}`);
-};
-
 const slug = (title) =>
   title
     .toLowerCase()
@@ -109,12 +95,11 @@ const main = async () => {
     capture("gh", ["issue", "view", args.issueUrl, "--json", "number,title,body,url"], process.env),
     `gh issue view ${args.issueUrl}`,
   );
-  apply(env);
   const personas = parsed(PersonaSchema.array(), capture(TUMPEL, ["persona", "list"], env), "tumpel persona list");
   const persona = personas.find((candidate) => candidate.name === args.persona);
   if (!persona) {
     die(
-      `the tenant has no persona ${args.persona}; it has ${personas.map((held) => held.name).join(", ")}. Add it to ${PROOF_TENANT_FILE}`,
+      `persona ${args.persona} not found; apply your tenant config first (the proof applies doc/personas/proof-tenant.json for the proof tenant)`,
     );
   }
 

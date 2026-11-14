@@ -246,7 +246,7 @@ const steps = [
       if (!proof || !refused) fail("apply left no persona proof or refused");
       const large = proof.files.find((entry) => entry.path === ".claude/CLAUDE.md");
       if (!large || large.sizeBytes <= INLINE_CAP) fail(".claude/CLAUDE.md did not land above the inline cap");
-      if (!tumpel(["config", "plan", PROOF_TENANT_FILE]).includes("no changes"))
+      if (!tumpel(["config", "plan", PROOF_TENANT_FILE], apply.env).includes("no changes"))
         fail("plan after apply still lists changes");
       state.personaId = proof.personaId;
       state.refusedPersonaId = refused.personaId;
@@ -410,7 +410,7 @@ const steps = [
       const runtime = hostRuntime();
       const disk = ssh(
         `read -r P; grep -rlaF -f <(printf '%s\\n' "$P") ${STATE_DIR} ${runtime.dataDir} 2>/dev/null | wc -l; journalctl --user -u tumpel-supervisor --no-pager | grep -cF -f <(printf '%s\\n' "$P") || true`,
-        `${credential}\n`,
+        `${credential.token}\n`,
       )
         .trim()
         .split("\n")
@@ -420,7 +420,8 @@ const steps = [
       for (const session of tumpelJson(["session", "list"])) {
         for (const turn of tumpelJson(["turn", "list", session.sessionId])) {
           turns += 1;
-          if (tumpel(["transcript", "read", turn.turnId, "--limit", "1000"]).includes(credential)) transcriptHits += 1;
+          if (tumpel(["transcript", "read", turn.turnId, "--limit", "1000"]).includes(credential.token))
+            transcriptHits += 1;
         }
       }
       const expectedVariable = "CLAUDE_CODE_OAUTH_TOKEN";
@@ -430,7 +431,7 @@ const steps = [
           `the handovers of session ${state.first.sessionId} do not all name ${expectedVariable}: ${JSON.stringify(handovers)}`,
         );
       }
-      if (JSON.stringify(handovers).includes(credential)) fail("a handover lists the credential value");
+      if (JSON.stringify(handovers).includes(credential.token)) fail("a handover lists the credential value");
       const [files, journal] = disk;
       if (files + journal + transcriptHits > 0) {
         fail(

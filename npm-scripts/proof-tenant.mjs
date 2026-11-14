@@ -1,12 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const GENERATED = join(ROOT, ".tmp", "proof-tenant");
 
 export const PROOF_TENANT_FILE = join(ROOT, "doc", "personas", "proof-tenant.json");
 export const INLINE_CAP = 65_536;
@@ -19,6 +18,17 @@ const parseCredentials = (path, die) => {
   } catch {
     return die(`${path} is not valid JSON; sign in to Claude Code again to rewrite it`);
   }
+};
+
+const OFFSET_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+const expiry = (value, origin, die) => {
+  if (!OFFSET_DATE_TIME.test(value) || Number.isNaN(Date.parse(value))) {
+    die(
+      `${origin} holds an expiry that is not an ISO 8601 date-time with an offset; write the expiry claude setup-token printed`,
+    );
+  }
+  return value;
 };
 
 const subscriptionToken = (value, origin, die) => {
@@ -40,20 +50,35 @@ export const loadCredential = (reference, die) => {
       { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
     );
     if (result.status !== 0) die(`dotfiles-key decrypt ${name} exited ${result.status}; run dotfiles-key unlock`);
-    const lines = result.stdout
+    const entries = result.stdout
       .split("\n")
       .map((line) => line.trim())
-      .filter(Boolean);
-    const assigned = lines.find((line) => /^[A-Z_]+=/.test(line));
-    const value = assigned ? assigned.slice(assigned.indexOf("=") + 1) : lines[0];
-    if (!value) die(`dotfiles key ${name} is empty`);
-    return subscriptionToken(value, `dotfiles key ${name}`, die);
+      .filter(Boolean)
+      .map((line) => {
+        const assigned = line.match(/^([A-Z_]+)=(.*)$/);
+        return assigned ? { key: assigned[1], value: assigned[2] } : { key: "", value: line };
+      });
+    const token = entries.find((entry) => entry.key !== "EXPIRES_AT")?.value;
+    if (!token) die(`dotfiles key ${name} is empty`);
+    const expiresAt = entries.find((entry) => entry.key === "EXPIRES_AT")?.value;
+    if (!expiresAt) {
+      die(
+        `dotfiles key ${name} carries no EXPIRES_AT=<ISO 8601 date-time> line; encrypt it again with the expiry claude setup-token printed`,
+      );
+    }
+    const origin = `dotfiles key ${name}`;
+    return { token: subscriptionToken(token, origin, die), expiresAt: expiry(expiresAt, origin, die) };
   }
   if (source === "claude-credentials") {
     const path = name || join(homedir(), ".claude", ".credentials.json");
-    const token = parseCredentials(path, die).claudeAiOauth?.accessToken;
-    if (!token) die(`${path} holds no claudeAiOauth access token`);
-    return subscriptionToken(token, path, die);
+    const oauth = parseCredentials(path, die).claudeAiOauth;
+    if (!oauth?.accessToken) die(`${path} holds no claudeAiOauth access token`);
+    if (!Number.isInteger(oauth.expiresAt))
+      die(`${path} holds no claudeAiOauth expiresAt; sign in to Claude Code again`);
+    return {
+      token: subscriptionToken(oauth.accessToken, path, die),
+      expiresAt: new Date(oauth.expiresAt).toISOString().replace("Z", "+00:00"),
+    };
   }
   return die(`credential source ${reference} must be dotfiles:<key name> or claude-credentials[:<path>]`);
 };
@@ -67,21 +92,12 @@ const githubToken = (die) => {
   return token;
 };
 
-const writeGeneratedFiles = () => {
-  mkdirSync(GENERATED, { recursive: true });
-  const lines = ["# Proof persona", "", "Answer briefly. Do what the prompt asks and nothing more.", ""];
-  for (let index = 1; lines.join("\n").length <= INLINE_CAP + 4096; index += 1) {
-    lines.push(`- Note ${index}: padding that sends this file through the presigned upload route.`);
-  }
-  writeFileSync(join(GENERATED, "CLAUDE.md"), `${lines.join("\n")}\n`);
-};
-
 export const proofTenantApply = (credential, die) => {
-  writeGeneratedFiles();
   return {
     args: ["config", "apply", PROOF_TENANT_FILE, ...SECRET_SETS.flatMap((name) => ["--rewrite-secrets", name])],
     env: {
-      PROOF_CLAUDE_CODE_OAUTH_TOKEN: credential,
+      PROOF_CLAUDE_CODE_OAUTH_TOKEN: credential.token,
+      PROOF_CLAUDE_CODE_OAUTH_TOKEN_EXPIRES_AT: credential.expiresAt,
       PROOF_REFUSED_KEY: `proof-invalid-${randomBytes(16).toString("hex")}`,
       PROOF_GITHUB_TOKEN: githubToken(die),
     },

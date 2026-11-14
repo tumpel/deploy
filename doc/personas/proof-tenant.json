@@ -9,7 +9,7 @@
       "gitAuthorEmail": "proof@tumpel.invalid",
       "files": [
         { "path": ".claude/settings.json", "from": "proof/settings.json" },
-        { "path": ".claude/CLAUDE.md", "from": "../../.tmp/proof-tenant/CLAUDE.md" }
+        { "path": ".claude/CLAUDE.md", "from": "proof-tenant/CLAUDE.md" }
       ]
     },
     {
@@ -40,7 +40,7 @@
           "kind": "SubscriptionToken",
           "name": "CLAUDE_CODE_OAUTH_TOKEN",
           "provider": "Anthropic",
-          "expiresAt": "2027-11-14T00:00:00+00:00",
+          "expiresAt": { "env": "PROOF_CLAUDE_CODE_OAUTH_TOKEN_EXPIRES_AT" },
           "valueFrom": { "env": "PROOF_CLAUDE_CODE_OAUTH_TOKEN" }
         }
       ]
@@ -63,7 +63,7 @@
           "kind": "SubscriptionToken",
           "name": "CLAUDE_CODE_OAUTH_TOKEN",
           "provider": "Anthropic",
-          "expiresAt": "2027-11-14T00:00:00+00:00",
+          "expiresAt": { "env": "PROOF_CLAUDE_CODE_OAUTH_TOKEN_EXPIRES_AT" },
           "valueFrom": { "env": "PROOF_CLAUDE_CODE_OAUTH_TOKEN" }
         },
         {
