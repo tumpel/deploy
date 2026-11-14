@@ -32,7 +32,7 @@ For each turn, the guest writes the persona's files and exports the variables be
 
 ## Audit
 
-Each grant leaves one row in an append-only audit table of the tenant's database. The API does not serve it. It names the grant, the turn, the host, the variable names and the time. Database triggers refuse an update or a delete of a row.
+Each grant leaves one row in an append-only audit table of the tenant's database. `tumpel session handovers <sessionId>` lists a session's rows, newest first. A row names the grant, the turn, the host, the variable names and the time. Database triggers refuse an update or a delete of a row.
 
 ## FAQ
 

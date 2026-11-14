@@ -531,13 +531,22 @@ const steps = [
             transcriptHits += 1;
         }
       }
+      const expectedVariable =
+        credential.kind === "SubscriptionToken" ? "CLAUDE_CODE_OAUTH_TOKEN" : "ANTHROPIC_API_KEY";
+      const handovers = tumpelJson(["session", "handovers", state.first.sessionId]);
+      if (handovers.length === 0 || handovers.some((handover) => !handover.variableNames.includes(expectedVariable))) {
+        fail(
+          `the handovers of session ${state.first.sessionId} do not all name ${expectedVariable}: ${JSON.stringify(handovers)}`,
+        );
+      }
+      if (JSON.stringify(handovers).includes(credential.value)) fail("a handover lists the credential value");
       const [files, journal] = disk;
       if (files + journal + transcriptHits > 0) {
         fail(
           `the credential appears in ${files} host files, ${journal} journal lines and ${transcriptHits} transcripts`,
         );
       }
-      return `0 copies in host state, data dir and journal, 0 in ${turns} transcripts; audit not readable through the API`;
+      return `0 copies in host state, data dir and journal, 0 in ${turns} transcripts; ${handovers.length} handovers of the first session name ${expectedVariable} and no value`;
     },
   },
   {
