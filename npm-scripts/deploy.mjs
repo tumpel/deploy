@@ -225,6 +225,8 @@ wrangler([
   `ACCESS_ISSUER:${output("access_issuer")}`,
   "--var",
   `ACCESS_AUD:${output("access_aud")}`,
+  "--var",
+  `ACCESS_PROOF_COMMON_NAME:${output("proof_common_name")}`,
 ]);
 wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
 console.log(`deploy: https://${hostname}`);

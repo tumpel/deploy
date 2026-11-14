@@ -23,5 +23,8 @@ Commands, for bootstrap only:
 
 - `npm run deploy` applies the infra of the stage, refuses a plan that destroys anything, applies D1 migrations, deploys the Worker with `ACCESS_ISSUER` and `ACCESS_AUD` taken from the tofu outputs and sets the three R2 Worker secrets.
 - `npm run deploy:migrate` applies D1 migrations only.
+- `npm run proof -- <command>` runs a command with `TUMPEL_PROOF_CLIENT_ID` and `TUMPEL_PROOF_CLIENT_SECRET` read from the stage's tofu outputs, never printed.
 
 Sign a terminal in with `tumpel login --endpoint https://tumpel-control-plane-dev.matthijs-f49.workers.dev`.
+
+The end-to-end proof signs in without a person: `infra/proof.tf` mints the Access service token `tumpel-proof-<stage>` through the provider alias `bootstrap` and lets it through the Access application with a `non_identity` policy. `npm run deploy` sets its client id as the Worker var `ACCESS_PROOF_COMMON_NAME`; the Worker accepts that service token on `/v1/device/approve` and `/v1/device/deny` only, as the owner of the tenant `Tumpel proof`, whose tenant and principal ids derive from the client id and are created on first use. `npm run proof -- tumpel login --endpoint <stage url>` approves its own code with it.
