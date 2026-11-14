@@ -92,9 +92,9 @@ Agents prove each release on a real host. They sign in, enrol the host, run real
 
 ### Functional requirements for credentials and configuration
 
-- **FR-11 Credentials.** A secret set holds variables and one credential per provider, an API key or a subscription token with its expiry. A replaced value reaches the next turn and never a running one. An expired subscription token fails the turn `CredentialExpired`. (BR-3)
+- **FR-11 Credentials.** A secret set holds variables and one credential per provider, an API key or a subscription token with its expiry. A replaced value reaches the next turn and never a running one. A credential of a kind the harness does not take is refused `CredentialKindUnsupported`. An expired subscription token is refused `CredentialExpired` at start and send, and it fails a turn `CredentialExpired` at the offer. (BR-3)
 - **FR-12 Snapshots.** After a completed turn and a quiet delay, the session's changed files land in object storage. A burst of turns yields one snapshot. A failed snapshot shows on the session with its reason. (BR-1)
-- **FR-13 Config as code.** `tumpel config validate`, `plan` and `apply` keep a tenant's personas, secret sets, pins and host labels in one schema-checked file. A persona in the file names its harness and lists its files by local path. The file names environment variables for secret values and holds no value. (BR-2)
+- **FR-13 Config as code.** `tumpel config validate`, `plan` and `apply` keep a tenant's personas, secret sets, pins and host labels in one schema-checked file. A persona in the file names its harness and lists its files by local path. The file names environment variables for secret values and holds no value. A persona keeps the harness it was created with, and `apply` stops when a live persona runs another harness than the file names. A delete of a persona that sessions ran on, or of a secret set a persona names, is refused with 409. (BR-2)
 - **FR-14 Bring your own super harness.** A tenant plugs its own super harness in through the hosted MCP server and the channel into each box. Every other requirement holds with none plugged in. (BR-4)
 
 ### Non-functional requirements
@@ -107,13 +107,13 @@ Agents prove each release on a real host. They sign in, enrol the host, run real
 - **NFR-6 Events.** No job runs on a timer across a set of resources. A timer belongs to one resource and ends with it.
 - **NFR-7 No silent turn.** Every phase has a budget and a named failure. Each failure carries the tail of the harness's standard error.
 - **NFR-8 One versioned schema.** Every API operation, MCP tool, CLI argument and config file comes from the TypeSpec source and carries a version.
-- **NFR-9 Wrapped primitives.** The channel, object storage, databases, the key store and timers are interfaces first. Cloudflare is the first backend for each.
+- **NFR-9 Wrapped primitives.** The channel, object storage, databases, the key store and timers are interfaces first. Cloudflare is the first backend for each. The key store wraps each tenant data key with a Workers secret, and that key has no rotation path yet.
 - **NFR-10 Plain failures.** Every error states what failed and what fixes it. An expired sign-in reads as signed out, never as empty data.
 
 ### Operational requirements
 
 - **OR-1 Install once.** One command installs a host with admin rights. The supervisor never escalates afterwards, and one command updates it. (BR-1)
-- **OR-2 Static binaries.** The supervisor and CLI ship as static binaries for Linux on x86_64 and aarch64, and the CLI ships for macOS too. (BR-1)
+- **OR-2 Static binaries.** The installer, the supervisor and the CLI ship as static binaries for Linux on x86_64 only for now. (BR-1)
 - **OR-3 Audit.** Every credential handover records the turn, host, box and secret names. (BR-3)
 - **OR-4 Agents prove each release.** Agents run the proof on a real host before a release ships. (BR-2)
 
@@ -214,8 +214,6 @@ enum SessionState {
   Starting: "Starting",
   Idle: "Idle",
   Running: "Running",
-  Stopped: "Stopped",
-  Archived: "Archived",
 }
 
 model Turn {
@@ -295,8 +293,19 @@ model HarnessCatalogEntry {
   @key harness: Harness;
   @key harnessVersion: HarnessVersion;
   provider: ModelProvider;
+  credentialVariables: CredentialVariable[];
   personaFilePaths: PersonaFilePath[];
   installRecipe: string;
+}
+
+enum CredentialKind {
+  ApiKey: "ApiKey",
+  SubscriptionToken: "SubscriptionToken",
+}
+
+model CredentialVariable {
+  kind: CredentialKind;
+  variable: SecretName;
 }
 
 model Snapshot {

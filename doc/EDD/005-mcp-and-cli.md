@@ -28,14 +28,14 @@ The API runs under a version prefix. TypeSpec generates the OpenAPI document, th
 
 1. `tumpel config init` writes a file from the tenant's current state.
 2. `tumpel config validate` prints each schema error with its JSON pointer.
-3. `tumpel config plan` prints each create, update and delete, and changes nothing. It compares persona files by digest.
-4. `tumpel config apply` applies the plan: secret sets, then personas, then deletes, pins and host labels. It uploads only the persona files whose digest changed.
+3. `tumpel config plan` prints each create, update and delete, and writes nothing. It compares persona files by digest.
+4. `tumpel config apply` applies the plan: secret sets, then personas, then deletes, pins and host labels. It uploads only the persona files whose digest changed. It stops when a live persona runs another harness than the file names.
 
 Personas and secret sets match by name, pins by harness and hosts by host id. Apply deletes whatever the file leaves out. `--rewrite-secrets <set>` writes fresh values for a set and keeps its id and key names.
 
 ## Persona files
 
-A persona carries files, each a row in the tenant's database with its path, size and sha256 digest. Object storage holds the bytes by digest. An update that changes a persona's harness is refused while a session references the persona. The harness catalog lists the paths each harness accepts:
+A persona carries files, each a row in the tenant's database with its path, size and sha256 digest. Object storage holds the bytes by digest. A persona's harness is set when the persona is created and never changes. A delete of a persona that sessions ran on is refused with 409. The harness catalog lists the paths each harness accepts:
 
 | Harness     | Paths                                                                     |
 | ----------- | ------------------------------------------------------------------------- |

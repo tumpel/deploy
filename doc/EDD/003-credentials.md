@@ -14,11 +14,13 @@ A persona names one secret set, and only that set's values reach its sessions. T
 - `ApiKey`, a provider's API key;
 - `SubscriptionToken`, a provider's subscription token with its `expiresAt`.
 
-A second credential for a provider the set already covers is refused with 409. The API writes values and never reads them back. The harness catalog lists the credential kinds each harness takes and the variable it reads for each. Claude Code takes an API key in `ANTHROPIC_API_KEY` or a subscription token in `CLAUDE_CODE_OAUTH_TOKEN`. Codex and OpenCode take an API key only. A start is refused with `NoCredential` when the persona's set holds no credential for the harness's provider. A delete of a secret set that a persona names is refused with 409.
+A second credential for a provider the set already covers is refused with 409. The API writes values and never reads them back. The harness catalog lists the credential kinds each harness takes and the variable it reads for each. Claude Code takes an API key in `ANTHROPIC_API_KEY` or a subscription token in `CLAUDE_CODE_OAUTH_TOKEN`. Codex and OpenCode take an API key only. A start is refused with `NoCredential` when the persona's set holds no credential for the harness's provider. The control plane refuses a persona write, start or send with `CredentialKindUnsupported` when the set's credential is of a kind the harness does not take. It refuses a start or send with `CredentialExpired` when the set's subscription token is past its `expiresAt`. A delete of a secret set that a persona names is refused with 409.
 
 ## Encryption at rest
 
-Each tenant has one data key. The control plane encrypts each value under it with AES-256-GCM, with the secret set id and the member name as associated data. The Worker secret `SECRETS_KEK` wraps every tenant data key. OpenTofu generates it, and the deploy sets it on the Worker. The control plane decrypts values only when it prepares a turn offer.
+Each tenant has one data key. The control plane encrypts each value under it with AES-256-GCM, with the secret set id and the member name as associated data. The Worker secret `SECRETS_KEK` wraps every tenant data key. OpenTofu generates it, and the deploy sets it on the Worker. The control plane wraps and unwraps data keys through a key-store port, and this Worker secret is its one backend. The control plane decrypts values only when it prepares a turn offer.
+
+Migration 0006 seals the values an older control plane stored in plain text. It renames each legacy member name to the `SecretName` pattern and drops a renamed member that collides with a name already in the set.
 
 ## Handover
 

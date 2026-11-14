@@ -32,7 +32,7 @@ The warm state is the paused process in host memory. The supervisor writes no me
 4. installs the guest filter as a unit that loads before the host network comes up;
 5. installs the supervisor binary and a lingering user unit that runs `tumpel-supervisor run`.
 
-`boxCapacity` sits in the runtime config, between 1 and 256, 8 by default. The host then enrols with `tumpel-supervisor enrol`, which reads the token from a file and keeps an existing runtime config. Firecracker runs without its jailer, because the jailer needs root.
+`boxCapacity` sits in the runtime config, between 1 and 256, 8 by default. The host then enrols with `tumpel-supervisor enrol`, which reads the token from a file and keeps an existing runtime config. Firecracker runs without its jailer, because the jailer needs root. The installer and the binaries are built for x86_64 only for now.
 
 ## Networking and isolation
 
