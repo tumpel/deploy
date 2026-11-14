@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -46,12 +46,13 @@ if (missing.length > 0) die(`${ENV_FILE} does not set ${missing.join(", ")} (see
 const token = settings.CLOUDFLARE_API_TOKEN;
 const accountId = settings.CLOUDFLARE_ACCOUNT_ID;
 
-const run = (command, args, { cwd = ROOT, env = {}, capture = false } = {}) => {
+const run = (command, args, { cwd = ROOT, env = {}, capture = false, input } = {}) => {
   const result = spawnSync(command, args, {
     cwd,
     env: { ...process.env, ...env },
     encoding: "utf8",
-    stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
+    input,
+    stdio: [input === undefined ? "ignore" : "pipe", capture ? "pipe" : "inherit", "inherit"],
     timeout: 600_000,
   });
   if (result.error) die(`${command} ${args[0]}: ${result.error.message}`);
@@ -60,8 +61,12 @@ const run = (command, args, { cwd = ROOT, env = {}, capture = false } = {}) => {
 };
 
 const wranglerEnv = { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: accountId };
-const wrangler = (args) =>
-  run(join(ROOT, "node_modules", ".bin", "wrangler"), [...args, "--env", STAGE], { cwd: PACKAGE, env: wranglerEnv });
+const wrangler = (args, options = {}) =>
+  run(join(ROOT, "node_modules", ".bin", "wrangler"), [...args, "--env", STAGE], {
+    cwd: PACKAGE,
+    env: wranglerEnv,
+    ...options,
+  });
 
 if (mode === "migrate") {
   wrangler(["d1", "migrations", "apply", "DB", "--remote"]);
@@ -87,6 +92,18 @@ const otp = (await cfGet(`/accounts/${accountId}/access/identity_providers`)).fi
 );
 if (!otp) die("the account has no One-time PIN login method; add it under Zero Trust, Settings, Authentication");
 
+const bootstrapKeyFile = join(WORK, "bootstrap-key");
+mkdirSync(WORK, { recursive: true });
+run("dotfiles-key", ["decrypt", "reader-cloudflare-tofu-token", "-o", bootstrapKeyFile], { capture: true });
+const bootstrapKey = readFileSync(bootstrapKeyFile, "utf8")
+  .split("\n")
+  .find((line) => line.startsWith("CLOUDFLARE_TOFU_TOKEN="))
+  ?.slice("CLOUDFLARE_TOFU_TOKEN=".length)
+  .trim();
+rmSync(bootstrapKeyFile);
+if (!bootstrapKey)
+  die("dotfiles secret reader-cloudflare-tofu-token does not set CLOUDFLARE_TOFU_TOKEN; run dotfiles-key unlock");
+
 const tofuEnv = {
   CLOUDFLARE_API_TOKEN: token,
   AWS_ACCESS_KEY_ID: settings.TFSTATE_ACCESS_KEY_ID,
@@ -98,6 +115,7 @@ const tofuEnv = {
   TF_VAR_hostname: hostname,
   TF_VAR_otp_idp_id: otp.id,
   TF_VAR_approver_emails: settings.TUMPEL_APPROVER_EMAILS,
+  TF_VAR_bootstrap_api_token: bootstrapKey,
 };
 const tofu = (args, options = {}) => run("tofu", args, { cwd: INFRA, env: tofuEnv, ...options });
 
@@ -125,6 +143,7 @@ if (stageConfig.d1_databases[0].database_id !== databaseId) {
 if (mode === "infra") process.exit(0);
 
 wrangler(["d1", "migrations", "apply", "DB", "--remote"]);
+const workerSecrets = output("worker_secrets");
 wrangler([
   "deploy",
   "--var",
@@ -132,4 +151,5 @@ wrangler([
   "--var",
   `ACCESS_AUD:${output("access_aud")}`,
 ]);
+wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
 console.log(`deploy: https://${hostname}`);
