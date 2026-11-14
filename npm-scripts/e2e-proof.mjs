@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,24 +45,45 @@ const fail = (message) => {
 };
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const parseCredentials = (path) => {
+  const text = readFileSync(path, "utf8");
+  try {
+    return JSON.parse(text);
+  } catch {
+    return die(`${path} is not valid JSON; sign in to Claude Code again to rewrite it`);
+  }
+};
+
+const collect = (command, args) =>
+  new Promise((resolve) => {
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let firstAt = null;
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (chunk) => {
+      firstAt ??= Date.now();
+      out += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      err += chunk;
+    });
+    child.on("close", (code) => resolve({ code, firstAt, out, err }));
+  });
+
 const loadCredential = () => {
   const [source, ...rest] = CREDENTIAL.split(":");
   const reference = rest.join(":");
   if (source === "dotfiles") {
-    const dir = mkdtempSync(join(WORK, "credential-"));
-    const file = join(dir, "value");
-    const result = spawnSync("dotfiles-key", ["decrypt", reference, "-o", file], {
-      stdio: ["ignore", "ignore", "pipe"],
-    });
-    if (result.status !== 0) {
-      rmSync(dir, { recursive: true, force: true });
-      die(`dotfiles-key decrypt ${reference} exited ${result.status}; run dotfiles-key unlock`);
-    }
-    const lines = readFileSync(file, "utf8")
+    const result = spawnSync(
+      "bash",
+      ["-o", "pipefail", "-c", 'dotfiles-key decrypt "$1" -o /dev/fd/3 3>&1 1>/dev/null | cat', "decrypt", reference],
+      { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
+    );
+    if (result.status !== 0) die(`dotfiles-key decrypt ${reference} exited ${result.status}; run dotfiles-key unlock`);
+    const lines = result.stdout
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
-    rmSync(dir, { recursive: true });
     const assigned = lines.find((line) => /^[A-Z_]+=/.test(line));
     const value = assigned ? assigned.slice(assigned.indexOf("=") + 1) : lines[0];
     if (!value) die(`dotfiles key ${reference} is empty`);
@@ -75,7 +96,7 @@ const loadCredential = () => {
   }
   if (source === "claude-credentials") {
     const path = reference || join(homedir(), ".claude", ".credentials.json");
-    const oauth = JSON.parse(readFileSync(path, "utf8")).claudeAiOauth;
+    const oauth = parseCredentials(path).claudeAiOauth;
     if (!oauth?.accessToken || !oauth?.expiresAt) die(`${path} holds no claudeAiOauth access token with its expiry`);
     return { value: oauth.accessToken, kind: "SubscriptionToken", expiresAt: new Date(oauth.expiresAt).toISOString() };
   }
@@ -110,26 +131,16 @@ const waitFor = async (what, limitMs, probe) => {
   return fail(`${what} did not happen within ${limitMs / 1000} s`);
 };
 
-const follow = (turnId) =>
-  new Promise((resolve) => {
-    const child = spawn(CLI, ["transcript", "read", turnId, "--follow"], { stdio: ["ignore", "pipe", "pipe"] });
-    let firstAt = null;
-    let out = "";
-    let err = "";
-    child.stdout.on("data", (chunk) => {
-      firstAt ??= Date.now();
-      out += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      err += chunk;
-    });
-    child.on("close", (code) => resolve({ code, firstAt, lines: out.split("\n").filter(Boolean), err }));
-  });
+const follow = async (turnId) => {
+  const read = await collect(CLI, ["transcript", "read", turnId, "--follow"]);
+  return { ...read, lines: read.out.split("\n").filter(Boolean) };
+};
 
 const runTurn = async ({ sessionId, personaId, prompt, model = MODEL }) => {
   const t0 = Date.now();
-  const started = await new Promise((resolve) => {
-    const args = sessionId
+  const started = await collect(
+    CLI,
+    sessionId
       ? ["turn", "send", sessionId, "--prompt", prompt]
       : [
           "session",
@@ -142,18 +153,8 @@ const runTurn = async ({ sessionId, personaId, prompt, model = MODEL }) => {
           personaId,
           "--prompt",
           prompt,
-        ];
-    const child = spawn(CLI, args, { stdio: ["ignore", "pipe", "pipe"] });
-    let out = "";
-    let err = "";
-    child.stdout.on("data", (chunk) => {
-      out += chunk;
-    });
-    child.stderr.on("data", (chunk) => {
-      err += chunk;
-    });
-    child.on("close", (code) => resolve({ code, out, err }));
-  });
+        ],
+  );
   const idsMs = Date.now() - t0;
   if (started.code !== 0) fail(`starting the turn: ${started.err.trim().split("\n").at(-1)}`);
   const body = JSON.parse(started.out);
@@ -161,11 +162,11 @@ const runTurn = async ({ sessionId, personaId, prompt, model = MODEL }) => {
   const session = body.session?.sessionId ?? body.sessionId ?? sessionId;
   const read = await follow(turnId);
   const turn = tumpelJson(["turn", "get", turnId]);
-  const parsed = read.lines.map((line) => {
+  const parsed = read.lines.map((line, index) => {
     try {
       return JSON.parse(line);
     } catch {
-      return {};
+      return fail(`turn ${turnId} wrote transcript line ${index + 1}, which is not JSON`);
     }
   });
   const result = parsed.find((line) => line.type === "result");
@@ -575,16 +576,7 @@ const steps = [
         `rm -rf ${REVOKE_DIR} && mkdir -p ${REVOKE_DIR} && chmod 700 ${REVOKE_DIR} && cp ${STATE_DIR}/runtime.json ${REVOKE_DIR}/`,
       );
       const hostId = enrol(`${ssh("hostname").trim()}-revoke`, prefix);
-      const supervisor = new Promise((resolve) => {
-        const child = spawn("ssh", [HOST, `${prefix} timeout 120 ./tumpel-supervisor run`], {
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-        let err = "";
-        child.stderr.on("data", (chunk) => {
-          err += chunk;
-        });
-        child.on("close", (code) => resolve({ code, err }));
-      });
+      const supervisor = collect("ssh", [HOST, `${prefix} timeout 120 ./tumpel-supervisor run`]);
       try {
         await waitFor(`revoke host ${hostId} reading Online`, 60_000, () => hostOnline(hostId));
         const t0 = Date.now();
