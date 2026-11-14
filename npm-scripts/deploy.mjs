@@ -12,6 +12,7 @@ const WORK = join(ROOT, ".tmp", "deploy");
 const ENV_FILE = process.env.TUMPEL_CF_ENV ?? join(homedir(), ".config", "tumpel", "cf-env");
 const API = "https://api.cloudflare.com/client/v4";
 const MODES = ["all", "infra", "migrate"];
+const STAGE = process.env.TUMPEL_STAGE ?? "dev";
 
 const die = (message) => {
   console.error(`deploy: ${message}`);
@@ -20,6 +21,7 @@ const die = (message) => {
 
 const mode = process.argv[2] ?? "all";
 if (!MODES.includes(mode)) die(`unknown mode ${mode}; pass one of ${MODES.join(", ")}`);
+if (!/^[a-z][a-z0-9]{1,15}$/.test(STAGE)) die(`TUMPEL_STAGE ${STAGE} must be 2 to 16 lower-case letters and digits`);
 
 if (!existsSync(ENV_FILE)) {
   die(
@@ -59,7 +61,7 @@ const run = (command, args, { cwd = ROOT, env = {}, capture = false } = {}) => {
 
 const wranglerEnv = { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: accountId };
 const wrangler = (args) =>
-  run(join(ROOT, "node_modules", ".bin", "wrangler"), args, { cwd: PACKAGE, env: wranglerEnv });
+  run(join(ROOT, "node_modules", ".bin", "wrangler"), [...args, "--env", STAGE], { cwd: PACKAGE, env: wranglerEnv });
 
 if (mode === "migrate") {
   wrangler(["d1", "migrations", "apply", "DB", "--remote"]);
@@ -78,7 +80,8 @@ const cfGet = async (path) => {
 
 const config = JSON.parse(readFileSync(join(PACKAGE, "wrangler.jsonc"), "utf8").replace(/^\s*\/\/.*$/gm, ""));
 const subdomain = (await cfGet(`/accounts/${accountId}/workers/subdomain`)).subdomain;
-const hostname = `${config.name}.${subdomain}.workers.dev`;
+const stageConfig = config.env?.[STAGE] ?? die(`wrangler.jsonc has no env ${STAGE}`);
+const hostname = `${config.name}-${STAGE}.${subdomain}.workers.dev`;
 const otp = (await cfGet(`/accounts/${accountId}/access/identity_providers`)).find(
   (provider) => provider.type === "onetimepin",
 );
@@ -88,8 +91,9 @@ const tofuEnv = {
   CLOUDFLARE_API_TOKEN: token,
   AWS_ACCESS_KEY_ID: settings.TFSTATE_ACCESS_KEY_ID,
   AWS_SECRET_ACCESS_KEY: settings.TFSTATE_SECRET_ACCESS_KEY,
-  TF_DATA_DIR: join(WORK, "tofu-data"),
+  TF_DATA_DIR: join(WORK, `tofu-data-${STAGE}`),
   TF_IN_AUTOMATION: "1",
+  TF_VAR_stage: STAGE,
   TF_VAR_account_id: accountId,
   TF_VAR_hostname: hostname,
   TF_VAR_otp_idp_id: otp.id,
@@ -97,8 +101,13 @@ const tofuEnv = {
 };
 const tofu = (args, options = {}) => run("tofu", args, { cwd: INFRA, env: tofuEnv, ...options });
 
-tofu(["init", "-input=false", `-backend-config=endpoints={s3="https://${accountId}.r2.cloudflarestorage.com"}`]);
-const planPath = join(WORK, "tumpel.tfplan");
+tofu([
+  "init",
+  "-input=false",
+  `-backend-config=key=tumpel-${STAGE}.tfstate`,
+  `-backend-config=endpoints={s3="https://${accountId}.r2.cloudflarestorage.com"}`,
+]);
+const planPath = join(WORK, `tumpel-${STAGE}.tfplan`);
 tofu(["plan", "-input=false", `-out=${planPath}`]);
 const plan = JSON.parse(tofu(["show", "-json", planPath], { capture: true }));
 const destroyed = (plan.resource_changes ?? []).filter((change) => change.change.actions.includes("delete"));
@@ -108,8 +117,10 @@ const outputs = JSON.parse(tofu(["output", "-json"], { capture: true }));
 const output = (name) => outputs[name]?.value ?? die(`tofu output ${name} is missing`);
 
 const databaseId = output("d1_database_id");
-if (config.d1_databases[0].database_id !== databaseId) {
-  die(`set database_id in packages/control-plane/wrangler.jsonc to ${databaseId}, commit it, and deploy again`);
+if (stageConfig.d1_databases[0].database_id !== databaseId) {
+  die(
+    `set env.${STAGE}.d1_databases[0].database_id in packages/control-plane/wrangler.jsonc to ${databaseId}, commit it, and deploy again`,
+  );
 }
 if (mode === "infra") process.exit(0);
 
