@@ -55,7 +55,7 @@ Each session belongs to a tenant and runs one harness on one host. The harness's
 
 ### Credentials
 
-A persona is a named bundle of harness instructions, settings and MCP servers. It names one secret set, the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel to the box. The box exports it into the harness's environment.
+A persona names one harness and carries that harness's own config files. It names one secret set, the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel to the box. The box exports it into the harness's environment.
 
 ### Snapshots
 
@@ -83,7 +83,7 @@ Agents prove each release on a real host. They sign in, enrol the host, run real
 
 ### Functional requirements for sessions and turns
 
-- **FR-5 Start.** A start names a harness, a model, a persona, a repository and a prompt. The answer names the session, its first turn and its host before any output. With no host free, the refusal lists every host and its state. (BR-2)
+- **FR-5 Start.** A start names a persona, a model, a repository and a prompt. The harness and its pinned version come from the persona through the catalog. The answer names the session, its first turn and its host before any output. With no host free, the refusal lists every host and its state. (BR-2)
 - **FR-6 Send.** A send to an idle session answers with the new turn id. While a turn runs, a send is refused, and the refusal quotes the running turn's id. (BR-2)
 - **FR-7 Concurrency.** A tenant runs any number of sessions across its hosts, with more than one box per host. Each session runs one turn at a time. (BR-4)
 - **FR-8 Read.** A read returns harness-native lines after a cursor, for the session or for one turn. The cursor stays valid across snapshots, fresh boxes and host moves. (BR-2)
@@ -92,9 +92,9 @@ Agents prove each release on a real host. They sign in, enrol the host, run real
 
 ### Functional requirements for credentials and configuration
 
-- **FR-11 Credentials.** The secret set holds the provider credential, an API key or a subscription token, plus other secrets the harness reads. A replaced value reaches the next turn and never a running one. A start can add one secret for that session alone, deleted when the session is archived. (BR-3)
+- **FR-11 Credentials.** A secret set holds variables and one credential per provider, an API key or a subscription token with its expiry. A replaced value reaches the next turn and never a running one. An expired subscription token fails the turn `CredentialExpired`. (BR-3)
 - **FR-12 Snapshots.** After a completed turn and a quiet delay, the session's changed files land in object storage. A burst of turns yields one snapshot. A failed snapshot shows on the session with its reason. (BR-1)
-- **FR-13 Config as code.** `tumpel config validate`, `plan` and `apply` keep a tenant's personas, secret sets, pins and host labels in one schema-checked file. The file names environment variables for secret values and holds no value. (BR-2)
+- **FR-13 Config as code.** `tumpel config validate`, `plan` and `apply` keep a tenant's personas, secret sets, pins and host labels in one schema-checked file. A persona in the file names its harness and lists its files by local path. The file names environment variables for secret values and holds no value. (BR-2)
 - **FR-14 Bring your own super harness.** A tenant plugs its own super harness in through the hosted MCP server and the channel into each box. Every other requirement holds with none plugged in. (BR-4)
 
 ### Non-functional requirements
@@ -135,7 +135,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 > I would follow industry.
 
-**Each credential has a kind.** The kind is API key or subscription token, and a subscription token carries its expiry. The harness catalog maps each kind to the variable that harness reads, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
+**Each secret set member has a kind.** The kind is variable, API key or subscription token, and a subscription token carries its expiry. The harness catalog lists the credential kinds each harness takes and the variable it reads for each, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
 
 **Snapshot bytes move on presigned URLs.** The control plane signs one upload URL per snapshot and download URLs for a restore, so a host holds no storage key. Memory state never leaves the host.
 
@@ -149,7 +149,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Placement after a host loss.** When a session's host is offline, its next turn boots on another online host of the tenant, provided the snapshots cover the last completed turn. Otherwise the refusal names the host and the missing turns.
 
-**Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. That pool is the host's box capacity.
+**Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. That pool is the host's box capacity, `boxCapacity`, 8 by default.
 
 **Repository access is a secret.** The box clones the session's repository with a git token from the persona's secret set.
 
@@ -163,7 +163,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Does Tumpel need a super harness?** No. Sessions, turns, transcripts and snapshots all belong to Tumpel. The tenant picks its own super harness, or none.
 
-**Can I use a subscription instead of an API key?** Yes, for every harness that reads its subscription token from an environment variable.
+**Can I use a subscription instead of an API key?** Yes, for a harness whose catalog entry takes a subscription token, such as Claude Code.
 
 **What happens when my host reboots mid-turn?** The turn fails with a named reason. On the next turn the session restores from its latest snapshot.
 
@@ -186,7 +186,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 | Box           | One Firecracker microVM running one session's harness                                    |
 | Session       | One conversation with one harness, outliving its boxes                                   |
 | Turn          | One prompt and the harness's answer to it                                                |
-| Persona       | Named harness instructions, settings and MCP servers, naming one secret set              |
+| Persona       | A named harness with its config files, naming one secret set                             |
 | Secret set    | Named encrypted values that a persona's sessions read                                    |
 | Warm window   | How long a paused box waits for its next turn                                            |
 | Snapshot      | A session's changed files since the last snapshot                                        |
@@ -233,11 +233,18 @@ model Turn {
 model Persona {
   @key personaId: EntityId;
   tenantId: EntityId;
-  secretSetId: EntityId;
   name: DisplayName;
-  instructions: string;
-  settings: string;
-  mcpServers: PersonaMcpServer[];
+  harness: Harness;
+  secretSetId: EntityId;
+  files: PersonaFile[];
+  createdAt: int64;
+  updatedAt: int64;
+}
+
+model PersonaFile {
+  path: PersonaFilePath;
+  digest: Sha256Digest;
+  sizeBytes: PersonaFileSize;
   createdAt: int64;
   updatedAt: int64;
 }
@@ -246,63 +253,50 @@ model SecretSet {
   @key secretSetId: EntityId;
   tenantId: EntityId;
   name: DisplayName;
-  credential: ProviderCredential;
   keys: SecretKey[];
   createdAt: int64;
   updatedAt: int64;
 }
 
-model SecretKey {
-  name: SecretName;
-  updatedAt: int64;
-}
-
-enum CredentialKind {
+enum SecretKind {
+  Variable: "Variable",
   ApiKey: "ApiKey",
   SubscriptionToken: "SubscriptionToken",
 }
 
-model ApiKeyCredential {
-  kind: CredentialKind.ApiKey;
+model SecretVariableKey {
+  kind: SecretKind.Variable;
+  name: SecretName;
+  updatedAt: int64;
+}
+
+model ApiKeyKey {
+  kind: SecretKind.ApiKey;
+  name: SecretName;
   provider: ModelProvider;
   updatedAt: int64;
 }
 
-model SubscriptionTokenCredential {
-  kind: CredentialKind.SubscriptionToken;
+model SubscriptionTokenKey {
+  kind: SecretKind.SubscriptionToken;
+  name: SecretName;
   provider: ModelProvider;
   expiresAt: offsetDateTime;
   updatedAt: int64;
 }
 
-union ProviderCredential {
-  ApiKeyCredential,
-  SubscriptionTokenCredential,
+union SecretKey {
+  Variable: SecretVariableKey,
+  ApiKey: ApiKeyKey,
+  SubscriptionToken: SubscriptionTokenKey,
 }
 
 model HarnessCatalogEntry {
   @key harness: Harness;
   @key harnessVersion: HarnessVersion;
   provider: ModelProvider;
-  credentialVariables: CredentialVariable[];
+  personaFilePaths: PersonaFilePath[];
   installRecipe: string;
-}
-
-model CredentialVariable {
-  kind: CredentialKind;
-  name: SecretName;
-}
-
-model CredentialHandover {
-  @key credentialHandoverId: EntityId;
-  tenantId: EntityId;
-  sessionId: EntityId;
-  turnId: EntityId;
-  hostId: EntityId;
-  boxId: EntityId;
-  secretSetId: EntityId;
-  names: SecretName[];
-  handedOverAt: offsetDateTime;
 }
 
 model Snapshot {

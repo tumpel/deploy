@@ -24,14 +24,26 @@ The API runs under a version prefix. TypeSpec generates the OpenAPI document, th
 
 ## Config as code
 
-`TenantConfig` holds personas, secret sets, harness pins and host labels. A secret entry names the environment variable its value comes from.
+`TenantConfig` holds personas, secret sets, harness pins and host labels. A secret entry names the environment variable its value comes from. A persona names its harness, its secret set by name and its files, each as `{ path, from }`. `path` is where the harness reads the file under its home in the box. `from` is the local file's path from the config file's directory.
 
 1. `tumpel config init` writes a file from the tenant's current state.
 2. `tumpel config validate` prints each schema error with its JSON pointer.
-3. `tumpel config plan` prints each create, update and delete, and leaves the tenant as it is.
-4. `tumpel config apply` applies the plan: personas, then secret sets, pins and host labels.
+3. `tumpel config plan` prints each create, update and delete, and changes nothing. It compares persona files by digest.
+4. `tumpel config apply` applies the plan: secret sets, then personas, then deletes, pins and host labels. It uploads only the persona files whose digest changed.
 
 Personas and secret sets match by name, pins by harness and hosts by host id. Apply deletes whatever the file leaves out. `--rewrite-secrets <set>` writes fresh values for a set and keeps its id and key names.
+
+## Persona files
+
+A persona carries files, each a row in the tenant's database with its path, size and sha256 digest. Object storage holds the bytes by digest. An update that changes a persona's harness is refused while a session references the persona. The harness catalog lists the paths each harness accepts:
+
+| Harness     | Paths                                                                     |
+| ----------- | ------------------------------------------------------------------------- |
+| Claude Code | `.claude/settings.json`, `.claude/CLAUDE.md`, `.claude.json`              |
+| OpenCode    | `.config/opencode/opencode.json`, `.config/opencode/AGENTS.md`            |
+| Pi.dev      | `.pi/agent/settings.json`, `.pi/agent/models.json`, `.pi/agent/AGENTS.md` |
+
+`PersonaFileLimit` caps a file sent inline at 65,536 bytes and a persona's files at 262,144 bytes. A larger file goes up through a presigned upload URL and is then named by digest. The control plane checks the stored object with a HEAD before it accepts the write.
 
 ## FAQ
 

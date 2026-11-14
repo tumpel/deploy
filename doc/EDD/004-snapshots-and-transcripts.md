@@ -8,20 +8,23 @@ A snapshot is the files in a box's overlay upper directory that changed since th
 
 ## Taking a snapshot
 
-A completed turn starts the session's snapshot timer, 30 s by default, and a new turn resets it. When it fires, the control plane sends a SnapshotRequest. The request carries the snapshot's number in the chain, a storage key under the tenant and session, and an upload URL that expires at the snapshot deadline. The supervisor reads the paused box's drive, builds the delta and uploads it. It answers SnapshotDone, or SnapshotFailed with one of these reasons:
+A completed turn starts the session's snapshot timer, 30 s by default, and a new turn resets it. When it fires, the control plane sends a SnapshotRequest. The request carries the snapshot's number in the chain, a storage key under the tenant and session, and an upload URL that expires at the snapshot deadline. The supervisor reads the paused box's drive, builds the delta as a tar archive and uploads it with a PUT. No memory file leaves the host. The supervisor answers SnapshotDone, or SnapshotFailed with one of these reasons:
 
 - BoxNotFound
 - UpperDirectoryUnreadable
 - UploadExpired
 - UploadRejected
 - SnapshotTimedOut
-- BoxSnapshotFailed
 
 Past the deadline the snapshot fails NotAnswered. Each outcome sits on its snapshot record. Only the Worker holds a key that signs storage URLs.
 
 ## Restoring a session
 
-Every turn offer lists the session's stored snapshots in order, each with a download URL that expires when the claim budget ends. With no warm box for the session, the supervisor boots a fresh box from the image. It applies the chain in order onto an empty drive, then hands the turn to the harness. Because the harness keeps its own state under its home directory in the overlay, it resumes the conversation. An unreadable snapshot fails the turn `SnapshotUnreadable`, naming the session and the snapshot. A session that moves to another host restores the same way.
+Every turn offer lists the session's stored snapshots in order, each with a download URL that expires when the claim budget ends. With no warm box for the session, the supervisor downloads the chain in `snapshotSeq` order and merges it into one archive. It boots a fresh box from the image with an empty overlay drive and the archive on a third, read-only drive. The guest's init unpacks the archive onto the overlay drive, then the turn goes to the harness. Because the harness keeps its own state under its home directory in the overlay, it resumes the conversation. An unreadable snapshot fails the turn `SnapshotUnreadable`, naming the session and the snapshot. A session that moves to another host restores the same way.
+
+## Known limits
+
+The delta does not carry overlay opaque directories. Change detection compares modification times to the second.
 
 ## Transcripts
 
