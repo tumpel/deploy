@@ -18,7 +18,8 @@
     "clippy": "cargo clippy --workspace --all-targets -- -D warnings",
     "fmt:check": "cargo fmt --all --check",
     "check": "npm run lint && npm run typecheck && npm run clippy && npm run fmt:check && npm run generate:check",
-    "prepare": "git config core.hooksPath .githooks"
+    "prepare": "git config core.hooksPath .githooks",
+    "test": "npm test --workspaces --if-present"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.0",
