@@ -17,3 +17,15 @@ qemu-img convert -O qcow2 ~/vm-staging/noble-server-cloudimg-amd64-20261017.img 
 qemu-img resize /mnt/nvme/vms/tumpel-host.qcow2 40G
 $V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V start tumpel-host && $V domifaddr tumpel-host
 ```
+
+## Guest network
+
+systemd-networkd owns the TAP `tumpel0` (owned by `mvhenten`), gives it 172.16.0.1/30 and masquerades the guest's 172.16.0.2 out of `enp1s0` with open egress. `IPMasquerade=ipv4` also turns on IPv4 forwarding. Both survive a reboot. Set up once, as `mvhenten`:
+
+```sh
+printf '[NetDev]\nName=tumpel0\nKind=tap\n\n[Tap]\nUser=mvhenten\n' | sudo tee /etc/systemd/network/50-tumpel0.netdev
+printf '[Match]\nName=tumpel0\n\n[Network]\nAddress=172.16.0.1/30\nIPMasquerade=ipv4\nConfigureWithoutCarrier=yes\n' | sudo tee /etc/systemd/network/50-tumpel0.network
+sudo networkctl reload
+```
+
+Check: `sysctl net.ipv4.ip_forward` is 1, `sudo nft list table ip io.systemd.nat` masquerades 172.16.0.0/30, and `ip route get 1.1.1.1 from 172.16.0.2 iif tumpel0` goes via `enp1s0`.
