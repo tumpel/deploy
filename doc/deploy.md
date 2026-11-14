@@ -9,8 +9,9 @@ Bootstrap order on a new account:
 1. Mint `tumpel-tofu` and `tumpel-tfstate` from the account's token-minting key, create `tumpel-tfstate`, and write `cf-env`.
 2. `npm run deploy:infra` applies `packages/control-plane/infra/`: the D1 database `tumpel`, the R2 bucket `tumpel-sessions` (transcript chunks and snapshots), and the Access application `tumpel browser pages`, which puts `/device`, `/v1/tenants`, `/v1/device/approve`, `/v1/device/deny` and `/oauth/consent` behind the one-time PIN.
 3. Copy the `database_id` it prints into `packages/control-plane/wrangler.jsonc` and commit.
+4. Create an R2 API token with Object Read & Write on `tumpel-sessions` only, and put its S3 key pair on the Worker: `wrangler secret put R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` from `packages/control-plane`. The Worker signs short-lived snapshot upload and download URLs with it; hosts never hold a storage key.
 
-The Worker reads its turn budgets, snapshot delay, dispatch grant lifetime and transcript chunk size from the `TUMPEL_SETTINGS` var in `wrangler.jsonc`, checked against `ControlPlaneSettings` in `packages/api/models.tsp`.
+The Worker reads its turn budgets, snapshot delay and deadline, dispatch grant lifetime and transcript chunk size from the `TUMPEL_SETTINGS` var in `wrangler.jsonc`, checked against `ControlPlaneSettings` in `packages/api/models.tsp`.
 
 Commands:
 
