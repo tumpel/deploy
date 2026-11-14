@@ -13,3 +13,6 @@ Nasty cases:
 - The generated client fails clippy pedantic (missing `# Errors`, `#[must_use]`, doc backticks, trailing comma). Worked around with `#[allow(clippy::pedantic)]` on the generated module.
 - Struct fields are emitted in alphabetical order, not TypeSpec order.
 - `@key` has no OpenAPI form, so the generated types do not mark key fields.
+- An error response typed `application/problem+json` becomes `Error<ByteStream>`: progenitor types only `application/json` bodies. The `Problem` response is sent as `application/json` so every operation returns `Error<types::Problem>`.
+- A `@discriminated` union with `envelope: "none"` becomes `#[serde(untagged)]`, ignoring the OpenAPI `discriminator` mapping. Each variant keeps its `type` field as a one-value enum, so decoding is correct, but a bad frame reports "did not match any variant" instead of naming the field.
+- Models in a sub-namespace are prefixed with it: `Tumpel.Channel.Hello` becomes `types::ChannelHello`.
