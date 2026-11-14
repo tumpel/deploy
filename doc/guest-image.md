@@ -8,7 +8,7 @@ The build:
 2. Unpacks the squashfs with `unsquashfs`, adds `tumpel-guest`, its systemd unit, `/usr/local/sbin/tumpel-init` and `/etc/tumpel/guest.json` (`GuestHarness`), and runs `npm install` for the catalog's pinned package.
 3. Packs the tree with `mkfs.ext4 -d` and sets every inode to root with `debugfs`.
 
-In the box, `tumpel-init` mounts the second drive as the overlay upper directory and formats it on first boot. It then pivots into the overlay and starts systemd. `tumpel-guest` listens on vsock port 1024 and announces itself on host port 1025. It keeps one harness process per box and gives each turn's `DispatchGrant` variables to that process's environment.
+In the box, `tumpel-init` mounts the second drive as the overlay upper directory and formats it on first boot. It then pivots into the overlay and starts systemd. `tumpel-guest` listens on vsock port 1024 and announces itself on host port 1025. It keeps one harness process per box and starts it with the turn's provider key in the environment variable `providerKeyName` in `guest.json` names. A turn whose key or model differs from the running process's restarts the harness, continuing the conversation. The key is never written to the guest disk or logged.
 
 The vsock protocol is length-prefixed JSON: a 4-byte big-endian length, then one `GuestMessage` from the guest or one `GuestTurnStart` from the host, as `supervisor.tsp` defines them.
 
