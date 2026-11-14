@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,7 @@ export const INLINE_CAP = 65_536;
 export const SECRET_SETS = ["proof", "refused", "ticket-worker"];
 
 const parseCredentials = (path, die) => {
+  if (!existsSync(path)) return die("sign in to Claude Code on this machine first");
   const text = readFileSync(path, "utf8");
   try {
     return JSON.parse(text);
@@ -64,7 +65,7 @@ const dotfilesToken = (name, die) => {
 const hostCredential = (path, die) => {
   const oauth = parseCredentials(path, die).claudeAiOauth;
   if (!oauth?.accessToken) die(`${path} holds no claudeAiOauth access token; sign in to Claude Code again`);
-  if (!Number.isInteger(oauth.expiresAt)) die(MISSING_EXPIRY);
+  if (!Number.isInteger(oauth.expiresAt)) die("the subscription token has no expiry; sign in to Claude Code again");
   return {
     token: subscriptionToken(oauth.accessToken, path, die),
     expiresAt: new Date(oauth.expiresAt).toISOString().replace("Z", "+00:00"),
