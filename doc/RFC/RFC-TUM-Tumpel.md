@@ -13,12 +13,12 @@ Tumpel runs coding agent harnesses on machines a tenant owns, including desktops
 
 ## Tenets
 
-- **Harnesses on any hardware.** Harnesses run on any hardware, including desktop machines at home, driven over MCP.
+- **Harnesses on any hardware.** Harnesses run on any hardware, including desktops at home, driven over MCP.
 - **Rust out of sight.** Rust for everything that runs out of sight (the host supervisor, workers and agents on the host) and for the CLI. Stable, distributable binaries.
 - **TypeSpec first.** Radical shift left on the API: everything is modelled in TypeSpec first. Generate SDKs, types and anything else we can.
 - **Every input has a schema.** Config, options and CLI arguments are all interfaces that have a schema, and each one is versioned. A tenant keeps its config file in a git repo.
 - **All primitives get wrapped.** The channel from the supervisor to the backend works the same on any compute: a Cloudflare Worker or a Lambda with WebSockets. Define the general protocol first, then plug in one backend.
-- **Workers in TypeScript.** Cloudflare Workers in TypeScript: fastest, simplest, lowest maintenance. Each tenant gets its own SQLite database, and the only central store is tenant configuration. TypeScript packages stay platform-neutral, and each platform composes them with its own adapters.
+- **Workers in TypeScript.** Cloudflare Workers in TypeScript: fastest, simplest, lowest maintenance. Only what sign-in and routing need before the tenant is known is stored centrally; everything else per tenant, in its own SQLite database. TypeScript packages stay platform-neutral, and each platform composes them with its own adapters.
 - **No standing secrets.** No shared secrets anywhere, and no standing credential on a host.
 - **Events drive the lifecycle.** Nothing sweeps and nothing polls.
 - **Every phase has a time limit and a named failure.** Fail fast, with no retries and no fallbacks.
@@ -55,7 +55,7 @@ Each session belongs to a tenant and runs one harness on one host. The harness's
 
 ### Credentials
 
-A persona is a named bundle of harness instructions, settings and MCP servers. It names one secret set, the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel into box memory.
+A persona is a named bundle of harness instructions, settings and MCP servers. It names one secret set, the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel to the box. The box exports it into the harness's environment.
 
 ### Snapshots
 
@@ -119,9 +119,7 @@ Agents prove each release on a real host. They sign in, enrol the host, run real
 
 ## Decisions
 
-### Ruled
-
-Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with personas, secret sets and per-session dispatch credentials (ADR-002). The host channel dials out and is defined before any backend (ADR-003). TypeSpec reaches Rust through secondary tooling (ADR-004). The MCP server is hosted, with Recall's design and auth model (ADR-005). On 2026-11-14 four more rulings followed:
+Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with personas, secret sets and per-session dispatch credentials (ADR-002). The host channel dials out and is defined before any backend (ADR-003). TypeSpec reaches Rust through secondary tooling (ADR-004). The MCP server is hosted, with Recall's design and auth model (ADR-005). On 2026-11-14 the remaining rulings followed:
 
 > To store creds per persona, use envelope encryption.
 
@@ -131,19 +129,19 @@ Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with pers
 
 Concurrency means any number of sessions per tenant across hosts, each with one running turn.
 
-### Proposed credential and storage decisions
+### Credentials and storage
 
-These were taken during the build and wait for acceptance. Each one stands or falls alone.
+**The provider credential is an environment variable.** For each turn, the box exports the provider credential into the harness's environment. When the credential changes, the box restarts the harness before the next turn. A host-side gateway issuing per-session virtual keys is a non-goal for v1.
 
-**The provider credential goes through a proxy in the box.** The harness starts once with a placeholder credential and a base URL that points at a loopback proxy inside the box. The proxy holds the turn's real credential in memory for that turn only, and answers 401 outside a turn. So a new credential never restarts the harness.
+> I would follow industry.
 
-**The credential kind is the variable name.** The catalog lists the variable names a harness accepts, such as `ANTHROPIC_API_KEY` for an API key and `CLAUDE_CODE_OAUTH_TOKEN` for a subscription token. Each secret set holds exactly one of them.
+**Each credential has a kind.** The kind is API key or subscription token, and a subscription token carries its expiry. The harness catalog maps each kind to the variable that harness reads, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
 
 **Snapshot bytes move on presigned URLs.** The control plane signs one upload URL per snapshot and download URLs for a restore, so a host holds no storage key. Memory state never leaves the host.
 
-**The central store also holds accounts.** It holds tenants, principals, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant.
+**The central store holds accounts and hosts.** It holds tenants, principals, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant.
 
-### Proposed runtime and surface decisions
+### Runtime and surface
 
 **Budgets.** A host claims a turn within 60 s, writes its first line within 120 s, and finishes within 3,600 s. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
 
@@ -248,6 +246,7 @@ model SecretSet {
   @key secretSetId: EntityId;
   tenantId: EntityId;
   name: DisplayName;
+  credential: ProviderCredential;
   keys: SecretKey[];
   createdAt: int64;
   updatedAt: int64;
@@ -258,14 +257,40 @@ model SecretKey {
   updatedAt: int64;
 }
 
+enum CredentialKind {
+  ApiKey: "ApiKey",
+  SubscriptionToken: "SubscriptionToken",
+}
+
+model ApiKeyCredential {
+  kind: CredentialKind.ApiKey;
+  provider: ModelProvider;
+  updatedAt: int64;
+}
+
+model SubscriptionTokenCredential {
+  kind: CredentialKind.SubscriptionToken;
+  provider: ModelProvider;
+  expiresAt: offsetDateTime;
+  updatedAt: int64;
+}
+
+union ProviderCredential {
+  ApiKeyCredential,
+  SubscriptionTokenCredential,
+}
+
 model HarnessCatalogEntry {
   @key harness: Harness;
   @key harnessVersion: HarnessVersion;
   provider: ModelProvider;
-  credentialNames: SecretName[];
-  providerBaseUrlName: SecretName;
-  providerUrl: url;
+  credentialVariables: CredentialVariable[];
   installRecipe: string;
+}
+
+model CredentialVariable {
+  kind: CredentialKind;
+  name: SecretName;
 }
 
 model CredentialHandover {

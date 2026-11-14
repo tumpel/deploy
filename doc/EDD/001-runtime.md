@@ -12,7 +12,7 @@ Each harness version has one read-only root image and one kernel, both named by 
 
 A second drive per session holds the overlay upper directory, which the guest's init mounts over the image before it starts the guest agent. Over vsock, the agent speaks length-prefixed JSON to the supervisor, and it dials the host once ready.
 
-For a harness that reads turns as a stream, as Claude Code does, the agent keeps one harness process per box. A harness that reads one prompt per process gets one process per turn. A process stays in use while the harness and the model stay the same. The harness runs as root with full permissions.
+For a harness that reads turns as a stream, as Claude Code does, the agent keeps one harness process per box. A harness that reads one prompt per process gets one process per turn. A process stays in use while the harness, the model and the exported secrets stay the same. The harness runs as root with full permissions.
 
 When a turn ends, the supervisor pauses the box's vCPUs and starts a timer for that box. The timer runs for `warmWindowSeconds` from the host's runtime config, 900 s by default. A turn inside the window resumes the paused process. When the timer fires, the supervisor stops the process and deletes the box's drive. When every slot on the host is taken, a new box evicts the box that has been paused longest.
 
