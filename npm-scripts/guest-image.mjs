@@ -156,7 +156,7 @@ const recipeFor = (name) => {
       protocol: "ClaudeStreamJson",
       command: ["/opt/tumpel/node/bin/node", `/opt/tumpel/harness/node_modules/${name_}/cli.js`, ...CLAUDE_FLAGS],
       workingDirectory: "/root",
-      providerKeyName: entry.providerKeyName,
+      providerKeyName: entry.credentialVariables.apiKey,
     }),
     install: async (tree) => {
       const node = join(tree, "opt", "tumpel", "node");
