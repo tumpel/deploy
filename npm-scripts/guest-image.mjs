@@ -134,6 +134,9 @@ const recipeFor = (name) => {
         protocol: "ShellLines",
         command: ["/bin/sh", "-s"],
         workingDirectory: "/root",
+        providerKeyName: "TUMPEL_PROVIDER_KEY",
+        providerBaseUrlName: "TUMPEL_PROVIDER_URL",
+        providerUrl: "https://example.invalid",
       }),
       install: async () => [],
     };
@@ -155,6 +158,9 @@ const recipeFor = (name) => {
       protocol: "ClaudeStreamJson",
       command: ["/opt/tumpel/node/bin/node", `/opt/tumpel/harness/node_modules/${name_}/cli.js`, ...CLAUDE_FLAGS],
       workingDirectory: "/root",
+      providerKeyName: entry.providerKeyName,
+      providerBaseUrlName: entry.providerBaseUrlName,
+      providerUrl: entry.providerUrl,
     }),
     install: async (tree) => {
       const node = join(tree, "opt", "tumpel", "node");
