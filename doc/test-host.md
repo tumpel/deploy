@@ -51,7 +51,7 @@ Check: `ip -br addr show` lists `tumpel0` to `tumpel7`, each `/sys/class/net/tum
 
 ## Guest isolation
 
-A guest reaches the internet but never the internal network. The nftables table `inet tumpel_guest` drops anything forwarded from a `tumpel*` device to 10/8, 100.64/10, 169.254/16, 172.16/12 or 192.168/16. Those ranges cover the LAN, the libvirt network, the hypervisor `box`, other VMs and every other box. The table also drops forwarded packets whose source lies outside 172.16.0.0/16. On the host itself, it accepts a box's packets only at that box's own gateway. IPv6 forwarding is off, so a guest has no IPv6 path. The table is separate from networkd's `io.systemd.nat`, so neither flushes the other.
+A guest reaches the internet but never the internal network. The nftables table `inet tumpel_guest` drops anything forwarded from a `tumpel*` device to 10/8, 100.64/10, 169.254/16, 172.16/12 or 192.168/16. Those ranges cover the LAN, the libvirt network, the hypervisor `box`, other VMs and every other box. The table also drops forwarded packets whose source lies outside 172.16.0.0/16. On the host itself, it answers a box only with ping replies at that box's own gateway and drops every other packet, so no host service is reachable from a box. IPv6 forwarding is off, so a guest has no IPv6 path. The table is separate from networkd's `io.systemd.nat`, so neither flushes the other.
 
 `tumpel-guest-filter.service` loads the table before `network-pre.target`, so the filter is in place before networkd brings up the pool. `nftables.service` stays disabled, because its `/etc/nftables.conf` flushes the whole ruleset.
 
