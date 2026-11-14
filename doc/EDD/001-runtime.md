@@ -36,7 +36,7 @@ The warm state is the paused process in host memory. The supervisor writes no me
 
 ## Networking and isolation
 
-Each box claims the lowest free device `tumpel<k>`, takes guest IP 172.16.<k>.2 and its own MAC, and returns the device at teardown. When every device is taken, the supervisor evicts the longest-paused box that has nothing left to snapshot. With no such box, the turn fails `BoxBootFailed` with the detail `PoolExhausted`.
+Each box claims the lowest free device `tumpel<k>`, takes guest IP 172.16.<k>.2 and its own MAC, and returns the device at teardown. When every device is taken, the supervisor evicts the longest-paused box that has nothing left to snapshot. With no such box, the turn fails `PoolExhausted`, naming the capacity and the boxes held.
 
 The host masquerades the box's traffic to the internet. The guest filter drops forwarded traffic from a source outside 172.16.0.0/16, and forwarded traffic to these ranges:
 
