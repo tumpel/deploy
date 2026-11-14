@@ -12,7 +12,9 @@ const ArgsSchema = z.object({
   issueUrl: z.string().regex(ISSUE_URL, "pass a GitHub issue URL such as https://github.com/acme/app/issues/12"),
   persona: z.string().min(1, "pass --persona <name>, a persona tumpel persona list shows"),
   endpoint: z.url().optional(),
-  model: z.string().min(1, "pass --model <name>, the model the session runs"),
+  model: z
+    .string({ error: "pass --model <name>, the model the session runs" })
+    .min(1, "pass --model <name>, the model the session runs"),
 });
 
 const IssueSchema = z.object({
