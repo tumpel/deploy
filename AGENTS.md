@@ -14,5 +14,5 @@
 - [ ] The MCP server is hosted on the control plane with Recall's auth model; the `tumpel` CLI is a client of the same public API, not a second MCP.
 - [ ] Supported harnesses: Claude Code, Codex, OpenCode, Pi.dev; Mistral's coding agent planned.
 - [ ] No comments in code.
-- [ ] `npm run check` passes before every commit (Biome, typecheck, clippy, rustfmt, generated output in sync). `npm run fix` formats.
+- [ ] `npm run check` passes before every commit (Biome, no comments, no token-shaped secrets, typecheck, clippy, rustfmt, TypeSpec keys, dates and enums, generated output in sync). `npm run fix` formats.
 - [ ] `npm install` enables the pre-commit hook that runs `npm run check`.
