@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
-import { PersonaSchema, StartedSessionSchema, TurnFailureSchema, TurnSchema } from "@tumpel/api/schemas";
+import { PersonaSchema, StartedSessionSchema } from "@tumpel/api/schemas";
 import { z } from "zod";
 
 const TUMPEL = process.env.TUMPEL_BIN ?? "tumpel";
@@ -64,19 +63,13 @@ const slug = (title) =>
     .slice(0, 40)
     .replace(/-+$/, "");
 
-const stream = (args, env, pattern) =>
+const follow = (args, env) =>
   new Promise((resolve) => {
-    const child = spawn(TUMPEL, args, { env, stdio: ["ignore", "pipe", "inherit"] });
-    let found = null;
-    createInterface({ input: child.stdout }).on("line", (line) => {
-      process.stdout.write(`${line}\n`);
-      const matches = line.match(pattern);
-      if (matches) found = matches[matches.length - 1];
-    });
+    const child = spawn(TUMPEL, args, { env, stdio: ["ignore", "inherit", "inherit"] });
     child.on("error", (error) =>
       die(`${TUMPEL} transcript read: ${error.message}; set TUMPEL_BIN or put tumpel on PATH`),
     );
-    child.on("close", (code) => resolve({ code, found }));
+    child.on("close", (code) => resolve(code ?? 1));
   });
 
 const main = async () => {
@@ -133,19 +126,8 @@ const main = async () => {
   const { turnId } = started.turn;
   console.error(`ticket: session ${started.session.sessionId}, turn ${turnId}, branch ${branch}`);
 
-  const pullPattern = new RegExp(`https://github\\.com/${owner}/${repo}/pull/[0-9]+`, "g");
-  const { code, found } = await stream(["transcript", "read", turnId, "--follow"], env, pullPattern);
-  if (code !== 0) {
-    const turn = parsed(TurnSchema, capture(TUMPEL, ["turn", "get", turnId], env), "tumpel turn get");
-    if (turn.state !== "Failed")
-      die(`tumpel transcript read exited with ${code} while turn ${turnId} is ${turn.state}`);
-    const failure = parsed(TurnFailureSchema, capture(TUMPEL, ["turn", "failure", turnId], env), "tumpel turn failure");
-    die(`turn ${turnId} failed ${failure.reason}: ${failure.detail}`);
-  }
-  if (found) {
-    console.log(found);
-    return;
-  }
+  const code = await follow(["transcript", "read", turnId, "--follow"], env);
+  if (code !== 0) process.exit(code);
   const [pull] = parsed(
     PullRequestsSchema,
     capture("gh", ["pr", "list", "--repo", `${owner}/${repo}`, "--head", branch, "--json", "url"], process.env),

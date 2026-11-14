@@ -57,6 +57,7 @@ const GH = {
   digest: "4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d",
 };
 const WORKING_DIRECTORY = "/root/workspace";
+const CLONE_SECONDS = 120;
 const CLAUDE_FLAGS = [
   "-p",
   "--input-format",
@@ -158,6 +159,7 @@ const recipeFor = (name) => {
         protocol: "ShellLines",
         command: ["/bin/sh", "-s"],
         workingDirectory: WORKING_DIRECTORY,
+        cloneSeconds: CLONE_SECONDS,
       }),
       install: async () => [],
     };
@@ -179,6 +181,7 @@ const recipeFor = (name) => {
       protocol: "ClaudeStreamJson",
       command: ["/opt/tumpel/node/bin/node", `/opt/tumpel/harness/node_modules/${name_}/cli.js`, ...CLAUDE_FLAGS],
       workingDirectory: WORKING_DIRECTORY,
+      cloneSeconds: CLONE_SECONDS,
     }),
     install: async (tree) => {
       const node = join(tree, "opt", "tumpel", "node");
