@@ -24,6 +24,6 @@ The file holds no secret value. `valueFrom.env` names the environment variable `
 - `tumpel config init <file>` writes a new file from the tenant's current state.
 - `tumpel config validate <file>` prints every schema error with its JSON pointer.
 - `tumpel config plan <file>` prints each create, update and delete, and changes nothing.
-- `tumpel config apply <file>` applies the plan: personas, then secret sets, pins and host labels.
+- `tumpel config apply <file> [--rewrite-secrets <set-name>]...` applies the plan: personas, then secret sets, pins and host labels.
 
-Personas and secret sets match by name, pins by harness, hosts by `hostId`. Whatever the file leaves out is deleted; an unlisted host loses its labels. Secret values are never read back, so a new value under the same key names plans nothing. To rotate a value, change the key name or delete the set and apply again.
+Personas and secret sets match by name, pins by harness, hosts by `hostId`. Whatever the file leaves out is deleted; an unlisted host loses its labels. Secret values are never read back, so a new value under the same key names plans nothing. To rotate a set's values, export the new ones and run `tumpel config apply <file> --rewrite-secrets <set-name>`; repeat the flag for more sets. The set keeps its `secretSetId` and key names.
