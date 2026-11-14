@@ -21,7 +21,7 @@ The control plane sends a Challenge with a nonce. The host answers with a Hello.
 
 ## Messages
 
-The control plane sends TurnOffer, TurnWithdrawn, SnapshotRequest and BoxTeardown. A TurnOffer carries the turn, the session, the box id, the harness, the prompt, the turn's credential grant, the session's last line number and download URLs for the session's snapshots. The host sends TurnClaim, TurnRepositoryReady, TurnLine, TurnComplete, TurnFailed, SnapshotDone, SnapshotFailed, BoxGone and BoxTeardownFailed.
+The control plane sends TurnOffer, TurnWithdrawn, SnapshotRequest and BoxTeardown. A TurnOffer carries the turn, the session, the box id, the harness, the prompt, the turn's credential grant, the session's last line number and download URLs for the session's snapshots. The host sends TurnClaim, TurnRepositoryReady, TurnLine, TurnComplete and TurnFailed. It also sends TurnRepositoryCloneFailed, SnapshotDone, SnapshotFailed, BoxGone and BoxTeardownFailed.
 
 ## Ordering and reconnect
 
@@ -41,7 +41,7 @@ Each budget runs as one timer of its session and ends with the turn.
 | Host reconnect      | 30 s    | HostOffline               |
 | Credential handover | 300 s   | DispatchCredentialExpired |
 
-The first line counts from TurnRepositoryReady, which the host sends once the box holds the repository. Before it, the clone runs within the image's cloneSeconds and fails RepositoryCloneFailed (EDD-001). Until then, the first line is due within the cloneSeconds the host sends on TurnClaim plus turnFirstLineBudgetSeconds of the claim. A lost TurnRepositoryReady still ends the turn NoFirstOutput.
+The first line counts from TurnRepositoryReady, which the host sends once the box holds the repository. Before it, the clone runs within the image's cloneSeconds, which the host sends on TurnClaim. Until then, the first line is due by the claim time plus cloneSeconds plus turnFirstLineBudgetSeconds. The host reports a failed clone as TurnRepositoryCloneFailed (EDD-001). A lost TurnRepositoryReady still ends the turn NoFirstOutput.
 
 A turn also fails BoxBootFailed, PoolExhausted, HarnessExited, HarnessReportedError, CredentialRefused, SnapshotUnreadable or TranscriptGap. When the harness ends with an error result, the turn fails. A refused credential fails it CredentialRefused. Any other error fails it HarnessReportedError with the harness's text, capped at 2 KiB. The turn keeps the first error result. One without text gives its subtype, or states that it carries neither text nor subtype. Every failure carries a detail that states what failed and what fixes it, with the tail of the harness's standard error when the harness wrote any. The budgets sit in one schema-checked settings object of the control plane.
 

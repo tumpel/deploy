@@ -10,7 +10,7 @@ Agents prove every stage after its deploy, against that stage's control plane an
 
 The reference host is a Linux VM on the hypervisor `box`, with a host-passthrough CPU so it exposes KVM, 4 vCPU and 8 GiB. The control plane is the stage's deployed Worker. An agent on the development machine drives the release's CLI and the hosted MCP server.
 
-`npm run proof:e2e` runs the twelve steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage.
+`npm run proof:e2e` runs the twelve steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
 
 ## Signing in
 
@@ -20,7 +20,7 @@ The test run holds a Cloudflare Access service token. Access issues a JWT for it
 
 1. Sign in. `tumpel whoami` names the test tenant.
 2. Enrol. The installer and the release binaries set up the host, which enrols with a freshly minted token and reads Online.
-3. Configure. `tumpel config apply doc/personas/proof-tenant.json` writes the proof tenant's personas and secret sets, the ticket run's included. The set's `ApiKey` or `SubscriptionToken` member takes its value from the runner's environment.
+3. Configure. `npm-scripts/proof-tenant.mjs` applies `doc/personas/proof-tenant.json`: the `proof`, `refused` and `ticket-worker` personas and their secret sets. Every value comes from the environment, the token's expiry from the credential.
 4. First turn. A start names the persona, a model, a small test repository and a prompt, and returns ids before the first line. Lines arrive, and the turn reads Completed.
 5. Warm turn. A second turn inside the warm window resumes the paused box and reaches the same harness process.
 6. Snapshot. After the quiet delay the snapshot reads Stored.

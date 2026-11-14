@@ -35,7 +35,7 @@ Personas and secret sets match by name, pins by harness and hosts by host id. Ap
 
 ## Persona files
 
-A persona carries files, each a row in the tenant's database with its path, size and sha256 digest. Object storage holds the bytes by digest. A persona's harness is set when the persona is created and never changes. A delete of a persona with a session that is not Archived is refused with 409, and `tumpel config plan` stops on it before apply writes anything. The harness catalog lists the paths each harness accepts:
+A persona carries files, each a row in the tenant's database with its path, size and sha256 digest. Object storage holds the bytes by digest. A persona's harness is set when the persona is created and never changes. A persona that any session ran on stays. The API refuses its delete with 409 and names the sessions. `tumpel config plan` stops on such a delete before apply writes anything. The harness catalog lists the paths each harness accepts:
 
 | Harness     | Paths                                                                     |
 | ----------- | ------------------------------------------------------------------------- |
@@ -47,7 +47,7 @@ A persona carries files, each a row in the tenant's database with its path, size
 
 ## Tickets
 
-`npm run ticket -- <issue url> --persona <name>` works one GitHub issue into a draft pull request. It reads the issue with gh, starts a session on the issue's repository and streams the turn. The prompt asks the harness for a branch named after the issue and a draft pull request from it. The script then finds the pull request by that branch and prints its URL. A failed turn exits non-zero with its reason. It applies `doc/personas/proof-tenant.json` first, the proof tenant's one config, which holds the `ticket-worker` persona beside the proof's own.
+`npm run ticket -- <issue url> --persona <name>` works one GitHub issue into a draft pull request. It reads the issue with gh, starts a session on the issue's repository and streams the turn. The prompt asks the harness for a branch named after the issue and a draft pull request from it. The script then finds the pull request by that branch and prints its URL. A failed turn exits non-zero with its reason. It applies no tenant config. When the tenant has no persona of that name, the script exits with the advice to apply the tenant config first.
 
 ## FAQ
 
