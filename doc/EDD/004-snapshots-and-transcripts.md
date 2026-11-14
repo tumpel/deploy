@@ -32,9 +32,11 @@ Line numbers start at 1 for each session and never restart. Each turn offer carr
 
 A read returns lines after a cursor and a new cursor naming the last line returned. An empty page means nothing new.
 
-## Archive
+## Stop and archive
 
-Archiving a session deletes its snapshot objects and keeps its transcript chunks.
+A stop is refused while a turn runs or while the session's host is offline. It sets the session Stopping and sends a SnapshotRequest at once when a completed turn is not in a snapshot yet. Once the snapshot is stored, the control plane sends BoxTeardown. The supervisor tears the box down only when a snapshot holds its last completed turn, returns its TAP device and answers BoxGone; a box with an unsnapshotted turn stays and the answer is BoxTeardownFailed with `BoxDirty`. BoxGone sets the session Stopped, and its next send boots a fresh box from the chain. A snapshot that fails BoxNotFound goes on to BoxTeardown, since the box is gone. Any other failed snapshot, BoxTeardownFailed, or no answer within `snapshotDeadlineSeconds` sets it back to Idle.
+
+An archive is refused unless the session is Stopped. It deletes the session's snapshot objects and records, keeps its transcript chunks readable and sets the session Archived, which refuses every later send and stop. The control plane stores no secret per session: a turn's grant lives in its offer only, so an archive has no secret to delete.
 
 ## FAQ
 

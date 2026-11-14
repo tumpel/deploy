@@ -214,6 +214,9 @@ enum SessionState {
   Starting: "Starting",
   Idle: "Idle",
   Running: "Running",
+  Stopping: "Stopping",
+  Stopped: "Stopped",
+  Archived: "Archived",
 }
 
 model Turn {

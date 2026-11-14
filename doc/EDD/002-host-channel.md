@@ -21,7 +21,7 @@ The control plane sends a Challenge with a nonce. The host answers with a Hello.
 
 ## Messages
 
-The control plane sends TurnOffer, TurnWithdrawn and SnapshotRequest. A TurnOffer carries the turn, the session, the box id, the harness, the prompt, the turn's credential grant, the session's last line number and download URLs for the session's snapshots. The host sends TurnClaim, TurnLine, TurnComplete, TurnFailed, SnapshotDone and SnapshotFailed.
+The control plane sends TurnOffer, TurnWithdrawn, SnapshotRequest and BoxTeardown. A TurnOffer carries the turn, the session, the box id, the harness, the prompt, the turn's credential grant, the session's last line number and download URLs for the session's snapshots. The host sends TurnClaim, TurnLine, TurnComplete, TurnFailed, SnapshotDone, SnapshotFailed, BoxGone and BoxTeardownFailed.
 
 ## Ordering and reconnect
 
