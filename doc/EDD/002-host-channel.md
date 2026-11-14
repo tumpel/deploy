@@ -8,7 +8,7 @@ Each host keeps one persistent two-way connection to the control plane, and the 
 
 ## Handshake
 
-The control plane sends a Challenge with a nonce. The host answers with a Hello. Its Ed25519 host key signs `tumpel-channel-hello-v1`, a zero byte, the nonce, a zero byte and the host id. The control plane checks the signature against the key it stored at enrolment and answers Welcome. Challenge, Hello, Welcome and Heartbeat travel outside the numbered frames.
+The control plane sends a Challenge with a nonce. The host answers with a Hello. Its Ed25519 host key signs `tumpel-channel-hello-v1`, a zero byte, the nonce, a zero byte and the host id. The control plane checks the signature against the key it stored at enrolment and answers Welcome. Hello and Welcome carry `protocolVersion`, now 2. The control plane closes a Hello on any other version with UnsupportedVersion, and the reason tells the host to update the supervisor. Challenge, Hello, Welcome and Heartbeat travel outside the numbered frames.
 
 | Close code | Meaning                        |
 | ---------- | ------------------------------ |

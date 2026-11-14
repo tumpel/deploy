@@ -8,7 +8,7 @@ The supervisor runs each session in a Firecracker microVM, the box, on a tenant'
 
 ## Box lifecycle
 
-Each harness version has one read-only root image and one kernel, both named by digest, and a manifest that lists their parts. The supervisor refuses a guest whose greeting disagrees with the manifest.
+Each harness version has one read-only root image and one kernel, both named by digest, and a manifest that lists their parts. The supervisor refuses a guest whose greeting disagrees with the manifest. The greeting, GuestHello, also carries `protocolVersion`, now 2. On any other version the supervisor fails the turn BoxBootFailed, and the detail names both versions and says to rebuild the image.
 
 A second drive per session holds the overlay upper directory, which the guest's init mounts over the image before it starts the guest agent. A cold boot of a session with snapshots attaches a third, read-only drive that holds the restored files (EDD-004). Over vsock, the agent speaks length-prefixed JSON to the supervisor, and it dials the host once ready.
 

@@ -14,7 +14,7 @@ The reference host is a Linux VM on the hypervisor `box`, with a host-passthroug
 
 ## Signing in
 
-The test run holds a Cloudflare Access service token. Access issues a JWT for it that carries the token's client id. The Worker var `ACCESS_PROOF_COMMON_NAME` holds that client id. The Worker takes the token as the owner of the test tenant "Tumpel proof". It takes it on two endpoints only: device approve and device deny. `npm run proof -- tumpel login` starts the device flow and approves the device code with the token. The token lives in the runner's environment and never in the repository.
+The test run holds a Cloudflare Access service token. Access issues a JWT for it that carries the token's client id. The Worker var `ACCESS_PROOF_COMMON_NAME` holds that client id. The Worker takes the token as the owner of the test tenant "Tumpel proof". It takes it on two endpoints only: device approve and device deny. `npm run proof -- tumpel login` starts the device flow and approves the device code with the token. The token lives in the runner's environment and never in the repository. The subscription token and its expiry come from the runner's own Claude Code credential by default, or from the encrypted key that `TUMPEL_PROOF_CREDENTIAL=dotfiles:<key name>` names, with the expiry in `TUMPEL_PROOF_CREDENTIAL_EXPIRES_AT`.
 
 ## Steps
 
