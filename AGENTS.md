@@ -1,8 +1,8 @@
 # Agent rules
 
-- [ ] Rust for everything host-side, the CLI and the MCP server (`crates/`).
+- [ ] Rust for the host supervisor, host workers and the CLI (`crates/`).
 - [ ] Workers in TypeScript (`packages/control-plane`).
-- [ ] TypeSpec first: change `packages/api/main.tsp`, run `npm run generate`, commit `packages/api/generated`. Never hand-write a generated type.
+- [ ] TypeSpec first: change `packages/api/main.tsp`, run `npm run generate`, commit `packages/api/generated` and `crates/tumpel-api/src`. Never hand-write a generated type.
 - [ ] Keys are `<entity>Id`; business dates are ISO 8601 strings with an offset; enums are PascalCase.
 - [ ] Every config file and input is defined by a schema.
 - [ ] One SQLite database per tenant; only tenant configuration is stored centrally.
@@ -15,3 +15,4 @@
 - [ ] Supported harnesses: Claude Code, Codex, OpenCode, Pi.dev; Mistral's coding agent planned.
 - [ ] No comments in code.
 - [ ] `npm run check` passes before every commit (Biome, typecheck, clippy, rustfmt, generated output in sync). `npm run fix` formats.
+- [ ] `npm install` enables the pre-commit hook that runs `npm run check`.

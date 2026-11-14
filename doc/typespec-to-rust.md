@@ -11,6 +11,5 @@ Nasty cases:
 
 - `offsetDateTime` and `utcDateTime` both become `format: date-time` in OpenAPI, and progenitor maps that to `DateTime<Utc>`, dropping the offset. Worked around with a conversion to `DateTime<FixedOffset>` in `crates/xtask`.
 - The generated client fails clippy pedantic (missing `# Errors`, `#[must_use]`, doc backticks, trailing comma). Worked around with `#[allow(clippy::pedantic)]` on the generated module.
-- The noun `Box` becomes `types::Box` and shadows `std::boxed::Box` for any glob import of `types`.
 - Struct fields are emitted in alphabetical order, not TypeSpec order.
 - `@key` has no OpenAPI form, so the generated types do not mark key fields.

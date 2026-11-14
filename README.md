@@ -1,6 +1,6 @@
 # tumpel
 
-Claude harnesses on any hardware, driven over MCP.
+Harnesses on any hardware, driven over MCP.
 
 Tumpel has three layers:
 
