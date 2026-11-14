@@ -26,7 +26,7 @@ Migration 0006 seals the values an older control plane stored in plain text. It 
 
 On every send of a turn offer, the control plane resolves the persona to its set and decrypts every member into a grant. The harness's credential goes under the variable the catalog maps for its kind. Every other member goes under its own name. A subscription token past its `expiresAt` fails the turn `CredentialExpired` instead.
 
-Each grant holds an id, an expiry 300 s ahead and the variables. The control plane stores the offer without the grant. Once the expiry passes, the supervisor fails the turn `DispatchCredentialExpired`. When the harness reports that the provider refused the credential, the turn fails `CredentialRefused`, and only that failure says how to replace the set's value. Over vsock, the supervisor passes the grant to the guest and writes nothing to disk.
+Each grant holds an id, an expiry 300 s ahead and the variables. The control plane stores the offer without the grant. Once the expiry passes, the supervisor fails the turn `DispatchCredentialExpired`. When the harness ends with an error result that names a refused credential, the turn fails `CredentialRefused`, and only that failure says how to replace the set's value. Over vsock, the supervisor passes the grant to the guest and writes nothing to disk.
 
 For each turn, the guest writes the persona's files and exports the variables before the harness starts. When either changed since the harness started, the guest restarts the harness before the turn.
 

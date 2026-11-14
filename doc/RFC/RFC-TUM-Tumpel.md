@@ -144,19 +144,19 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 ### Runtime and surface
 
-**Budgets.** A host claims a turn within 60 s, writes its first line within 120 s of the box holding the repository, and finishes within 3,600 s. The clone has its own 120 s limit, the image's `cloneSeconds`. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
+**Budgets.** A host claims a turn within 60 s, writes its first line within 120 s of the box holding the repository, and finishes within 3,600 s. The clone gets its own 120 s: the image's `cloneSeconds` on the host and `turnCloneBudgetSeconds` on the control plane. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
 
 **Channel ordering and reconnect.** Every message carries a sequence number and an acknowledgement. After a reconnect, each side resends what the other has not acknowledged, and the receiver drops duplicates.
 
-**Placement after a host loss.** When a session's host is offline, its next turn boots on another online host of the tenant, provided the snapshots cover the last completed turn. Otherwise the refusal names the host and the missing turns.
+**Placement after a host loss.** When a session's host is offline, its next turn boots on another of the tenant's online hosts, provided the snapshots cover the last completed turn. Otherwise the refusal names the host and the missing turns.
 
-**Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. That pool is the host's box capacity, `boxCapacity`, 8 by default.
+**Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. Its size, the host's `boxCapacity`, is 8 by default.
 
-**Repository access is a secret.** On its first turn, the box clones the session's repository with `GITHUB_TOKEN` from the persona's secret set.
+**Repository access is a secret.** On its first turn, the box clones the repository with the secret set's `GITHUB_TOKEN`.
 
 **MCP and CLI parity is a build check.** Every signed-in operation is one MCP tool and one CLI command on the same handler. The build fails on a gap.
 
-**The Shell harness exists for tests only.** It stays out of the catalog.
+**The Shell harness exists for tests only.** The catalog leaves it out.
 
 **The proof signs in with an Access service token.** The test run approves its own device code with a Cloudflare Access service token tied to a test tenant.
 

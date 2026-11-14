@@ -2,7 +2,7 @@
 
 A Claude Code persona that works one GitHub issue and opens a draft pull request. Its box clones the session's repository with the `GITHUB_TOKEN` member of its secret set; `gh` reads the same token as `GH_TOKEN`. Claude Code already runs with permissions skipped in the image, and `settings.json` keeps it that way. `CLAUDE.md` holds the house rules for a ticket.
 
-Add these entries to your tenant config file, with `from` relative to that file, then run `tumpel config apply <file>`:
+Add these entries to your tenant config file, with each `from` path read from that file's folder, then run `tumpel config apply <file>`:
 
 ```json
 {
@@ -46,7 +46,7 @@ Set `expiresAt` to the expiry of the token `claude setup-token` printed; with an
 Work an issue from a signed-in terminal:
 
 ```sh
-npm run ticket -- https://github.com/acme/app/issues/12 --persona ticket-worker --model claude-opus-4-5 [--endpoint https://<your tumpel host>]
+npm run ticket -- <issue url> --persona ticket-worker --model <model> [--endpoint <url>]
 ```
 
-It reads the issue with `gh issue view`, starts a session on the issue's repository, streams the turn's lines, and prints the pull request URL. A failed turn exits non-zero with its failure reason.
+It reads the issue with `gh issue view`, starts a session on the issue's repository, streams the turn's lines, and prints the pull request URL. `--model` is required: the catalog pins the harness version, and the start names the model. A failed turn exits non-zero with its failure reason.

@@ -49,6 +49,10 @@ A run passes when all twelve steps pass with no super harness plugged in. A fail
 
 The session also restored on a fresh box after its warm window ran out. Step 9 ran its probe in a Claude Code box, because the Shell harness stays out of the catalog. Step 10 found zero copies of the credential.
 
+## Ticket run
+
+A cloud agent in a box worked a real issue of this repository and opened a draft pull request. It started with `npm run ticket -- <issue url> --persona ticket-worker --model <model> --endpoint <url>`. The box cloned the private repository with the persona's `GITHUB_TOKEN`, and the transcript held no copy of the token. Its turn took 203 s, about 31 s of it before the harness started.
+
 ## FAQ
 
 **Does a person approve anything?** No. The service token approves the device code.
