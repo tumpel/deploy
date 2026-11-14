@@ -2,9 +2,9 @@
 
 A Claude Code persona that works one GitHub issue and opens a draft pull request. Its box clones the session's repository with the `GITHUB_TOKEN` member of its secret set; `gh` reads the same token as `GH_TOKEN`. Claude Code already runs with permissions skipped in the image, and `settings.json` keeps it that way. `CLAUDE.md` holds the house rules for a ticket.
 
-The persona and its secret set live in [`doc/personas/proof-tenant.json`](../proof-tenant.json), the one tenant config of the proof tenant, next to the `proof` and `refused` personas. `npm run proof:e2e` applies that file through `npm-scripts/proof-tenant.mjs`. Apply deletes whatever the file leaves out, so every persona of the proof tenant goes into that file. The file names an environment variable for every secret value and for the token's expiry. The script sets them: the subscription token and its expiry from the dotfiles key `claude-setup-token-personal` or the source `TUMPEL_PROOF_CREDENTIAL` names, and `GITHUB_TOKEN` from `gh auth token`.
+The persona and its secret set live in [`doc/personas/proof-tenant.json`](../proof-tenant.json), the one tenant config of the proof tenant, next to the `proof` and `refused` personas. `npm run proof:e2e` applies that file through `npm-scripts/proof-tenant.mjs`. Apply deletes whatever the file leaves out, so every persona of the proof tenant goes into that file. The file names an environment variable for every secret value and for the token's expiry. The script sets them: the subscription token and its expiry from the host Claude Code credential, or the source `TUMPEL_PROOF_CREDENTIAL` names as `doc/deploy.md` describes, and `GITHUB_TOKEN` from `gh auth token`.
 
-That dotfiles key holds the token and an `EXPIRES_AT` line with the expiry `claude setup-token` printed. `GITHUB_TOKEN` needs read and write access to contents and pull requests of the repositories the persona works on.
+A dotfiles key holds only the token, so its expiry goes in `TUMPEL_PROOF_CREDENTIAL_EXPIRES_AT`. `GITHUB_TOKEN` needs read and write access to contents and pull requests of the repositories the persona works on.
 
 Work an issue from a signed-in terminal:
 

@@ -22,10 +22,14 @@ const parseCredentials = (path, die) => {
 
 const OFFSET_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
-const expiry = (value, origin, die) => {
+const MISSING_EXPIRY =
+  "the subscription token has no expiry; leave TUMPEL_PROOF_CREDENTIAL unset to use the host Claude Code credential ~/.claude/.credentials.json, or set TUMPEL_PROOF_CREDENTIAL=dotfiles:<key name> together with TUMPEL_PROOF_CREDENTIAL_EXPIRES_AT=<ISO 8601 date-time with offset>";
+
+const expiry = (value, die) => {
+  if (!value) die(MISSING_EXPIRY);
   if (!OFFSET_DATE_TIME.test(value) || Number.isNaN(Date.parse(value))) {
     die(
-      `${origin} holds an expiry that is not an ISO 8601 date-time with an offset; write the expiry claude setup-token printed`,
+      "TUMPEL_PROOF_CREDENTIAL_EXPIRES_AT is not an ISO 8601 date-time with an offset; pass the expiry claude setup-token printed",
     );
   }
   return value;
@@ -40,47 +44,45 @@ const subscriptionToken = (value, origin, die) => {
   return value;
 };
 
-export const loadCredential = (reference, die) => {
+const dotfilesToken = (name, die) => {
+  const result = spawnSync(
+    "bash",
+    ["-o", "pipefail", "-c", 'dotfiles-key decrypt "$1" -o /dev/fd/3 3>&1 1>/dev/null | cat', "decrypt", name],
+    { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
+  );
+  if (result.status !== 0) die(`dotfiles-key decrypt ${name} exited ${result.status}; run dotfiles-key unlock`);
+  const lines = result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const assigned = lines.find((line) => /^[A-Z_]+=/.test(line));
+  const value = assigned ? assigned.slice(assigned.indexOf("=") + 1) : lines[0];
+  if (!value) die(`dotfiles key ${name} is empty`);
+  return subscriptionToken(value, `dotfiles key ${name}`, die);
+};
+
+const hostCredential = (path, die) => {
+  const oauth = parseCredentials(path, die).claudeAiOauth;
+  if (!oauth?.accessToken) die(`${path} holds no claudeAiOauth access token; sign in to Claude Code again`);
+  if (!Number.isInteger(oauth.expiresAt)) die(MISSING_EXPIRY);
+  return {
+    token: subscriptionToken(oauth.accessToken, path, die),
+    expiresAt: new Date(oauth.expiresAt).toISOString().replace("Z", "+00:00"),
+  };
+};
+
+export const loadCredential = (die) => {
+  const reference = process.env.TUMPEL_PROOF_CREDENTIAL ?? "claude-credentials";
   const [source, ...rest] = reference.split(":");
   const name = rest.join(":");
-  if (source === "dotfiles") {
-    const result = spawnSync(
-      "bash",
-      ["-o", "pipefail", "-c", 'dotfiles-key decrypt "$1" -o /dev/fd/3 3>&1 1>/dev/null | cat', "decrypt", name],
-      { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" },
-    );
-    if (result.status !== 0) die(`dotfiles-key decrypt ${name} exited ${result.status}; run dotfiles-key unlock`);
-    const entries = result.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const assigned = line.match(/^([A-Z_]+)=(.*)$/);
-        return assigned ? { key: assigned[1], value: assigned[2] } : { key: "", value: line };
-      });
-    const token = entries.find((entry) => entry.key !== "EXPIRES_AT")?.value;
-    if (!token) die(`dotfiles key ${name} is empty`);
-    const expiresAt = entries.find((entry) => entry.key === "EXPIRES_AT")?.value;
-    if (!expiresAt) {
-      die(
-        `dotfiles key ${name} carries no EXPIRES_AT=<ISO 8601 date-time> line; encrypt it again with the expiry claude setup-token printed`,
-      );
-    }
-    const origin = `dotfiles key ${name}`;
-    return { token: subscriptionToken(token, origin, die), expiresAt: expiry(expiresAt, origin, die) };
-  }
   if (source === "claude-credentials") {
-    const path = name || join(homedir(), ".claude", ".credentials.json");
-    const oauth = parseCredentials(path, die).claudeAiOauth;
-    if (!oauth?.accessToken) die(`${path} holds no claudeAiOauth access token`);
-    if (!Number.isInteger(oauth.expiresAt))
-      die(`${path} holds no claudeAiOauth expiresAt; sign in to Claude Code again`);
-    return {
-      token: subscriptionToken(oauth.accessToken, path, die),
-      expiresAt: new Date(oauth.expiresAt).toISOString().replace("Z", "+00:00"),
-    };
+    return hostCredential(name || join(homedir(), ".claude", ".credentials.json"), die);
   }
-  return die(`credential source ${reference} must be dotfiles:<key name> or claude-credentials[:<path>]`);
+  if (source === "dotfiles" && name) {
+    const expiresAt = expiry(process.env.TUMPEL_PROOF_CREDENTIAL_EXPIRES_AT, die);
+    return { token: dotfilesToken(name, die), expiresAt };
+  }
+  return die("TUMPEL_PROOF_CREDENTIAL must be claude-credentials[:<path>] or dotfiles:<key name>");
 };
 
 const githubToken = (die) => {

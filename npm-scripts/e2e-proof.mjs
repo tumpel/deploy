@@ -11,7 +11,6 @@ const STAGE = process.env.TUMPEL_STAGE ?? "dev";
 const HOST = process.env.TUMPEL_PROOF_HOST ?? "tumpel-host";
 const ENDPOINT = process.env.TUMPEL_PROOF_ENDPOINT;
 const TENANT = process.env.TUMPEL_PROOF_TENANT ?? "Tumpel proof";
-const CREDENTIAL = process.env.TUMPEL_PROOF_CREDENTIAL ?? "dotfiles:claude-setup-token-personal";
 const REPOSITORY = process.env.TUMPEL_PROOF_REPOSITORY ?? "https://github.com/mvhenten/drawio-headless.git";
 const MODEL = process.env.TUMPEL_PROOF_MODEL ?? "claude-haiku-4-5";
 const PROBE_MODEL = process.env.TUMPEL_PROOF_PROBE_MODEL ?? "claude-sonnet-4-5";
@@ -169,7 +168,7 @@ const enrol = (name, envPrefix) => {
 };
 
 const state = {};
-const credential = loadCredential(CREDENTIAL, die);
+const credential = loadCredential(die);
 
 const probeCommand = (capacity) => {
   const boxes = Array.from({ length: capacity }, (_, k) => [`172.16.${k}.1:22`, `172.16.${k}.2:22`]).flat();
