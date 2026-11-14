@@ -5,7 +5,7 @@ import { PersonaSchema, StartedSessionSchema } from "@tumpel/api/schemas";
 import { z } from "zod";
 
 const TUMPEL = process.env.TUMPEL_BIN ?? "tumpel";
-const DEFAULT_MODEL = "opus";
+const DEFAULT_MODEL = "claude-opus-4-5";
 
 const ISSUE_URL = /^https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\/issues\/([1-9][0-9]*)$/;
 

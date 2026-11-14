@@ -46,7 +46,7 @@ Set `expiresAt` to the expiry of the token `claude setup-token` printed; with an
 Work an issue from a signed-in terminal:
 
 ```sh
-npm run ticket -- https://github.com/acme/app/issues/12 --persona ticket-worker [--endpoint https://<your tumpel host>] [--model opus]
+npm run ticket -- https://github.com/acme/app/issues/12 --persona ticket-worker [--endpoint https://<your tumpel host>] [--model claude-opus-4-5]
 ```
 
 It reads the issue with `gh issue view`, starts a session on the issue's repository, streams the turn's lines, and prints the pull request URL. A failed turn exits non-zero with its failure reason.
