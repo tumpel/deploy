@@ -171,7 +171,7 @@ A GitHub Actions prebuild uploads its layer through `POST /v1/prebuilds/{prebuil
 
 - The token's `aud` is the API origin with no trailing slash. Its keys come from `<gitHubActionsIssuer>/.well-known/jwks`.
 - The token binds `repository` to the prebuild's repository, `workflow_ref` to `<repository>/<caller workflow>@<ref>`, `ref` to `refs/heads/<default branch>` as the dispatch recorded it, and `event_name` to `workflow_dispatch`. It binds `run_id` and `sha` to the run and commit the dispatch recorded.
-- The token is checked before anything about the tenant is read. A missing tenant, prebuild or repository answers the same 404.
+- The token is checked before anything about the tenant is read. A missing tenant or prebuild, or another repository, answers the same 404.
 - A Dispatched or Building prebuild takes an upload. An upload start from the recorded run moves a Dispatched prebuild to Building.
 - `start` takes `{tenantId, layerDigest, layerSizeBytes}`, records them, and answers `{sha256, url, uploadExpiresAt}`: one PUT to `<tenantId>/prebuilds/<prebuildId>/layers/<digest>`, signed with `content-length` and `x-amz-checksum-sha256` only. The layer cap is 5 GiB. A repeat `start` with the same digest and size answers a fresh grant, and one with another digest or size is refused Conflict. `complete` takes `{tenantId}`, finds the recorded key in the bucket and moves the prebuild to Converting.
 - The reusable workflow runs two jobs. The build job runs the repository's code and holds no `id-token` permission. The upload job holds `id-token: write` and uploads the build job's `layer.tar`. It runs `prebuild.mjs` and Node.js from the root filesystem tar, never from the build job's artifact (NFR-2).
