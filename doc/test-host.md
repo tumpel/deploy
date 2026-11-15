@@ -45,7 +45,7 @@ The installer:
 5. makes the TAP pool through systemd-networkd: `boxCapacity` devices, 8 by default. Device `tumpel<k>` is owned by `mvhenten` and has gateway 172.16.<k>.1/30 with IPv4 masquerade out of `enp1s0`, for guest 172.16.<k>.2;
 6. turns on lingering for `mvhenten`, copies itself to `~/.local/bin/tumpel-supervisor` and enables the user unit `tumpel-supervisor.service`, which runs `tumpel-supervisor run`.
 
-To change the pool size, edit `boxCapacity` in `runtime.json` and run `tumpel-supervisor install` again. After `tumpel-supervisor enrol`, start the supervisor with `systemctl --user start tumpel-supervisor`.
+To change the pool size, edit `boxCapacity` in `runtime.json` and run `tumpel-supervisor install` again. After `tumpel-supervisor enrol`, start the supervisor with `systemctl --user start tumpel-supervisor`. The host key is bound to the host id, not to the control plane hostname, so to move an enrolled host to a new endpoint, set `endpoint` in `~/.local/state/tumpel-supervisor/supervisor.json` and run `systemctl --user restart tumpel-supervisor`.
 
 Check: `ip -br addr show` lists `tumpel0` to `tumpel7`, each `/sys/class/net/tumpel<k>/owner` is 1000, `systemctl is-active tumpel-guest-filter` is `active`, and `sysctl net.ipv4.ip_forward` is 1. All four hold after a reboot.
 

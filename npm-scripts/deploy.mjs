@@ -123,9 +123,18 @@ const cfGet = async (path) => {
 };
 
 const config = JSON.parse(readFileSync(join(PACKAGE, "wrangler.jsonc"), "utf8").replace(/^\s*\/\/.*$/gm, ""));
-const subdomain = (await cfGet(`/accounts/${accountId}/workers/subdomain`)).subdomain;
 const stageConfig = config.env?.[STAGE] ?? die(`wrangler.jsonc has no env ${STAGE}`);
-const hostname = `${config.name}-${STAGE}.${subdomain}.workers.dev`;
+const workerName = `${config.name}-${STAGE}`;
+const workerExists = async () => {
+  const path = `/accounts/${accountId}/workers/scripts/${workerName}/settings`;
+  const response = await fetch(`${API}${path}`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (response.status === 404) return false;
+  if (!response.ok) die(`GET ${path} returned ${response.status}; check the tumpel-tofu token`);
+  return true;
+};
 const otp = (await cfGet(`/accounts/${accountId}/access/identity_providers`)).find(
   (provider) => provider.type === "onetimepin",
 );
@@ -187,7 +196,6 @@ const tofuEnv = {
   TF_IN_AUTOMATION: "1",
   TF_VAR_stage: STAGE,
   TF_VAR_account_id: accountId,
-  TF_VAR_hostname: hostname,
   TF_VAR_otp_idp_id: otp.id,
   TF_VAR_approver_emails: settings.TUMPEL_APPROVER_EMAILS,
   TF_VAR_bootstrap_api_token: bootstrapKey,
@@ -201,11 +209,15 @@ tofu([
   `-backend-config=endpoints={s3="https://${accountId}.r2.cloudflarestorage.com"}`,
 ]);
 const planPath = join(WORK, `tumpel-${STAGE}.tfplan`);
-tofu(["plan", "-input=false", `-out=${planPath}`]);
-const plan = JSON.parse(tofu(["show", "-json", planPath], { capture: true }));
-const destroyed = (plan.resource_changes ?? []).filter((change) => change.change.actions.includes("delete"));
-if (destroyed.length > 0) die(`the plan destroys ${destroyed.map((change) => change.address).join(", ")}; refusing`);
-tofu(["apply", "-input=false", planPath]);
+const apply = (extra) => {
+  tofu(["plan", "-input=false", `-out=${planPath}`, ...extra]);
+  const plan = JSON.parse(tofu(["show", "-json", planPath], { capture: true }));
+  const destroyed = (plan.resource_changes ?? []).filter((change) => change.change.actions.includes("delete"));
+  if (destroyed.length > 0) die(`the plan destroys ${destroyed.map((change) => change.address).join(", ")}; refusing`);
+  tofu(["apply", "-input=false", planPath]);
+};
+const firstWorkerDeploy = !(await workerExists());
+apply(firstWorkerDeploy ? ["-exclude=cloudflare_workers_custom_domain.api"] : []);
 const outputs = JSON.parse(tofu(["output", "-json"], { capture: true }));
 const output = (name) => outputs[name]?.value ?? die(`tofu output ${name} is missing`);
 
@@ -229,4 +241,5 @@ wrangler([
   `ACCESS_PROOF_COMMON_NAME:${output("proof_common_name")}`,
 ]);
 wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
-console.log(`deploy: https://${hostname}`);
+if (firstWorkerDeploy) apply([]);
+console.log(`deploy: https://${output("hostname")}`);
