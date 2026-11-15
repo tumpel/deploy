@@ -27,7 +27,7 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
       ]
     }
   ],
-  "harnessPins": [{ "harness": "ClaudeCode", "harnessVersion": "2.0.0" }],
+  "harnessPins": [{ "harness": "ClaudeCode", "harnessVersion": "2.1.325" }],
   "hosts": [{ "hostId": "<from tumpel host list>", "labels": ["gpu"] }]
 }
 ```

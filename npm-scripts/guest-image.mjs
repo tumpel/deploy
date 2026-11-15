@@ -218,15 +218,21 @@ const recipeFor = (name, pins) => {
   const pkg = entry.installRecipe.match(/^npm:((?:@[^/]+\/)?[^@]+)@(.+)$/);
   if (!pkg) die(`install recipe ${entry.installRecipe} is not npm:<package>@<version>`);
   const [, name_, version] = pkg;
+  if (version !== entry.harnessVersion)
+    die(
+      `install recipe ${entry.installRecipe} installs ${version}, the catalog names ${entry.harnessVersion}; make them match`,
+    );
+  const native = `${name_}-linux-${NODE_ARCH[pins.arch]}`;
+  const binary = `/opt/tumpel/harness/node_modules/${native}/claude`;
   return {
     harness: GuestHarnessSchema.parse({
       harness: entry.harness,
       harnessVersion: entry.harnessVersion,
       protocol: "ClaudeStreamJson",
-      command: ["/opt/tumpel/node/bin/node", `/opt/tumpel/harness/node_modules/${name_}/cli.js`, ...CLAUDE_FLAGS],
+      command: [binary, ...CLAUDE_FLAGS],
       workingDirectory: WORKING_DIRECTORY,
       cloneSeconds: CLONE_SECONDS,
-      environment: ENVIRONMENT,
+      environment: { ...ENVIRONMENT, DISABLE_AUTOUPDATER: "1" },
     }),
     install: async (tree) => {
       const node = join(tree, "opt", "tumpel", "node");
@@ -249,10 +255,16 @@ const recipeFor = (name, pins) => {
           NODE_ARCH[pins.arch],
           "--os",
           "linux",
-          `${name_}@${version}`,
+          "--libc",
+          "glibc",
+          "--ignore-scripts",
+          `${native}@${version}`,
         ],
         { env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH}` } },
       );
+      const installed = join(tree, binary);
+      if (!existsSync(installed)) die(`npm installed no ${installed}; check that ${native}@${version} is published`);
+      chmodSync(installed, 0o755);
       return [pins.node];
     },
   };
