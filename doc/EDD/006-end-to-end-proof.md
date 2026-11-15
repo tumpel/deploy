@@ -10,7 +10,7 @@ Agents prove every stage after its deploy, against that stage's control plane an
 
 The reference host is a Linux VM on the hypervisor `box`, with a host-passthrough CPU so it exposes KVM, 4 vCPU and 8 GiB. The control plane is the stage's deployed Worker. An agent on the development machine drives the release's CLI and the hosted MCP server.
 
-`npm run proof:e2e` runs the thirteen steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
+`npm run proof:e2e` runs the fourteen steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
 
 ## Signing in
 
@@ -29,12 +29,18 @@ The test run holds a Cloudflare Access service token. Access issues a JWT for it
 9. Isolation. A box reaches a public website. It fails to reach the host, the other box and every private range.
 10. Secrecy. A search of the host's disk, its journal and every transcript finds no copy of the credential. `tumpel session handovers` lists the variable names.
 11. Refused credential. A secret set with an invalid key fails its turn with a reason that names the set and how to replace the value.
-12. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
-13. Connector. The run follows the 401 from `/mcp` to both metadata documents, registers a client and signs in with PKCE through the service token. It redeems the code, then calls `initialize`, `tools/list` and `tumpel_host_list_usage`. The step fails unless the result lists the host that step 2 enrolled.
+
+## Connector steps
+
+Step 13 makes every call as a JSON-RPC `tools/call` on `/mcp`, with the bearer token that step 12 redeems.
+
+12. Connector. The run follows the 401 from `/mcp` to both metadata documents, registers a client and signs in with PKCE through the service token. It redeems the code and calls `initialize` with protocol 2025-06-18. Every later call sends the agreed version as `MCP-Protocol-Version`. `tools/list` must list the session tools, and `tumpel_host_list_usage` must list the host that step 2 enrolled.
+13. Connector session. `tumpel_session_start` names the persona, repository, model and prompt. The run polls a compact `tumpel_transcript_read` by cursor every 2 s. A turn fails with no line in 180 s (60 s claim, 120 s first line) or past 3,600 s. `tumpel_turn_get` must read Completed, or `tumpel_turn_failure` names the reason. Each turn needs an assistant text line, one that does not open with a tool call like `[Bash] ...`. `tumpel_turn_send` repeats this with a second prompt. After `tumpel_session_stop`, `tumpel_session_get` must read Stopped. It times each turn to ids, first line and finish, counts the polls and times the stop.
+14. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
 
 ## Passing
 
-A run passes when all thirteen steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
+A run passes when all fourteen steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
 
 ## Result
 
