@@ -57,16 +57,7 @@ The token `tumpel-releases-upload-<stage>` writes the bucket. `npm run release:s
 
 ## GitHub Actions prebuilds
 
-Caller workflows call `tumpel/workflows/.github/workflows/prebuild.yml@v1` in the public repository [tumpel/workflows](https://github.com/tumpel/workflows), which `release.yml` publishes from this repository on each release tag (`doc/github-actions-prebuild.md`). The publish needs the repository secret `WORKFLOWS_PUBLISH_TOKEN`: a fine-grained personal access token with resource owner `tumpel` and read and write on Contents and Workflows of tumpel/workflows only. The release workflow holds no GitHub App credentials, so the publish cannot mint an installation token instead. The owner creates the token once and rotates it before it expires; the `workflows` job fails while it is missing.
-
-The owner protects the release tags once, in https://github.com/organizations/tumpel/settings/rules or in the tumpel/workflows settings under Rules, Rulesets:
-
-1. New ruleset, New tag ruleset. Name it `release tags` and set Enforcement status to Active.
-2. Leave the bypass list empty.
-3. Under Target tags, Add target, Include by pattern, `v*.*.*`.
-4. Under Rules, tick Restrict updates and Restrict deletions, and Create.
-
-`v1` stays outside the pattern, because each release moves it.
+Caller workflows call `tumpel/workflows/.github/workflows/prebuild.yml@v1` in the public repository [tumpel/workflows](https://github.com/tumpel/workflows), which is maintained there directly (`doc/github-actions-prebuild.md`); nothing in this repository publishes to it. Its tag ruleset `release tags are immutable` keeps `v*.*.*` tags from moving or being deleted, and `v1` stays outside it.
 
 A person sets up step 16 of the proof once per stage:
 

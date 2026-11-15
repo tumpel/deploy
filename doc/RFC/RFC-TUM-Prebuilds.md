@@ -119,7 +119,7 @@ On 2026-11-15 the following rulings were made:
 
 **Tenants opt in through a reusable workflow.** Tumpel publishes the prebuild workflow in the public repository `tumpel/workflows`. A tenant commits a short caller workflow that triggers on `workflow_dispatch` and calls `tumpel/workflows/.github/workflows/prebuild.yml@v1`. The App's manifest adds write on actions, which the dispatch call requires.
 
-**This repository stays private and holds the workflow's source.** The release copies the workflow one way into `tumpel/workflows`, where nobody edits it. Each release tags an immutable `vX.Y.Z` and moves the major tag `v1`. Ruled on D6.
+**`tumpel/workflows` is the workflow's source.** The workflows move at their own pace, so they live in their own repository. Agents commit there like in any other repository, tag an immutable `vX.Y.Z` and move the major tag `v1` when a change is ready. Skew between the workflow and the API is handled case by case in the change that causes it. Ruled on D6.
 
 **CircleCI is the second adapter, and tenants import the orb `tumpel/prebuild@1` in their own config.** Tumpel commits no file into a tenant repository. Ruled 2026-11-15.
 

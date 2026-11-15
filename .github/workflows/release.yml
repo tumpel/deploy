@@ -131,20 +131,3 @@ jobs:
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
           R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
         run: npm run release:publish -- manifest .tmp/fragments
-
-  workflows:
-    needs: publish
-    if: github.ref_type == 'tag'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - name: Publish the reusable workflows to tumpel/workflows
-        env:
-          WORKFLOWS_PUBLISH_TOKEN: ${{ secrets.WORKFLOWS_PUBLISH_TOKEN }}
-        run: npm run workflows:publish

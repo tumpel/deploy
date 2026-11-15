@@ -77,17 +77,17 @@ A run that is not `in_progress` within `prebuildDispatchBudgetSeconds` (600) fai
 
 ## Workflow
 
-The reusable workflow `.github/workflows/prebuild.yml` runs two jobs:
+The reusable workflow `tumpel/workflows/.github/workflows/prebuild.yml` runs two jobs:
 
 - `build` holds `contents: read` and no `id-token`. It imports the root filesystem tar as a local `linux/amd64` image, checks the repository out without credentials, bind-mounts it at `/root/workspace`, runs `/opt/tumpel/prebuild.mjs build /out` in the container and keeps `/out` as a job artifact.
 - `upload` holds `id-token: write` and runs no repository code. It extracts `/opt/tumpel/prebuild.mjs` and the image's Node.js from the same root filesystem tar, never from the artifact, and runs `prebuild.mjs upload` with the artifact.
 
 The upload job's token must carry a `job_workflow_ref` of `tumpel/workflows/.github/workflows/prebuild.yml` at tag `v1` or at a release tag `v1.x.y`; the upload start refuses any other with `JobTokenMismatch` on `job_workflow_ref`. A caller that pins a commit SHA is refused too, because its `job_workflow_ref` names no tag.
 
-The build and upload jobs run `/opt/tumpel/prebuild.mjs` from the guest image the prebuild names, and `v1` moves on every release. `prebuild.yml` must therefore stay compatible with every guest image still published, not only the newest. Step 16 of the proof runs its fixture through `@v1`, so it exercises the copy callers get.
+The build and upload jobs run `/opt/tumpel/prebuild.mjs` from the guest image the prebuild names, and `v1` moves with each change to tumpel/workflows. `prebuild.yml` must therefore stay compatible with every guest image still published, not only the newest. Step 16 of the proof runs its fixture through `@v1`, so it exercises the copy callers get.
 
-## Publishing
+## Maintaining tumpel/workflows
 
-Callers reference the copy in the public repository [tumpel/workflows](https://github.com/tumpel/workflows). `.github/workflows/prebuild.yml` in this repository is its only source: never edit the copy in tumpel/workflows. On a release tag `vX.Y.Z`, the `workflows` job of `release.yml` runs `npm run workflows:publish`, which commits the file to tumpel/workflows when it changed, tags that commit `vX.Y.Z` and moves `v1` to it. A release tag already on another commit fails the job, as does a release tag that sorts below the newest `vX.Y.Z` in tumpel/workflows, which would move `v1` backwards, and a missing `WORKFLOWS_PUBLISH_TOKEN` ([deploy](deploy.md#github-actions-prebuilds)).
+[tumpel/workflows](https://github.com/tumpel/workflows) is the source of `prebuild.yml` and of the caller example `examples/tumpel-prebuild.yml`. The workflows move at their own pace, so they live in their own repository. Agents commit there like in any other repository, tag the commit with the next immutable `vX.Y.Z` and move `v1` to it once the change is ready. Skew between the workflow and the API is handled case by case in the change that causes it.
 
-The five inputs are declared in each tenant's caller workflow, which Tumpel dispatches and which passes them on to `prebuild.yml`. Adding, renaming or removing an input therefore changes the caller contract: every tenant must update its caller workflow, so the control plane's `DISPATCH_INPUTS` in `packages/control-plane/src/github-actions.ts`, `on.workflow_call.inputs` in `prebuild.yml` and the caller workflow above change together. `packages/control-plane/test/github-actions.test.ts` fails while the first two differ.
+The five inputs are declared in each tenant's caller workflow, which Tumpel dispatches and which passes them on to `prebuild.yml`. Adding, renaming or removing an input therefore changes the caller contract: every tenant must update its caller workflow, so the control plane's `DISPATCH_INPUTS` in `packages/control-plane/src/github-actions.ts`, `on.workflow_call.inputs` in `prebuild.yml` and the caller workflow above change together.
