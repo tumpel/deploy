@@ -32,23 +32,23 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
 }
 ```
 
-The file holds no secret value. `valueFrom.env` names the environment variable `apply` reads it from. A box clones the session's repository with the tenant's GitHub App installation token, or else with the set's `GITHUB_TOKEN` Variable (EDD-003), and commits as the bot of the stage's GitHub App, `<app-slug>[bot]` with the noreply address `<app-id>+<app-slug>[bot]@users.noreply.github.com`, when the tenant installed the App; otherwise the GitHub user of the secret set's `GITHUB_TOKEN`, read with `GET /user` at turn start, with the noreply address `<id>+<login>@users.noreply.github.com`. A box with neither commits as `Tumpel Agent <agent@tumpel.invalid>`. Nobody enters a git identity. A public repository needs no token. `doc/personas/ticket-worker` is a persona that works a GitHub issue.
+The file holds no secret value. `valueFrom.env` names the environment variable `apply` reads it from. A box clones the session's repository with the tenant's GitHub App installation token, or else with the set's `GITHUB_TOKEN` Variable (EDD-003), and commits as the App's bot or as the GitHub user of that token (EDD-001). Nobody enters a git identity. Apply reads the token's GitHub user when it writes the `GITHUB_TOKEN` member, and fails when GitHub refuses the token. A turn with neither an installation token nor a `GITHUB_TOKEN` is refused `RepositoryTokenRefused`. `doc/personas/ticket-worker` is a persona that works a GitHub issue.
 
 - `tumpel config init <file>` writes a new file from the tenant's current state.
 - `tumpel config validate <file>` prints every schema error with its JSON pointer.
-- `tumpel config plan <file>` prints each create, update and delete, and changes nothing.
+- `tumpel config plan <file>` prints each create, update and delete without applying it.
 - `tumpel config apply <file>` applies the plan: secret sets, personas, deletes, pins and host labels.
 
-Personas and secret sets match by name, pins by harness, hosts by `hostId`. Whatever the file leaves out is deleted; an unlisted host loses its labels. Secret values are never read back, so the exported variables decide what happens to them. A secret set that is created or whose members change needs every variable it names exported. A kept set is rewritten when every variable it names is exported and keeps its values when none is; exporting only some stops the plan. Plan and apply follow the same rule: plan sends the names of the exported variables, apply sends their values. A rewritten set keeps its `secretSetId` and key names.
+Personas and secret sets match by name, pins by harness, hosts by `hostId`. Apply deletes whatever the file leaves out; an unlisted host loses its labels. Secret values are never read back, so the exported variables decide what happens to them. A secret set that is created or whose members change needs every variable it names exported. A kept set is rewritten when every variable it names is exported and keeps its values when none is; exporting only part of them stops the plan. Plan and apply follow the same rule: plan sends the names of the exported variables, apply sends their values. A rewritten set keeps its `secretSetId` and key names.
 
-Plan and apply run on the control plane: `TenantConfigs_plan` takes the file with each persona file's digest, and the names of the exported variables, and `TenantConfigs_apply` takes it with each file's bytes and the exported values. The CLI and the dashboard's setup checklist both call them; the MCP tool `tumpel_config_apply` takes no secret values, so it applies a config whose secret sets are kept as they are.
+Plan and apply run on the control plane: `TenantConfigs_plan` takes the file with each persona file's digest and the exported variable names, and `TenantConfigs_apply` takes it with each file's bytes and the exported values. The CLI and the dashboard's setup checklist both call them; the MCP tool `tumpel_config_apply` takes no secret values, so it applies a config whose secret sets are kept as they are.
 
 ## Set up your own tenant
 
-`doc/personas/tumpel-dev.json` holds the persona `tumpel-dev`, which works on this repository with Claude Code on Opus. Its secret set carries a Claude Code subscription token and a GitHub token. Sign in as yourself and apply it:
+`doc/personas/` holds `tumpel-dev.json` with the persona `tumpel-dev`, which works on this repository with Claude Code on Opus. Its secret set carries a Claude Code subscription token and a GitHub token. Sign in as yourself and apply it:
 
 1. `tumpel login --endpoint <stage origin>`, such as `https://api.dev.tumpel.dev`.
 2. Open the URL it prints in a browser and approve the code.
 3. `npm run tenant:apply -- doc/personas/tumpel-dev.json`
 
-`tenant:apply` reads the subscription token and its expiry from `~/.claude/.credentials.json` and the GitHub token from `gh auth token`, in process. It passes them to `tumpel config apply` through the environment only, so a rerun rotates the values. `TUMPEL_CREDENTIAL=dotfiles:<key name>` with `TUMPEL_CREDENTIAL_EXPIRES_AT` reads the token from dotfiles instead. Any other secret the file names must be exported first. `--endpoint <url>` overrides the control plane the CLI env file names; it must be the one you signed in to.
+`tenant:apply` reads the subscription token and its expiry from `~/.claude/.credentials.json` and the GitHub token from `gh auth token`, in process. It passes them to `tumpel config apply` through the environment only, so a rerun rotates the values. `TUMPEL_CREDENTIAL=dotfiles:<key name>` with `TUMPEL_CREDENTIAL_EXPIRES_AT` reads the token from dotfiles instead. Export any other secret the file names first. `--endpoint <url>` overrides the control plane the CLI env file names; it must be the one you signed in to.

@@ -134,7 +134,7 @@ On 2026-11-15 the following rulings were made:
 
 **The BuildKit client and the conversion of an OCI layer to packs run in the supervisor, on a tenant host that carries a builder role.** No new runtime is added. Ruled under the tenets, 2026-11-15.
 
-**A job gets its upload URLs by presenting its provider's OIDC token.** A URL in the dispatch inputs is a credential in the run's record. GitHub, CircleCI, GitLab and Bitbucket each issue a job token. His ruling: safe default, 2026-11-15.
+**A job gets its upload URLs by presenting its provider's OIDC token.** A URL in the dispatch inputs is a credential in the run's record. GitHub, CircleCI, GitLab and Bitbucket each issue a job token. He took the safe default.
 
 ## Implementation notes
 
@@ -163,18 +163,18 @@ Each start names its provider. The first check that fails refuses the start, in 
 7. RepositoryUnreadable: neither token can read the repository.
 8. NoPrebuildInputs: the repository holds none of the files.
 
-A start whose key matches a prebuild that is not Failed then returns the newest such prebuild. Any other start is refused BuildProviderUnavailable, naming the provider. Nothing dispatches and nothing is stored until the GitHub Actions adapter lands. A Namespace connection is refused IssuerMissing while the stage has no issuer.
+A start whose key matches a prebuild that is not Failed then returns the newest such prebuild, unless it asks for a rebuild. Past that point, Namespace is refused BuildProviderUnavailable. A GitHub Actions start is refused GitHubNotConnected while no App installation links the tenant, and DispatchRefused when GitHub refuses the token or the dispatch. Otherwise it dispatches the caller workflow and follows the run (`doc/github-actions-prebuild.md`). A Namespace connection is refused IssuerMissing while the stage has no issuer.
 
 ### Layer upload
 
 A GitHub Actions prebuild uploads its layer through `POST /v1/prebuilds/{prebuildId}/uploads` and `.../uploads/complete`, with the job's GitHub OIDC token as bearer. Namespace never uses this endpoint: its BuildKit client runs in the supervisor.
 
-- The token's `aud` is the API origin with no trailing slash, such as `https://api.tumpel.dev`. Its keys come from `<gitHubActionsIssuer>/.well-known/jwks`.
-- The token binds `repository` to the prebuild's repository, `workflow_ref` to `<repository>/<caller workflow>@<ref>`, `ref` to `refs/heads/<default branch>` as the dispatch recorded it, and `event_name` to `workflow_dispatch`. S7 adds `run_id` once the dispatch records it.
-- The token is checked before anything about the tenant is read. A missing tenant, a missing prebuild and another repository answer the same 404.
-- Only a Building prebuild takes an upload. S7 moves a prebuild from Dispatched to Building on `workflow_run` `in_progress`.
-- `start` takes `{tenantId, layerDigest, layerSizeBytes}`, records them, and answers `{sha256, url, uploadExpiresAt}`: one PUT to `<tenantId>/prebuilds/<prebuildId>/layers/<digest>`, signed with `content-length` and `x-amz-checksum-sha256`. `/opt/tumpel/prebuild.mjs upload` in the guest image asks for it and makes the PUT. `complete` takes `{tenantId}`, finds the recorded key in the bucket and moves the prebuild to Converting.
-- S7 must split the caller workflow into two jobs. The build job runs the repository's code and holds no `id-token` permission. A separate upload job holds `id-token: write`, runs no repository code, and uploads the build job's `layer.tar` (NFR-2).
+- The token's `aud` is the API origin with no trailing slash. Its keys come from `<gitHubActionsIssuer>/.well-known/jwks`.
+- The token binds `repository` to the prebuild's repository, `workflow_ref` to `<repository>/<caller workflow>@<ref>`, `ref` to `refs/heads/<default branch>` as the dispatch recorded it, and `event_name` to `workflow_dispatch`. It binds `run_id` and `sha` to the run and commit the dispatch recorded.
+- The token is checked before anything about the tenant is read. A missing tenant, prebuild or repository answers the same 404.
+- A Dispatched or Building prebuild takes an upload. An upload start from the recorded run moves a Dispatched prebuild to Building.
+- `start` takes `{tenantId, layerDigest, layerSizeBytes}`, records them, and answers `{sha256, url, uploadExpiresAt}`: one PUT to `<tenantId>/prebuilds/<prebuildId>/layers/<digest>`, signed with `content-length` and `x-amz-checksum-sha256` only. The layer cap is 5 GiB. A repeat `start` with the same digest and size answers a fresh grant, and one with another digest or size is refused Conflict. `complete` takes `{tenantId}`, finds the recorded key in the bucket and moves the prebuild to Converting.
+- The reusable workflow runs two jobs. The build job runs the repository's code and holds no `id-token` permission. The upload job holds `id-token: write` and uploads the build job's `layer.tar`. It runs `prebuild.mjs` and Node.js from the root filesystem tar, never from the build job's artifact (NFR-2).
 
 ### Build script
 

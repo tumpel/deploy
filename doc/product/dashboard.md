@@ -36,7 +36,7 @@ An import reads a `TenantConfig` file such as `doc/personas/tumpel-dev.json` and
 
 ## Sign-in and tenancy
 
-The dashboard signs in through the control plane's OAuth with PKCE, behind the Cloudflare Access consent page (#2). The token belongs to one principal and acts in one of its tenants. `Identity_whoami` names both.
+The dashboard signs in through the control plane's OAuth with PKCE, behind the Cloudflare Access consent page (#2). The token belongs to one principal and one of its tenants. `Identity_whoami` names both.
 
 The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId>`. Filters sit in the query string, so a reload or a shared link opens the same view. The header's tenant switcher lists the tenants of the signed-in email and keeps one token per tenant. Picking a tenant without a token runs the consent for that tenant and returns to the same path under the new tenant id.
 
@@ -51,14 +51,14 @@ The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId
 | Harnesses   | The catalog and the tenant's pins; pin and unpin                                   | `HarnessCatalog_list`, `HarnessCatalog_listPins`, `HarnessCatalog_pin`, `HarnessCatalog_unpin`                                                                                           |
 | Personas    | Personas with harness, secret set and files; create, edit, delete                  | `Personas_list`, `Personas_get`, `Personas_create`, `Personas_update`, `Personas_delete`, `Personas_uploadFile`, `HarnessCatalog_list`                                                   |
 | Secrets     | Secret sets with member names, kinds, providers and expiries; create, edit, delete | `SecretSets_list`, `SecretSets_get`, `SecretSets_create`, `SecretSets_update`, `SecretSets_delete`, G12                                                                                  |
-| Connections | Each connection with its state and account; connect, disconnect                    | `GitHubConnections_get`, `GitHubConnections_start`, G5, G6, G10, G15, G16, G17                                                                                                           |
+| Connections | Each connection with its state and account; connect, disconnect                    | `GitHubConnections_get`, `GitHubConnections_start`, `GitHubConnections_delete`, G5, G10, G15, G16, G17                                                                                   |
 | Prebuilds   | The latest prebuild of each repository; rebuild                                    | `GitHubConnections_listRepositories`, G18, G19, G20, G21                                                                                                                                 |
 | Members     | Members with role, open invites; invite, revoke, remove                            | G2, G3, G4                                                                                                                                                                               |
 | Account     | The signed-in principal and its devices; sign a device out                         | `Identity_whoami`, `Devices_list`, `Devices_revoke`                                                                                                                                      |
 
 ## Screen rules
 
-Start a session reads GitHub as not connected from the `GitHubNotConnected` refusal of `GitHubConnections_listRepositories`, and offers Connect GitHub in place of the pickers. Enrolment shows the minted token and its install command once, with the expiry. The persona file editor lists only the paths the catalog lists for the persona's harness. Per-harness config is the persona's files.
+Start a session reads GitHub as not connected from the `GitHubNotConnected` refusal of `GitHubConnections_listRepositories`, and shows Connect GitHub in place of the pickers. A start from an issue that does not exist is refused 404 `IssueNotFound`, and the form shows the refusal under the Issue field. Enrolment shows the minted token and its install command once, with the expiry. The persona file editor lists only the paths the catalog lists for the persona's harness. Per-harness config is the persona's files.
 
 Secret values go into a password field and travel once, in the create or update call. The API holds every value back. A subscription token past its `expiresAt` reads Expired and names the fix.
 
@@ -72,7 +72,7 @@ A connection links the tenant to an outside service. Every connection has the sa
 | NotConnected  | The stage has an app and the tenant has not linked it | Connect                      |
 | Connected     | The tenant holds a link to one account                | Disconnect                   |
 
-For GitHub, NotConfigured is today's `AppMissing`, whose `setupUrl` opens `/github/app/setup`. Connect sends the browser to the `installUrl` of `GitHubConnections_start`. GitHub returns to `/github/app/installed`, which links the installation and sends the browser back (G10). Connected shows the account login and the covered repositories (`GitHubConnections_listRepositories`). Disconnect removes the link (G6) and says to uninstall the App on GitHub too.
+For GitHub, NotConfigured is today's `AppMissing`, whose `setupUrl` opens `/github/app/setup`. Connect sends the browser to the `installUrl` of `GitHubConnections_start`. GitHub returns to `/github/app/installed`, which links the installation and sends the browser back (G10). Connected shows the account login and the covered repositories (`GitHubConnections_listRepositories`). Disconnect is for an Owner and calls `GitHubConnections_delete`. It removes the link and says to uninstall the App on GitHub too.
 
 A later service adds its own operation group with `get`, `start` and `delete`, and one row in `Connections_list` (G5).
 

@@ -4,13 +4,13 @@ An appendix of [RFC: Tumpel](../RFC/RFC-TUM-Tumpel.md).
 
 ## Summary
 
-Agents prove every stage after its deploy, against that stage's control plane and a real host, with no mocks and no person in a browser. A test run signs in, enrols the host, runs turns on Claude Code, restores a session from its snapshots and checks isolation and secrecy. It also checks the issuer and a refused prebuild. The stage passes when every step passes in one run.
+Agents prove every stage after its deploy, against that stage's control plane and a real host, with no mocks and no person in a browser. A test run signs in, enrols the host, runs turns on Claude Code, restores a session from its snapshots and checks isolation and secrecy. It also checks the issuer and the prebuilds. The stage passes when every step passes in one run.
 
 ## Where it runs
 
 The reference host is a Linux VM on the hypervisor `box`, with a host-passthrough CPU so it exposes KVM, 4 vCPU and 8 GiB. The control plane is the stage's deployed Worker. An agent on the development machine drives the hosted MCP server and the CLI of the stage's current release.
 
-`npm run proof:e2e` runs the sixteen steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
+`npm run proof:e2e` runs the seventeen steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
 
 ## Signing in
 
@@ -20,7 +20,7 @@ The test run holds a Cloudflare Access service token. Access issues a JWT for it
 
 1. Sign in. `tumpel whoami` names the test tenant.
 2. Enrol. The run copies the published supervisor to the host. Its installer sets up the host, which enrols with a freshly minted token and reads Online.
-3. Configure. `npm-scripts/proof-tenant.mjs` applies `doc/personas/proof-tenant.json`: the `proof`, `refused` and `ticket-worker` personas and their secret sets. Every value comes from the environment, the token's expiry from the credential.
+3. Configure. `npm-scripts/proof-tenant.mjs` applies `doc/personas/proof-tenant.json`: the `proof`, `refused` and `ticket-worker` personas and their secret sets. Every value comes from the environment, the token's expiry from the credential. Each set carries `GITHUB_TOKEN` from `PROOF_GITHUB_TOKEN`.
 4. First turn. A start names the persona, a model, a small test repository and a prompt, and returns ids before the first line. Lines arrive, and the turn reads Completed.
 5. Warm turn. A second turn inside the warm window resumes the paused box and reaches the same harness process.
 6. Snapshot. After the quiet delay the snapshot reads Stored.
@@ -41,11 +41,12 @@ Step 13 makes every call as a JSON-RPC `tools/call` on `/mcp`, with the bearer t
 
 14. Issuer. Discovery and the JWKS answer on `id.<stage>.tumpel.dev` and name the stage's issuer, its JWKS URL and RS256. Any other path there answers 404. The run then rotates the key and mints no token. The rotation's `signsFrom` must fall within the next 24 h, and the JWKS must publish both the signing key and the next key.
 15. Prebuild refused. `tumpel connection list` reads the GitHubActions and Namespace rows, and neither is Connected. A prebuild start on the proof repository names each provider in turn. Each start is refused `Build provider not connected` (NoBuildProvider) with that provider's name, and the repository then has no prebuild.
-16. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
+16. Prebuild GitHub Actions. The step is skipped until `TUMPEL_PROOF_PREBUILD_REPO` names a fixture repository of the App installation's account. That repository holds the caller workflow `.github/workflows/tumpel-prebuild.yml` on its default branch. The run connects GitHub Actions with that caller workflow and starts a rebuild on the fixture. Within the dispatch and build budgets the prebuild must read Converting. A second start must answer the same prebuild. The run then deletes the GitHub Actions connection.
+17. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
 
 ## Passing
 
-A run passes when all sixteen steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
+A run passes when all seventeen steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
 
 ## Result
 
