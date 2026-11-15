@@ -17,6 +17,7 @@ export const CLAUDE_FLAGS = [
 export const NODE_ARCH = { amd64: "x64", arm64: "arm64" };
 
 const PI_VERSION = "1.5.2";
+const OPENCODE_VERSION = "1.19.5";
 
 export const HARNESS_RUNS = {
   ClaudeCode: { protocol: "ClaudeStreamJson", binary: "claude", flags: CLAUDE_FLAGS },
@@ -33,6 +34,21 @@ export const HARNESS_RUNS = {
         arm64: "42805cd5615952fcbbfc9c56b04f8feb84395134952e169a6cdc8d7676975666",
       },
       stripComponents: 1,
+    },
+  },
+  OpenCode: {
+    protocol: "ClaudeStreamJson",
+    binary: "opencode",
+    flags: ["run", "--format", "json"],
+    archive: {
+      version: OPENCODE_VERSION,
+      url: (arch) =>
+        `https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/opencode-linux-${NODE_ARCH[arch]}.tar.gz`,
+      digests: {
+        amd64: "588310a336fa3b9df36b3f0225b26f679d453efaad0cf3d66c3651ef3ec1647a",
+        arm64: "fae5be262d693b7c5e562856cc473e59e741772936db0c0600ac0d5ed5bd088b",
+      },
+      stripComponents: 0,
     },
   },
 };
