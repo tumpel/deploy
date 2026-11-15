@@ -58,7 +58,7 @@ The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId
 
 ## Screen rules
 
-Enrolment shows the minted token and its install command once, with the expiry. The persona file editor lists only the paths the catalog lists for the persona's harness. Per-harness config is the persona's files.
+Start a session reads GitHub as not connected from the `GitHubNotConnected` refusal of `GitHubConnections_listRepositories`, and offers Connect GitHub in place of the pickers. Enrolment shows the minted token and its install command once, with the expiry. The persona file editor lists only the paths the catalog lists for the persona's harness. Per-harness config is the persona's files.
 
 Secret values go into a password field and travel once, in the create or update call. The API holds every value back. A subscription token past its `expiresAt` reads Expired and names the fix.
 
