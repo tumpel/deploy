@@ -43,6 +43,25 @@ Personas and secret sets match by name, pins by harness, hosts by `hostId`. Appl
 
 Plan and apply run on the control plane: `TenantConfigs_plan` takes the file with each persona file's digest and the exported variable names, and `TenantConfigs_apply` takes it with each file's bytes and the exported values. The CLI and the dashboard's setup checklist both call them. The CLI plans with the names it exports; the dashboard plans with an empty list, so its plan never shows a rewrite; the MCP tool `tumpel_config_apply` takes no secret values, so it applies a config whose secret sets are kept as they are.
 
+## Set one value at a time
+
+Every value of the file also has a command of its own, each value a flag or a `--file <path>`. A secret value is read from stdin with `--stdin`, one value per invocation, never as a flag value, and is never echoed. `set-member` replaces a member of the same name and keeps every other member's value; `remove-member` drops one. `persona update` keeps what its flags leave out, and `--persona-file` replaces the whole file set.
+
+```sh
+tumpel secret-set create --name Default
+gh auth token | tumpel secret-set set-member <secretSetId> --kind Variable --name GITHUB_TOKEN --stdin
+tumpel secret-set set-member <secretSetId> --kind SubscriptionToken --name CLAUDE_CODE_OAUTH_TOKEN \
+  --provider Anthropic --expires-at 2027-11-15T00:00:00+00:00 --stdin < token.txt
+tumpel secret-set remove-member <secretSetId> ANTHROPIC_API_KEY
+tumpel persona create --name tumpel-dev --harness ClaudeCode --secret-set-id <secretSetId> \
+  --persona-file .claude/settings.json=./settings.json --persona-file .claude/CLAUDE.md=./CLAUDE.md
+tumpel persona update <personaId> --secret-set-id <secretSetId>
+tumpel harness pin ClaudeCode 2.0.0
+tumpel host set-labels <hostId> gpu
+```
+
+`tumpel config plan` and `apply` keep reading secret values from the variables `valueFrom.env` names.
+
 ## Set up your own tenant
 
 `doc/personas/` holds `tumpel-dev.json` with the persona `tumpel-dev`, which works on this repository with Claude Code on Opus. Its secret set carries a Claude Code subscription token and a GitHub token. Sign in as yourself and apply it:
