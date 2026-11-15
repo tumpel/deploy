@@ -165,6 +165,17 @@ Each start names its provider. The first check that fails refuses the start, in 
 
 A start whose key matches a prebuild that is not Failed then returns the newest such prebuild. Any other start is refused BuildProviderUnavailable, naming the provider. Nothing dispatches and nothing is stored until the GitHub Actions adapter lands. A Namespace connection is refused IssuerMissing while the stage has no issuer.
 
+### Layer upload
+
+A GitHub Actions prebuild uploads its layer through `POST /v1/prebuilds/{prebuildId}/uploads` and `.../uploads/complete`, with the job's GitHub OIDC token as bearer. Namespace never uses this endpoint: its BuildKit client runs in the supervisor.
+
+- The token's `aud` is the API origin with no trailing slash, such as `https://api.tumpel.dev`. Its keys come from `<gitHubActionsIssuer>/.well-known/jwks`.
+- The token binds `repository` to the prebuild's repository, `workflow_ref` to `<repository>/<caller workflow>@<ref>`, `ref` to `refs/heads/<default branch>` as the dispatch recorded it, and `event_name` to `workflow_dispatch`. S7 adds `run_id` once the dispatch records it.
+- The token is checked before anything about the tenant is read. A missing tenant, a missing prebuild and another repository answer the same 404.
+- Only a Building prebuild takes an upload. S7 moves a prebuild from Dispatched to Building on `workflow_run` `in_progress`.
+- `start` takes `{tenantId, layerDigest, layerSizeBytes}`, records them, and answers `{sha256, url, uploadExpiresAt}`: one PUT to `<tenantId>/prebuilds/<prebuildId>/layers/<digest>`, signed with `content-length` and `x-amz-checksum-sha256`. `prebuild.sh upload` reads that answer as its upload spec. `complete` takes `{tenantId}`, finds the recorded key in the bucket and moves the prebuild to Converting.
+- The caller workflow runs two jobs. The build job runs the repository's code and holds no `id-token` permission. A separate upload job holds `id-token: write`, runs no repository code, and uploads the build job's `layer.tar` (NFR-2).
+
 ### Connections
 
 `ConnectionKind` is GitHub, GitHubActions or Namespace. GitHub Actions connects on the path `/v1/github-actions-connection` or with `tumpel github-actions`. Namespace connects on `/v1/namespace-connection` or with `tumpel namespace`. Each tenant holds one connection per provider. The GitHub Actions connection names the caller workflow, which the job token must name. The Namespace connection holds the issuer, the `sub` and the audience that the tenant registers at Namespace.
