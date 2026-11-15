@@ -39,9 +39,11 @@ The file holds no secret value. `valueFrom.env` names the environment variable `
 - `tumpel config init <file>` writes a new file from the tenant's current state.
 - `tumpel config validate <file>` prints every schema error with its JSON pointer.
 - `tumpel config plan <file>` prints each create, update and delete, and changes nothing.
-- `tumpel config apply <file> [--rewrite-secrets <set-name>]...` applies the plan: personas, then secret sets, pins and host labels.
+- `tumpel config apply <file>` applies the plan: secret sets, personas, deletes, pins and host labels, and writes every secret set's values again.
 
-Personas and secret sets match by name, pins by harness, hosts by `hostId`. Whatever the file leaves out is deleted; an unlisted host loses its labels. Secret values are never read back, so a new value under the same key names plans nothing. To rotate a set's values, export the new ones and run `tumpel config apply <file> --rewrite-secrets <set-name>`; repeat the flag for more sets. The set keeps its `secretSetId` and key names.
+Personas and secret sets match by name, pins by harness, hosts by `hostId`. Whatever the file leaves out is deleted; an unlisted host loses its labels. Secret values are never read back, so a new value under the same key names plans nothing; apply writes every set's values again, so export each variable the file names. A rewritten set keeps its `secretSetId` and key names.
+
+Plan and apply run on the control plane: `TenantConfigs_plan` takes the file with each persona file's digest, and `TenantConfigs_apply` takes it with each file's bytes and every value. The CLI and the dashboard's setup checklist both call them; the MCP tool `tumpel_config_apply` takes no secret values.
 
 ## Set up your own tenant
 
@@ -51,4 +53,4 @@ Personas and secret sets match by name, pins by harness, hosts by `hostId`. What
 2. Open the URL it prints in a browser and approve the code.
 3. `npm run tenant:apply -- doc/personas/tumpel-dev.json`
 
-`tenant:apply` reads the subscription token and its expiry from `~/.claude/.credentials.json` and the GitHub token from `gh auth token`, in process. It passes them to `tumpel config apply` through the environment only and rewrites every secret set of the file, so a rerun rotates the values. `TUMPEL_CREDENTIAL=dotfiles:<key name>` with `TUMPEL_CREDENTIAL_EXPIRES_AT` reads the token from dotfiles instead. Any other secret the file names must be exported first. `--endpoint <url>` overrides the control plane the CLI env file names; it must be the one you signed in to.
+`tenant:apply` reads the subscription token and its expiry from `~/.claude/.credentials.json` and the GitHub token from `gh auth token`, in process. It passes them to `tumpel config apply` through the environment only, so a rerun rotates the values. `TUMPEL_CREDENTIAL=dotfiles:<key name>` with `TUMPEL_CREDENTIAL_EXPIRES_AT` reads the token from dotfiles instead. Any other secret the file names must be exported first. `--endpoint <url>` overrides the control plane the CLI env file names; it must be the one you signed in to.

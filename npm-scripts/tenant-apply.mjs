@@ -35,9 +35,8 @@ const secrets = tenantSecretEnv(
   die,
 );
 const endpoint = values.endpoint ? { TUMPEL_ENDPOINT: values.endpoint } : {};
-const rewrite = config.secretSets.flatMap((set) => ["--rewrite-secrets", set.name]);
 
-const child = spawnSync(TUMPEL, ["config", "apply", file, ...rewrite], {
+const child = spawnSync(TUMPEL, ["config", "apply", file], {
   stdio: "inherit",
   env: { ...process.env, ...endpoint, ...secrets },
 });

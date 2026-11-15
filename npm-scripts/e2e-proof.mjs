@@ -556,7 +556,7 @@ const steps = [
       const failure = tumpelJson(["turn", "failure", run.turnId]);
       if (failure.reason !== "CredentialRefused")
         fail(`the turn failed ${failure.reason}: ${failure.detail.slice(0, 300)}`);
-      if (!failure.detail.includes("secret set refused") || !failure.detail.includes("--rewrite-secrets refused")) {
+      if (!failure.detail.includes("secret set refused") || !failure.detail.includes("tumpel config apply")) {
         fail(`the failure does not name the set and its replacement: ${failure.detail.slice(0, 300)}`);
       }
       return `Failed CredentialRefused naming secret set refused, ${run.firstLineMs} ms`;

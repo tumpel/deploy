@@ -13,7 +13,7 @@ export const loadCredential = (die) => loadSubscription("TUMPEL_PROOF_CREDENTIAL
 
 export const proofTenantApply = (credential, die) => {
   return {
-    args: ["config", "apply", PROOF_TENANT_FILE, ...SECRET_SETS.flatMap((name) => ["--rewrite-secrets", name])],
+    args: ["config", "apply", PROOF_TENANT_FILE],
     env: {
       PROOF_CLAUDE_CODE_OAUTH_TOKEN: credential.token,
       PROOF_CLAUDE_CODE_OAUTH_TOKEN_EXPIRES_AT: credential.expiresAt,
