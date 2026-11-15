@@ -406,7 +406,10 @@ const buildImage = async (name, pins) => {
     const components = [...(await installDevTools(tree, pins)), ...(await recipe.install(tree))];
     const imageDigest = await packImage(work, tree, pins, OUT, {
       workingDirectory: recipe.harness.workingDirectory,
-      environment: recipe.harness.environment,
+      environment: {
+        ...recipe.harness.environment,
+        ...Object.fromEntries(recipe.harness.fixedVariables.map(({ name, value }) => [name, value])),
+      },
       createdBy: `tumpel guest:image ${recipe.harness.harness} ${recipe.harness.harnessVersion}`,
     });
     const manifest = GuestImageManifestSchema.parse({

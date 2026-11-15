@@ -40,6 +40,7 @@ const shellRecipe = () => ({
     workingDirectory: WORKING_DIRECTORY,
     cloneSeconds: CLONE_SECONDS,
     environment: ENVIRONMENT,
+    fixedVariables: [],
   }),
   install: { kind: "None" },
 });
@@ -59,6 +60,7 @@ const catalogRecipe = (name, arch) => {
     workingDirectory: WORKING_DIRECTORY,
     cloneSeconds: CLONE_SECONDS,
     environment: ENVIRONMENT,
+    fixedVariables: run.fixedVariables,
   });
   return { harness, install: installOf(entry, run, arch) };
 };
