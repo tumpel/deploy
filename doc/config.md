@@ -37,11 +37,11 @@ The file holds no secret value. `valueFrom.env` names the environment variable `
 - `tumpel config init <file>` writes a new file from the tenant's current state.
 - `tumpel config validate <file>` prints every schema error with its JSON pointer.
 - `tumpel config plan <file>` prints each create, update and delete, and changes nothing.
-- `tumpel config apply <file>` applies the plan: secret sets, personas, deletes, pins and host labels, and writes every secret set's values again.
+- `tumpel config apply <file>` applies the plan: secret sets, personas, deletes, pins and host labels.
 
-Personas and secret sets match by name, pins by harness, hosts by `hostId`. Whatever the file leaves out is deleted; an unlisted host loses its labels. Secret values are never read back, so a new value under the same key names plans nothing; apply writes every set's values again, so export each variable the file names. A rewritten set keeps its `secretSetId` and key names.
+Personas and secret sets match by name, pins by harness, hosts by `hostId`. Whatever the file leaves out is deleted; an unlisted host loses its labels. Secret values are never read back, so the exported variables decide what happens to them. A secret set that is created or whose members change needs every variable it names exported. A kept set is rewritten when every variable it names is exported and keeps its values when none is; exporting only some stops the plan. Plan and apply follow the same rule: plan sends the names of the exported variables, apply sends their values. A rewritten set keeps its `secretSetId` and key names.
 
-Plan and apply run on the control plane: `TenantConfigs_plan` takes the file with each persona file's digest, and `TenantConfigs_apply` takes it with each file's bytes and every value. The CLI and the dashboard's setup checklist both call them; the MCP tool `tumpel_config_apply` takes no secret values.
+Plan and apply run on the control plane: `TenantConfigs_plan` takes the file with each persona file's digest, and the names of the exported variables, and `TenantConfigs_apply` takes it with each file's bytes and the exported values. The CLI and the dashboard's setup checklist both call them; the MCP tool `tumpel_config_apply` takes no secret values, so it applies a config whose secret sets are kept as they are.
 
 ## Set up your own tenant
 
