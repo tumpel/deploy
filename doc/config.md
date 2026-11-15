@@ -45,12 +45,12 @@ Plan and apply run on the control plane: `TenantConfigs_plan` takes the file wit
 
 ## Set one value at a time
 
-Every value of the file also has a command of its own, each value a flag or a `--file <path>`. A secret value is read from stdin with `--stdin`, one value per invocation, never as a flag value, and is never echoed. `set-member` replaces a member of the same name and keeps every other member's value; `remove-member` drops one. `persona update` keeps what its flags leave out, and `--persona-file` replaces the whole file set.
+Every value of the file also has a command of its own, each value a flag or a `--file <path>`. A secret value is read from stdin with `--stdin`, one value per invocation, never as a flag value, and is never echoed. `set-member variable`, `set-member api-key` and `set-member subscription-token` each take the flags their kind needs; each replaces a member of the same name and keeps every other member's value. `remove-member` drops one. `persona update` takes at least one flag and keeps what its flags leave out; `--persona-file` replaces the whole file set.
 
 ```sh
 tumpel secret-set create --name Default
-gh auth token | tumpel secret-set set-member <secretSetId> --kind Variable --name GITHUB_TOKEN --stdin
-tumpel secret-set set-member <secretSetId> --kind SubscriptionToken --name CLAUDE_CODE_OAUTH_TOKEN \
+gh auth token | tumpel secret-set set-member variable <secretSetId> --name GITHUB_TOKEN --stdin
+tumpel secret-set set-member subscription-token <secretSetId> --name CLAUDE_CODE_OAUTH_TOKEN \
   --provider Anthropic --expires-at 2027-11-15T00:00:00+00:00 --stdin < token.txt
 tumpel secret-set remove-member <secretSetId> ANTHROPIC_API_KEY
 tumpel persona create --name tumpel-dev --harness ClaudeCode --secret-set-id <secretSetId> \
