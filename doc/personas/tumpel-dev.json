@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/mvhenten/tumpel/main/packages/api/generated/TenantConfig.json",
+  "personas": [
+    {
+      "name": "tumpel-dev",
+      "harness": "ClaudeCode",
+      "secretSetName": "tumpel-dev",
+      "gitAuthorName": "Tumpel Dev",
+      "gitAuthorEmail": "tumpel-dev@users.noreply.github.com",
+      "files": [
+        { "path": ".claude/settings.json", "from": "tumpel-dev/settings.json" },
+        { "path": ".claude/CLAUDE.md", "from": "tumpel-dev/CLAUDE.md" }
+      ]
+    }
+  ],
+  "secretSets": [
+    {
+      "name": "tumpel-dev",
+      "secrets": [
+        {
+          "kind": "SubscriptionToken",
+          "name": "CLAUDE_CODE_OAUTH_TOKEN",
+          "provider": "Anthropic",
+          "expiresAt": { "env": "TUMPEL_DEV_CLAUDE_CODE_OAUTH_TOKEN_EXPIRES_AT" },
+          "valueFrom": { "env": "TUMPEL_DEV_CLAUDE_CODE_OAUTH_TOKEN" }
+        },
+        {
+          "kind": "Variable",
+          "name": "GITHUB_TOKEN",
+          "valueFrom": { "env": "TUMPEL_DEV_GITHUB_TOKEN" }
+        }
+      ]
+    }
+  ],
+  "harnessPins": [],
+  "hosts": []
+}

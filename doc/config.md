@@ -42,3 +42,13 @@ The file holds no secret value. `valueFrom.env` names the environment variable `
 - `tumpel config apply <file> [--rewrite-secrets <set-name>]...` applies the plan: personas, then secret sets, pins and host labels.
 
 Personas and secret sets match by name, pins by harness, hosts by `hostId`. Whatever the file leaves out is deleted; an unlisted host loses its labels. Secret values are never read back, so a new value under the same key names plans nothing. To rotate a set's values, export the new ones and run `tumpel config apply <file> --rewrite-secrets <set-name>`; repeat the flag for more sets. The set keeps its `secretSetId` and key names.
+
+## Set up your own tenant
+
+`doc/personas/tumpel-dev.json` holds the persona `tumpel-dev`, which works on this repository with Claude Code on Opus. Its secret set carries a Claude Code subscription token and a GitHub token. Sign in as yourself and apply it:
+
+1. `tumpel login --endpoint <stage origin>`, such as `https://api.dev.tumpel.dev`.
+2. Open the URL it prints in a browser and approve the code.
+3. `npm run tenant:apply -- doc/personas/tumpel-dev.json`
+
+`tenant:apply` reads the subscription token and its expiry from `~/.claude/.credentials.json` and the GitHub token from `gh auth token`, in process. It passes them to `tumpel config apply` through the environment only and rewrites every secret set of the file, so a rerun rotates the values. `TUMPEL_CREDENTIAL=dotfiles:<key name>` with `TUMPEL_CREDENTIAL_EXPIRES_AT` reads the token from dotfiles instead. Any other secret the file names must be exported first. `--endpoint <url>` overrides the control plane the CLI env file names; it must be the one you signed in to.
