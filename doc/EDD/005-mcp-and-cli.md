@@ -4,7 +4,7 @@ An appendix of [RFC: Tumpel](../RFC/RFC-TUM-Tumpel.md).
 
 ## Summary
 
-The MCP server runs on the control plane's Worker, on a path of the control plane's domain. MCP clients sign in through OAuth, and the CLI signs in through a device code. Every signed-in operation is one MCP tool and one CLI command on the same REST handler. A tenant's configuration lives in one file that the CLI validates, plans and applies.
+The MCP server runs on the control plane's Worker, on a path of the control plane's domain. MCP clients sign in through OAuth, and the CLI signs in through a device code. Every tenant operation is one MCP tool and one CLI command on the same REST handler. A tenant's configuration lives in one file that the CLI validates, plans and applies.
 
 ## Sign-in
 
@@ -43,9 +43,9 @@ Reusing a spent code or refresh token revokes every token of that client and pri
 
 ## Parity
 
-An operation `Group_op` becomes the tool `tumpel_<noun>_<verb>` and the command `tumpel <noun> <verb>`. A build check fails when an operation lacks either one or when the published surface list is stale. Browser-only pages and the OAuth, device-flow and enrolment endpoints carry no principal, so they stay out of both.
+An operation `Group_op` becomes the tool `tumpel_<noun>_<verb>` and the command `tumpel <noun> <verb>`. The owner ruled on 2026-11-15 that the MCP allows it all, so an MCP session sets up and runs a whole tenant. `npm run surface:check` fails when an operation outside its allowlist lacks either one, or when the published surface list ([doc/surface.md](../surface.md)) is stale. Each entry gives a one-line reason, and only operations that are not tenant operations qualify: browser-only pages, the OAuth, OpenID and device-code wire, the host channel's enrolment, release downloads and the build job wire. An entry that names no operation, or one that has a tool, fails the check too.
 
-Secret-set tools take key names and environment variable names, and they refuse values. They return the config entry that `tumpel config apply` turns into stored values.
+Secret values never pass through MCP. They arrive through the dashboard, the OAuth connections or `tumpel config apply` on the CLI. Secret-set tools take key names and environment variable names and refuse values. They return the config entry that `tumpel config apply` turns into stored values, and `tumpel_config_apply` refuses a config that carries secret values.
 
 ## Versioned schemas
 

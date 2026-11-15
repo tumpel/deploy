@@ -132,7 +132,7 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 ### Domain and stages
 
-**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. Each stage has its own hostnames. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record. Once tenants pin the issuer hostname, it never moves ([the OIDC issuer](RFC-TUM-Prebuilds.md#the-oidc-issuer)). On 2026-11-15 the ruling read:
+**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. Each stage has its own hostnames. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record. On 2026-11-15 the ruling read:
 
 > tumpel.dev for everything
 
@@ -162,7 +162,9 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 **Repository access is a GitHub App installation token.** Every self-hosted control plane registers its own GitHub App, one per stage, at its own `/github/app/setup` page (ruling of 2026-11-15). Each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN` (EDD-003).
 
-**MCP and CLI parity is a build check.** Every signed-in operation is one MCP tool and one CLI command on the same handler. The build fails on a gap.
+**MCP and CLI parity is a build check.** Every tenant operation is one MCP tool and one CLI command on the same handler, and the build fails on a gap. On 2026-11-15 the ruling put every tenant operation on MCP: only the OAuth, browser-only, host channel and release endpoints stay off it, and secret values still never pass through MCP.
+
+> the mcp should allow it all
 
 **A transcript read is the live poll.** A caller reads the transcript page by page until a page reads `finished`. A compact read of a Claude Code turn keeps the assistant's text and one line per tool call.
 
