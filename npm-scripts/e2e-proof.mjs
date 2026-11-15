@@ -305,7 +305,7 @@ const steps = [
       }
       const storedAfter = snapshot.createdAt - state.warm.turn.updatedAt;
       const put = storedAfter - settings.snapshotDelaySeconds * 1000;
-      return `Stored ${snapshot.outcome.sizeBytes} B, ${storedAfter} ms after the turn (delay ${settings.snapshotDelaySeconds} s, so capture and PUT ${put} ms)`;
+      return `Stored, ${snapshot.outcome.uploadedBytes} B uploaded, ${storedAfter} ms after the turn (delay ${settings.snapshotDelaySeconds} s, so capture and PUT ${put} ms)`;
     },
   },
   {
