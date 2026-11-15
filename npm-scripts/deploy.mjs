@@ -254,6 +254,8 @@ wrangler([
   `ACCESS_AUD:${output("access_aud")}`,
   "--var",
   `ACCESS_PROOF_COMMON_NAME:${output("proof_common_name")}`,
+  "--var",
+  `ISSUER_HOSTNAME:${output("issuer_hostname")}`,
 ]);
 wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
 if (excluded.length > 0) apply([]);
