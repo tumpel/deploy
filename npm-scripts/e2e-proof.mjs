@@ -795,7 +795,7 @@ const steps = [
     skip: () =>
       PREBUILD_REPOSITORY
         ? undefined
-        : `TUMPEL_PROOF_PREBUILD_REPO is unset; name a repository of the App installation's account that holds ${CALLER_WORKFLOW} calling the reusable prebuild workflow; the App needs actions: write, and a changed manifest does not update an existing App, so its owner edits its permissions and each installation accepts them`,
+        : `TUMPEL_PROOF_PREBUILD_REPO is unset; name a repository of the App installation's account, where the start commits ${CALLER_WORKFLOW}; the App needs Actions, Contents and Workflows write, and a changed manifest does not update an existing App, so its owner edits its permissions and each installation accepts them`,
     run: async () => {
       tumpel(["github-actions", "start", "--account-label", "proof", "--caller-workflow", CALLER_WORKFLOW]);
       try {
