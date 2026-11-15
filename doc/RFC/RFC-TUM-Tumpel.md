@@ -56,7 +56,7 @@ Each session belongs to a tenant and runs one harness on one host. The harness's
 
 ### Credentials
 
-A persona names one harness and carries that harness's own config files. It names one secret set, the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel to the box. The box exports it into the harness's environment.
+A persona names one harness and carries that harness's own config files. It names one secret set. Besides the GitHub App token for the session's repository, that set is the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel to the box. The box exports it into the harness's environment.
 
 ### Snapshots
 
@@ -140,7 +140,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Snapshot bytes move on presigned URLs.** The control plane signs one upload URL per snapshot and download URLs for a restore, so a host holds no storage key. Memory state never leaves the host.
 
-**The central store holds accounts and hosts.** It holds tenants, principals, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant.
+**The central store holds accounts, hosts and the GitHub App.** It holds tenants, principals, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant. It also holds the stage's GitHub App and each tenant's installation. GitHub's uninstall webhook names only the installation.
 
 ### Runtime and surface
 
@@ -152,7 +152,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. Its size, the host's `boxCapacity`, is 8 by default.
 
-**Repository access is a secret.** On its first turn, the box clones the repository with the secret set's `GITHUB_TOKEN`.
+**Repository access is a GitHub App installation token.** Each stage has one GitHub App, and each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN`. When no installation covers the repository, the box uses the secret set's `GITHUB_TOKEN` (EDD-003).
 
 **MCP and CLI parity is a build check.** Every signed-in operation is one MCP tool and one CLI command on the same handler. The build fails on a gap.
 
@@ -332,11 +332,11 @@ model Snapshot {
 
 ## Appendix of engineering design documents
 
-| EDD                                                | Topic                                                           |
-| -------------------------------------------------- | --------------------------------------------------------------- |
-| [EDD-001](../EDD/001-runtime.md)                   | Runtime: boxes, the warm window, host setup, networking         |
-| [EDD-002](../EDD/002-host-channel.md)              | Host channel: protocol, budgets, named failures, reconnect      |
-| [EDD-003](../EDD/003-credentials.md)               | Credentials: personas, secret sets, encryption, handover, audit |
-| [EDD-004](../EDD/004-snapshots-and-transcripts.md) | Snapshots and transcripts: storage, upload, restore             |
-| [EDD-005](../EDD/005-mcp-and-cli.md)               | MCP and CLI: hosted MCP, sign-in, parity, config as code        |
-| [EDD-006](../EDD/006-end-to-end-proof.md)          | Proof: what agents run, where, and what passes                  |
+| EDD                                                | Topic                                                                             |
+| -------------------------------------------------- | --------------------------------------------------------------------------------- |
+| [EDD-001](../EDD/001-runtime.md)                   | Runtime: boxes, the warm window, host setup, networking                           |
+| [EDD-002](../EDD/002-host-channel.md)              | Host channel: protocol, budgets, named failures, reconnect                        |
+| [EDD-003](../EDD/003-credentials.md)               | Credentials: personas, secret sets, encryption, handover, audit, repository token |
+| [EDD-004](../EDD/004-snapshots-and-transcripts.md) | Snapshots and transcripts: storage, upload, restore                               |
+| [EDD-005](../EDD/005-mcp-and-cli.md)               | MCP and CLI: hosted MCP, sign-in, parity, config as code                          |
+| [EDD-006](../EDD/006-end-to-end-proof.md)          | Proof: what agents run, where, and what passes                                    |

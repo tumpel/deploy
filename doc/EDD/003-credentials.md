@@ -4,13 +4,13 @@ An appendix of [RFC: Tumpel](../RFC/RFC-TUM-Tumpel.md).
 
 ## Summary
 
-A persona names one secret set, and only that set's values reach its sessions. The control plane keeps every value encrypted under one data key per tenant, which a Worker secret wraps. When it sends a turn offer, it decrypts the set's values and puts them in the offer. In the box, the guest exports them into the harness's environment. Every handover leaves an audit record with names and no values.
+A persona names one secret set. Only that set's values and a GitHub App token for the session's repository reach its sessions. The control plane keeps every value encrypted under one data key per tenant, which a Worker secret wraps. When it sends a turn offer, it decrypts the set's values and puts them in the offer. In the box, the guest exports them into the harness's environment. Every handover leaves an audit record with names and no values.
 
 ## Model
 
 `Persona.secretSetId` is a required field. Each tenant starts with a Default secret set, which its Default persona names. Each member of a set has a name and one of three kinds:
 
-- `Variable`, a value the box gets under the member's own name, such as `GITHUB_TOKEN`, which the box clones with (EDD-001);
+- `Variable`, a value the box gets under the member's own name, such as `GITHUB_TOKEN`, which the box clones with when no installation token replaces it (EDD-001);
 - `ApiKey`, a provider's API key;
 - `SubscriptionToken`, a provider's subscription token with its `expiresAt`.
 
@@ -29,6 +29,26 @@ On every send of a turn offer, the control plane resolves the persona to its set
 Each grant holds an id, an expiry 300 s ahead and the variables. The control plane stores the offer without the grant. Once the expiry passes, the supervisor fails the turn `DispatchCredentialExpired`. When the harness ends with an error result that names a refused credential, the turn fails `CredentialRefused`, and only that failure says how to replace the set's value. Over vsock, the supervisor passes the grant to the guest and writes nothing to disk.
 
 For each turn, the guest writes the persona's files and exports the variables before the harness starts. When either changed since the harness started, the guest restarts the harness before the turn.
+
+## App creation
+
+Each stage has one GitHub App. A person creates it once from GitHub's manifest flow at the browser page `/github/app/setup`, and GitHub returns to `/github/app/created`. The stage's Cloudflare Access application covers both pages and refuses the proof's service token. Adding `?organization=<login>` creates the App under that organization. Once an App exists, the page refuses.
+
+The manifest asks for write on contents, pull requests, issues and discussions. It also asks for write on checks, statuses and workflows, and for read on metadata and actions. It leaves out the administration, members, organization and secrets permissions. The App requests user authorization on install and redirects on update. Its callback and setup URL are both `/github/app/installed`.
+
+The central table `github_apps` holds one row per stage. Each row seals the App's client secret, webhook secret and private key under a data key that `SECRETS_KEK` wraps. At creation, the control plane converts the private key from PKCS#1 to PKCS#8. The key-store port also derives a signing key per purpose from `SECRETS_KEK` with HKDF, and the control plane signs its states with it.
+
+## Installation
+
+A tenant connects with `tumpel github start`. It answers the install URL with a signed state that carries only the tenant and expires after 1 h. While the stage has no App, it answers 409 `GitHubAppMissing`. A person installs the App and authorizes it. The callback exchanges GitHub's code with the client secret. It links the installation only when GET `/user/installations` for that person lists it, and answers 403 otherwise. `tumpel github get` reports the link as `Connected`, `NotConnected` or `AppMissing` and shows no secret.
+
+The central table `github_installations` links one installation to one tenant. GitHub's uninstall webhook carries only the installation id, so this table lives centrally. The control plane receives that webhook at `POST /github/webhook`, outside the public contract. It checks `X-Hub-Signature-256` over the raw body. Only `installation.deleted` removes the link. A malformed installation event gets 400, and every other delivery gets 204. A suspend or an unsuspend leaves the link in place, and a mint against a suspended installation fails with GitHub's own message.
+
+## Repository token
+
+For a linked tenant, the control plane signs an RS256 JWT as the App while it prepares the turn offer. It then calls POST `/app/installations/{id}/access_tokens` for the session's repository only. Each call to GitHub gets 10 s. The offer carries the token as `GITHUB_TOKEN` and `GH_TOKEN`. GitHub gives the token 1 h. The claim, the clone and the 3,600 s turn budget add up to more than that, so a push at the end of a full-length turn can get a 401.
+
+Each handover records `repositoryCredentialSource` as `GitHubApp`, `SecretSet` or `None`. The source is `SecretSet` when the tenant has no installation. A repository outside the installation also takes the secret set's `GITHUB_TOKEN` when the set holds one. Without one, the turn fails `RepositoryTokenRefused`. A GitHub timeout or any other GitHub error fails the turn the same way. The detail quotes GitHub, and it says to add the repository to the installation only after a 404 or 422. Tenant migration 0012 backfills `None`, and `SecretSet` for an older row that carried `GITHUB_TOKEN`. The control plane checks GitHub's own payloads with zod schemas, outside the TypeSpec contract.
 
 ## Audit
 

@@ -34,7 +34,7 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
 }
 ```
 
-The file holds no secret value. `valueFrom.env` names the environment variable `apply` reads it from. A box clones the session's repository with the set's `GITHUB_TOKEN` Variable, and commits as the persona's `gitAuthorName` and `gitAuthorEmail`; a public repository needs no token. `doc/personas/ticket-worker` is a persona that works a GitHub issue.
+The file holds no secret value. `valueFrom.env` names the environment variable `apply` reads it from. A box clones the session's repository with the tenant's GitHub App installation token, or else with the set's `GITHUB_TOKEN` Variable (EDD-003), and commits as the persona's `gitAuthorName` and `gitAuthorEmail`; a public repository needs no token. `doc/personas/ticket-worker` is a persona that works a GitHub issue.
 
 - `tumpel config init <file>` writes a new file from the tenant's current state.
 - `tumpel config validate <file>` prints every schema error with its JSON pointer.
