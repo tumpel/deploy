@@ -54,6 +54,41 @@ jobs:
           if [ "$BUILD_ARM64" = true ]; then include="[$AMD64, $ARM64]"; else include="[$AMD64]"; fi
           echo "include=$include" >> "$GITHUB_OUTPUT"
 
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-test-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-test-${{ runner.os }}-
+
+      - name: Install npm workspaces
+        run: npm ci --no-audit --no-fund
+
+      - name: Run the npm tests
+        run: npm test
+
+      - name: Run the cargo tests
+        run: cargo test --workspace
+
   build:
     needs: plan
     runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-24.04' }}
@@ -146,7 +181,7 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: build
+    needs: [build, test]
     runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 15
     defaults:
