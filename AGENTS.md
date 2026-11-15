@@ -11,7 +11,7 @@
 - [ ] Every phase has a time limit and a named failure.
 - [ ] Fail fast: no catch-log-rethrow, no retries, no fallbacks. Every error states what failed and the fix.
 - [ ] Every platform-specific piece is defined first as a provider-agnostic interface in TypeSpec/schema, then implemented as one swappable backend (Cloudflare first).
-- [ ] The MCP server is hosted on the control plane with Recall's auth model; the `tumpel` CLI is a client of the same public API, not a second MCP.
+- [ ] The control plane hosts the MCP server; the `tumpel` CLI is a client of the same public API, not a second MCP.
 - [ ] Supported harnesses: Claude Code, Codex, OpenCode, Pi.dev; Mistral's coding agent planned.
 - [ ] No comments in code.
 - [ ] `npm run check` passes before every commit (Biome, no comments, no token-shaped secrets, typecheck, clippy, rustfmt, TypeSpec keys, dates and enums, generated output in sync). `npm run fix` formats.

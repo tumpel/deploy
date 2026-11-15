@@ -33,7 +33,7 @@ Coding agent harnesses such as Claude Code or Codex run in a terminal on the mac
 
 ### Cloud agents
 
-Tumpel is cloud agents: the infrastructure that runs harnesses. That means hosts, boxes, sessions, turns, personas, secret sets and credentials. A super harness is the management, communication and memory layer across harnesses, such as Recall. Tumpel builds no super harness. A tenant brings its own.
+Tumpel is cloud agents: the infrastructure that runs harnesses. That means hosts, boxes, sessions, turns, personas, secret sets and credentials. A super harness is the management, communication and memory layer across harnesses. Tumpel builds no super harness. A tenant brings its own.
 
 Tumpel has three parts. The supervisor runs on hosts the tenant brings: Linux machines with KVM. Cloudflare Workers run the control plane, which holds tenants, sessions and turns.
 
@@ -120,7 +120,7 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 
 ## Decisions
 
-Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with personas, secret sets and per-session dispatch credentials (ADR-002). The host channel dials out and is defined before any backend (ADR-003). TypeSpec reaches Rust through secondary tooling (ADR-004). The MCP server is hosted, with Recall's design and auth model (ADR-005). On 2026-11-14 the remaining rulings followed:
+Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with personas, secret sets and per-session dispatch credentials (ADR-002). The host channel dials out and is defined before any backend (ADR-003). TypeSpec reaches Rust through secondary tooling (ADR-004). The MCP server is hosted (ADR-005). On 2026-11-14 the remaining rulings followed:
 
 > To store creds per persona, use envelope encryption.
 
