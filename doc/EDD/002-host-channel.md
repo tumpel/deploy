@@ -8,7 +8,7 @@ Each host keeps one persistent two-way connection to the control plane, and the 
 
 ## Handshake
 
-The control plane sends a Challenge with a nonce. The host answers with a Hello. Its Ed25519 host key signs `tumpel-channel-hello-v1`, a zero byte, the nonce, a zero byte and the host id. The control plane checks the signature against the key it stored at enrolment and answers Welcome. Hello and Welcome carry `protocolVersion`, now 5. The control plane checks `protocolVersion` before the rest of the Hello. It closes a Hello on any other version with UnsupportedVersion, and the reason tells the host to update the supervisor. Hello also carries the host's `boxCapacity` and its usage: warm boxes, the one-minute load average and available memory in MiB. The tenant writes both to its `host_usage` table before the control plane reads the host Online. Challenge, Hello, Welcome and Heartbeat travel outside the numbered frames.
+The control plane sends a Challenge with a nonce. The host answers with a Hello. Its Ed25519 host key signs `tumpel-channel-hello-v1`, a zero byte, the nonce, a zero byte and the host id. The control plane checks the signature against the key it stored at enrolment and answers Welcome. Hello and Welcome carry `protocolVersion`, now 6. The control plane checks `protocolVersion` before the rest of the Hello. It closes a Hello on any other version with UnsupportedVersion, and the reason tells the host to update the supervisor. Hello also carries the host's `boxCapacity` and its usage: warm boxes, the one-minute load average and available memory in MiB. The tenant writes both to its `host_usage` table before the control plane reads the host Online. Challenge, Hello, Welcome and Heartbeat travel outside the numbered frames.
 
 | Close code | Meaning                        |
 | ---------- | ------------------------------ |
@@ -21,7 +21,9 @@ The control plane sends a Challenge with a nonce. The host answers with a Hello.
 
 ## Messages
 
-The control plane sends TurnOffer, TurnWithdrawn, SnapshotRequest and BoxTeardown. A TurnOffer carries the turn, the session, the box id, the harness, the prompt, the turn's credential grant, the session's last line number and download URLs for the session's snapshots. The host sends TurnClaim, TurnRepositoryReady, TurnLine, TurnComplete and TurnFailed. It also sends TurnRepositoryCloneFailed, SnapshotDone, SnapshotFailed, BoxGone and BoxTeardownFailed.
+The control plane sends TurnOffer, TurnWithdrawn, SnapshotRequest and BoxTeardown. A TurnOffer carries the turn, the session, the box id, the harness, the prompt, the turn's credential grant, the session's last line number and a download URL for the session's latest snapshot. The host sends TurnClaim, TurnRepositoryReady, TurnLine, TurnComplete and TurnFailed. It also sends TurnRepositoryCloneFailed, SnapshotDone, SnapshotFailed, BoxGone and BoxTeardownFailed.
+
+Three exchanges move snapshot chunks (EDD-004). The host sends SnapshotChunks, SnapshotPacks and RestoreChunks. The control plane answers SnapshotChunksHeld, SnapshotPackUploads and RestoreDownloads. Each exchange runs in lockstep parts of up to 500 chunks: the host sends the next part only after the answer to the last one arrives. So the control plane's ledger never holds more than one unanswered reply. The host channel sends the tenant's reply from inside the same blocking section that forwarded the message, because a call back into the blocked object deadlocks.
 
 ## Ordering and reconnect
 

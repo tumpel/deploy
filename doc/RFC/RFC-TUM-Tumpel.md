@@ -60,7 +60,7 @@ A persona names one harness and carries that harness's own config files. It name
 
 ### Snapshots
 
-When a turn completes, the supervisor stores the box's changed files in object storage as a delta against the last snapshot. A fresh box restores the session from that chain, on the same host or on another one.
+When a turn completes, the supervisor stores the box's files in object storage as chunks that every session of the tenant shares. A fresh box restores the session from its latest snapshot, on the same host or on another one.
 
 ### Proof
 
@@ -138,9 +138,15 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Each secret set member has a kind.** The kind is variable, API key or subscription token, and a subscription token carries its expiry. The harness catalog lists the credential kinds each harness takes and the variable it reads for each, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
 
-**Snapshot bytes move on presigned URLs.** The control plane signs one upload URL per snapshot and download URLs for a restore, so a host holds no storage key. Memory state never leaves the host.
-
 **The central store holds accounts, hosts and the GitHub App.** It holds tenants, principals, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant. It also holds the stage's GitHub App and each tenant's installation. GitHub's uninstall webhook names only the installation.
+
+### Snapshot storage
+
+**Snapshot bytes move on presigned URLs.** The control plane signs an upload URL for each pack and for each snapshot's root, and download URLs for a restore, so a host holds no storage key. Memory state never leaves the host.
+
+**Snapshots are chunked and packed.** Only the chunks the tenant lacks leave the host. The host cuts each changed file into content-defined chunks and concatenates the new ones into packs of about 8 MiB. A manifest lists every file of the upper directory with its chunks, so a restore reads the latest snapshot alone. An archive deletes the packs that hold no remaining chunk and never repacks (EDD-004). The cost is a host chunk cache with no eviction, and packs that a failed snapshot leaves in storage.
+
+> the duplicity model
 
 ### Runtime and surface
 
@@ -200,7 +206,7 @@ A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Run
 | Persona       | A named harness with its config files, naming one secret set                             |
 | Secret set    | Named encrypted values that a persona's sessions read                                    |
 | Warm window   | How long a paused box waits for its next turn                                            |
-| Snapshot      | A session's changed files since the last snapshot                                        |
+| Snapshot      | A session's overlay files as a manifest plus chunks in packs                             |
 
 ## Appendix of entities
 

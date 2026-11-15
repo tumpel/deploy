@@ -16,6 +16,8 @@ For a harness that reads turns as a stream, as Claude Code does, the agent keeps
 
 Each turn offer carries the persona's file list with a download URL per digest. The supervisor caches the files by digest and passes them to the guest over vsock. The guest writes them under the harness home before the harness starts.
 
+A host chunk cache under `imageCacheDir/chunks` keeps snapshot chunks by digest, with no eviction (EDD-004).
+
 ## Repository
 
 The images carry pinned git and gh. Before the harness starts, the guest clones the session's repository into the working directory `/root/workspace`. A directory that holds the repository already skips the clone. Git reads `GITHUB_TOKEN` from the environment through a credential helper, so the token stays out of the URL and off the disk. The clone runs within the image's `cloneSeconds`, 120 s. A clone that fails or runs out of time arrives as `TurnRepositoryCloneFailed`, with a cause and what git reported. Its cause is `Refused`, `TimedOut`, `DirectoryNotEmpty` or `Other`. That message fails the turn `RepositoryCloneFailed`, and its detail asks for a `GITHUB_TOKEN` member only on `Refused`, when the turn's credential handover carried no such variable. Until the guest sends `TurnRepositoryReady`, the first line is due within `cloneSeconds` plus `budgets.firstLineSeconds`; once it arrives, the first-line budget restarts there. Commits carry the persona's `gitAuthorName` and `gitAuthorEmail`, and gh reads the token as `GH_TOKEN`.
