@@ -1,6 +1,6 @@
 # GitHub Actions prebuilds
 
-A tenant connects GitHub Actions with `tumpel github-actions start --account-label <label> --caller-workflow .github/workflows/tumpel-prebuild.yml`. Each repository it prebuilds then holds that caller workflow on its default branch. `tumpel github-actions get` answers the same text as `callerWorkflowExample`, and the reusable workflow it calls as `reusableWorkflow`.
+A tenant connects GitHub Actions with `tumpel github-actions start --account-label <label> --caller-workflow .github/workflows/tumpel-prebuild.yml`. Each repository it prebuilds then holds that caller workflow on its default branch.
 
 ```yaml
 name: tumpel prebuild
