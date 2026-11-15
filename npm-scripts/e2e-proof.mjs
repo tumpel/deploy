@@ -772,6 +772,24 @@ const steps = [
   },
   {
     id: 15,
+    name: "Prebuild refused",
+    needs: [3],
+    run: async () => {
+      const result = spawnSync(
+        CLI,
+        ["prebuild", "start", "--repository", REPOSITORY, "--persona-id", state.personaId],
+        { encoding: "utf8", timeout: 60_000 },
+      );
+      if (result.status === 0) fail(`a prebuild started with no build provider connected: ${result.stdout.trim()}`);
+      const refusal = result.stderr.trim().split("\n").at(-1) ?? "";
+      if (!refusal.includes("No build provider")) fail(`the start was refused for another reason: ${refusal}`);
+      const listed = tumpelJson(["prebuild", "list", "--repository", REPOSITORY]);
+      if (listed.length !== 0) fail(`the refused start left ${listed.length} prebuilds of ${REPOSITORY}`);
+      return `refused NoBuildProvider, 0 prebuilds of ${REPOSITORY}`;
+    },
+  },
+  {
+    id: 16,
     name: "Revoke",
     needs: [2],
     run: async () => {
