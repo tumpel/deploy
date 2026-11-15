@@ -41,7 +41,7 @@ The file holds no secret value. `valueFrom.env` names the environment variable `
 
 Personas and secret sets match by name, pins by harness, hosts by `hostId`. Apply deletes whatever the file leaves out; an unlisted host loses its labels. Secret values are never read back, so the exported variables decide what happens to them. A secret set that is created or whose members change needs every variable it names exported. A kept set is rewritten when every variable it names is exported and keeps its values when none is; exporting only part of them stops the plan. Plan and apply follow the same rule: plan sends the names of the exported variables, apply sends their values. A rewritten set keeps its `secretSetId` and key names.
 
-Plan and apply run on the control plane: `TenantConfigs_plan` takes the file with each persona file's digest and the exported variable names, and `TenantConfigs_apply` takes it with each file's bytes and the exported values. The CLI and the dashboard's setup checklist both call them; the MCP tool `tumpel_config_apply` takes no secret values, so it applies a config whose secret sets are kept as they are.
+Plan and apply run on the control plane: `TenantConfigs_plan` takes the file with each persona file's digest and the exported variable names, and `TenantConfigs_apply` takes it with each file's bytes and the exported values. The CLI and the dashboard's setup checklist both call them. The CLI plans with the names it exports; the dashboard plans with an empty list, so its plan never shows a rewrite; the MCP tool `tumpel_config_apply` takes no secret values, so it applies a config whose secret sets are kept as they are.
 
 ## Set up your own tenant
 
