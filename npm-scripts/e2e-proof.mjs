@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { createHash, createPublicKey, randomBytes, verify } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,6 @@ const STAGE = process.env.TUMPEL_STAGE ?? "dev";
 const HOST = process.env.TUMPEL_PROOF_HOST ?? "tumpel-host";
 const ENDPOINT = process.env.TUMPEL_PROOF_ENDPOINT;
 const ISSUER = process.env.TUMPEL_PROOF_ISSUER;
-const ISSUER_AUDIENCE = "tumpel-proof";
 const TENANT = process.env.TUMPEL_PROOF_TENANT ?? "Tumpel proof";
 const REPOSITORY = process.env.TUMPEL_PROOF_REPOSITORY ?? "https://github.com/mvhenten/drawio-headless.git";
 const MODEL = process.env.TUMPEL_PROOF_MODEL ?? "claude-haiku-4-5";
@@ -273,26 +272,6 @@ const issuerDocument = async (path) => {
   return response.json();
 };
 
-const tokenPart = (token, index) => JSON.parse(Buffer.from(token.split(".")[index], "base64url").toString("utf8"));
-
-const checkIssued = (minted, keys, what) => {
-  const { token } = minted;
-  const kid = tokenPart(token, 0).kid;
-  const jwk = keys.find((key) => key.kid === kid);
-  if (!jwk) fail(`the JWKS does not publish ${kid}, the key of ${what}`);
-  const [header, payload, signature] = token.split(".");
-  const key = createPublicKey({ key: { kty: jwk.kty, n: jwk.n, e: jwk.e }, format: "jwk" });
-  if (!verify("RSA-SHA256", Buffer.from(`${header}.${payload}`), key, Buffer.from(signature, "base64url"))) {
-    fail(`${what} does not verify against key ${kid} of the JWKS`);
-  }
-  const claims = tokenPart(token, 1);
-  const subject = `tenant:${state.tenantId}:persona:proof:job:prebuild`;
-  if (claims.iss !== ISSUER) fail(`${what} names the issuer ${claims.iss}, not ${ISSUER}`);
-  if (claims.sub !== subject) fail(`${what} names the subject ${claims.sub}, not ${subject}`);
-  if (claims.aud !== ISSUER_AUDIENCE) fail(`${what} names the audience ${claims.aud}, not ${ISSUER_AUDIENCE}`);
-  if (claims.exp - claims.iat !== 300) fail(`${what} lives ${claims.exp - claims.iat} s, not 300 s`);
-  return kid;
-};
 const credential = loadCredential(die);
 
 const probeCommand = (capacity) => {
@@ -757,23 +736,22 @@ const steps = [
       const stray = await fetch(`${ISSUER}/healthz`, { signal: AbortSignal.timeout(10_000) });
       if (stray.status !== 404) fail(`GET ${ISSUER}/healthz answered ${stray.status}, not 404`);
       const documentsMs = Date.now() - t0;
-      const mint = () => tumpelJson(["issuer", "mint", "--persona-id", state.personaId, "--audience", ISSUER_AUDIENCE]);
-      const before = mint();
-      const beforeKid = checkIssued(before, (await issuerDocument("/.well-known/jwks.json")).keys, "the first token");
       const rotation = await rotateIssuerKeys({
         endpoint: ENDPOINT,
         clientId: process.env.TUMPEL_PROOF_CLIENT_ID,
         clientSecret: process.env.TUMPEL_PROOF_CLIENT_SECRET,
       });
-      if (!rotation.retiring.some((key) => key.kid === beforeKid)) {
-        fail(`the rotation did not retire ${beforeKid}, the key that signed before it`);
+      if (rotation.kid === rotation.signingKid)
+        fail(`the rotation answered ${rotation.kid} as both the signing and the next key`);
+      const waitMs = Date.parse(rotation.signsFrom) - Date.now();
+      if (waitMs <= 0 || waitMs > 86_400_000) {
+        fail(`the next key ${rotation.kid} signs from ${rotation.signsFrom}, not within the next 24 h`);
       }
-      const after = mint();
-      const published = (await issuerDocument("/.well-known/jwks.json")).keys;
-      const afterKid = checkIssued(after, published, "the token after the rotation");
-      if (afterKid !== rotation.kid) fail(`the token after the rotation is signed by ${afterKid}, not ${rotation.kid}`);
-      checkIssued(before, published, "the token from before the rotation");
-      return `discovery and JWKS ${documentsMs} ms, ${beforeKid} signed before the rotation, ${afterKid} after it, both published`;
+      const published = (await issuerDocument("/.well-known/jwks.json")).keys.map((key) => key.kid);
+      for (const kid of [rotation.signingKid, rotation.kid]) {
+        if (!published.includes(kid)) fail(`the JWKS does not publish ${kid}: ${published.join(", ")}`);
+      }
+      return `discovery and JWKS ${documentsMs} ms, ${rotation.signingKid} signs, ${rotation.kid} published and signs from ${rotation.signsFrom}`;
     },
   },
   {

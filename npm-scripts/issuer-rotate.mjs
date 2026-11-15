@@ -32,6 +32,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const rotation = await rotateIssuerKeys({ endpoint, clientId, clientSecret });
   console.log(JSON.stringify(rotation, null, 2));
   console.error(
-    `issuer:rotate: ${rotation.kid} signs from now on; ${rotation.retiring.map((key) => `${key.kid} stays published until ${key.retiresAt}`).join(", ") || "no key retired"}`,
+    `issuer:rotate: ${rotation.signingKid} signs until ${rotation.signsFrom}; ${rotation.kid} is published and signs from then on`,
   );
 }
