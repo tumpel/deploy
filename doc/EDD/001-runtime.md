@@ -24,7 +24,7 @@ The images carry pinned git and gh. Before the harness starts, the guest clones 
 
 ## Warm window
 
-Turns for different sessions run in parallel. When a turn ends, the supervisor pauses the box's vCPUs and arms a timer for that box. The timer runs for `warmWindowSeconds` from the host's runtime config, 900 s by default. A turn inside the window cancels the timer and resumes the paused process. Once the timer has fired and the box's last turn is in a snapshot, the supervisor stops the box and deletes its drive. A session stop ends the window early: the supervisor tears the box down on BoxTeardown (EDD-004).
+Turns for different sessions run in parallel. When a turn ends, the supervisor pauses the box's vCPUs and arms a timer for that box. The timer runs for `warmWindowSeconds` from the host's runtime config, 900 s by default. A turn inside the window cancels the timer and resumes the paused process. The supervisor reuses a warm box only when the turn names that box. Otherwise it stops the box and boots a fresh one. Once the timer has fired and the box's last turn is in a snapshot, the supervisor stops the box and deletes its drive. A session stop ends the window early: the supervisor tears the box down on BoxTeardown (EDD-004).
 
 The warm state is the paused process in host memory. The supervisor writes no memory file to disk.
 
@@ -32,11 +32,11 @@ The warm state is the paused process in host memory. The supervisor writes no me
 
 The supervisor reads its usage from /proc: warm boxes, the one-minute load average and `MemAvailable` in MiB. When it cannot, it stops with `UsageUnreadable`, exit code 7. It sends that usage and its `boxCapacity` over the channel (EDD-002). The tenant's Durable Object keeps the latest per host in its `host_usage` table and places one request at a time.
 
-A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns reach its `boxCapacity`. The tenant picks an Online host whose architecture has an image and that is not Full. It ranks those by free slots, then by available memory. Images exist for amd64 only. With every host Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A tenant with no host gets `NoHostAvailable`. `tumpel host list-usage` lists the slots, load and memory of each host that has connected. Placement ignores the load.
+A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns reach its `boxCapacity`. The tenant picks an Online host whose architecture has an image and that is not Full. It ranks those by free slots, then by available memory. Images exist for amd64 only. With every host Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A tenant with no host gets `NoHostAvailable`. The tenant refuses a start on an Online host that has sent no usage yet. The refusal names the host and says to restart `tumpel-supervisor run` there, so that its Hello carries its usage. `tumpel host list-usage` lists the slots, load and memory of each host that has connected, leaving out revoked hosts. Placement ignores the load.
 
 Warm boxes never make a host Full. A host whose slots are all warm still takes a session, and its supervisor evicts a warm box as Networking describes.
 
-A placed session keeps its host. When its host is not Online, the next turn moves to another host chosen the same way and boots a fresh box there, provided a snapshot holds the last completed turn. Otherwise the tenant refuses the send `HostOffline` and names the host and the missing turns. It refuses a stop `HostOffline` while the host is offline.
+A placed session keeps its host. Each turn records the host it runs on. A send stays on the session's host while that host is Online. When the host is not Online and a completed turn is newer than the latest snapshotted turn, the tenant refuses the send `HostOffline` and names the host and the missing turns. Otherwise the tenant places the session as it places a new one. It fails the session's pending snapshot requests `NotAnswered` and sends BoxDiscard to the old host, unless the session's state is Stopped. A fresh box then boots on the new host from the latest snapshot. The tenant refuses a stop `HostOffline` while the host is offline.
 
 ## Host setup
 
