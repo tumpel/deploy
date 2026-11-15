@@ -13,6 +13,7 @@ const SIGNED_SECONDS = 3600;
 
 const FragmentSchema = ReleaseManifestSchema.pick({ images: true }).extend({
   supervisor: ReleaseManifestSchema.shape.supervisors.element,
+  cli: ReleaseManifestSchema.shape.clis.element,
 });
 
 const die = (message) => {
@@ -123,12 +124,14 @@ const uploadOci = async (store, prefix, layout) => {
   return ociDigest;
 };
 
-const upload = async (arch, supervisorPath, imageDir, fragmentPath) => {
+const upload = async (arch, supervisorPath, cliPath, imageDir, fragmentPath) => {
   const architecture = ARCHITECTURES[arch];
   if (!architecture) die(`no architecture ${arch}; pass amd64 or arm64`);
   const store = storage();
   const supervisorDigest = await sha256(supervisorPath);
   const supervisor = await uploadFile(store, `supervisor/${arch}/${supervisorDigest}`, supervisorPath);
+  const cliDigest = await sha256(cliPath);
+  const cli = await uploadFile(store, `cli/${arch}/${cliDigest}`, cliPath);
   const manifests = readdirSync(imageDir).filter((name) => /^[0-9a-f]{64}\.json$/.test(name));
   if (manifests.length === 0) die(`${imageDir} holds no <imageDigest>.json; build the images with npm run guest:image`);
   const images = [];
@@ -170,6 +173,7 @@ const upload = async (arch, supervisorPath, imageDir, fragmentPath) => {
   }
   const fragment = FragmentSchema.parse({
     supervisor: { architecture, sha256: supervisor.digest, sizeBytes: supervisor.size },
+    cli: { architecture, sha256: cli.digest, sizeBytes: cli.size },
     images,
   });
   mkdirSync(dirname(fragmentPath), { recursive: true });
@@ -199,6 +203,7 @@ const publish = async (fragmentDir) => {
     commit,
     channelProtocolVersion: ChannelProtocol.Version,
     supervisors: fragments.map((fragment) => fragment.supervisor),
+    clis: fragments.map((fragment) => fragment.cli),
     images: fragments.flatMap((fragment) => fragment.images),
   });
   const body = `${JSON.stringify(manifest, null, 2)}\n`;
@@ -215,9 +220,9 @@ const publish = async (fragmentDir) => {
 };
 
 const [command, ...args] = process.argv.slice(2);
-if (command === "upload" && args.length === 4) await upload(...args);
+if (command === "upload" && args.length === 5) await upload(...args);
 else if (command === "manifest" && args.length === 1) await publish(args[0]);
 else
   die(
-    `usage: ${basename(process.argv[1])} upload <amd64|arm64> <supervisor binary> <image dir> <fragment.json> | manifest <fragment dir>`,
+    `usage: ${basename(process.argv[1])} upload <amd64|arm64> <supervisor binary> <cli binary> <image dir> <fragment.json> | manifest <fragment dir>`,
   );

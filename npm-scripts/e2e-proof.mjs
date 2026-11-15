@@ -17,10 +17,8 @@ const TENANT = process.env.TUMPEL_PROOF_TENANT ?? "Tumpel proof";
 const REPOSITORY = process.env.TUMPEL_PROOF_REPOSITORY ?? "https://github.com/mvhenten/drawio-headless.git";
 const MODEL = process.env.TUMPEL_PROOF_MODEL ?? "claude-haiku-4-5";
 const PROBE_MODEL = process.env.TUMPEL_PROOF_PROBE_MODEL ?? "claude-sonnet-4-5";
-const CLI = process.env.TUMPEL_CLI ?? join(ROOT, "target", "release", "tumpel");
-const SUPERVISOR =
-  process.env.TUMPEL_PROOF_SUPERVISOR ??
-  join(ROOT, "target", "x86_64-unknown-linux-gnu", "release", "tumpel-supervisor");
+const CLI = process.env.TUMPEL_PROOF_CLI;
+const SUPERVISOR = process.env.TUMPEL_PROOF_SUPERVISOR;
 const STATE_DIR = ".local/state/tumpel-supervisor";
 const REVOKE_DIR = "development/.tmp/tumpel-proof-revoke";
 const MARKER = `tumpel-proof-${randomBytes(4).toString("hex")}`;
@@ -32,8 +30,11 @@ const die = (message) => {
 
 if (!ENDPOINT) die("TUMPEL_PROOF_ENDPOINT is unset; run this through npm run proof:e2e, which sets it from the stage");
 if (!ISSUER) die("TUMPEL_PROOF_ISSUER is unset; run this through npm run proof:e2e, which sets it from the stage");
-if (!existsSync(CLI)) die(`${CLI} is missing; build it with cargo build --release -p tumpel`);
-if (!existsSync(SUPERVISOR)) die(`${SUPERVISOR} is missing; build it with npm run supervisor:build`);
+if (!CLI) die("TUMPEL_PROOF_CLI is unset; run this through npm run proof:e2e, which downloads the release CLI");
+if (!SUPERVISOR)
+  die("TUMPEL_PROOF_SUPERVISOR is unset; run this through npm run proof:e2e, which downloads the release supervisor");
+if (!existsSync(CLI)) die(`${CLI} is missing; set TUMPEL_PROOF_CLI to a built tumpel binary`);
+if (!existsSync(SUPERVISOR)) die(`${SUPERVISOR} is missing; set TUMPEL_PROOF_SUPERVISOR to a built supervisor`);
 
 const config = JSON.parse(
   readFileSync(join(ROOT, "packages", "control-plane", "wrangler.jsonc"), "utf8").replace(/^\s*\/\/.*$/gm, ""),

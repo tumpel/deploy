@@ -93,6 +93,9 @@ jobs:
           mkdir -p "$LOG_DIR"
           npm run supervisor:build 2>&1 | tee "$LOG_DIR/supervisor-build.log"
 
+      - name: Build the CLI
+        run: npm run cli:build 2>&1 | tee "$LOG_DIR/cli-build.log"
+
       - name: Build the guest
         run: npm run guest:build 2>&1 | tee "$LOG_DIR/guest-build.log"
 
@@ -102,7 +105,7 @@ jobs:
       - name: Pack the guest images as OCI images
         run: npm run guest:oci -- "$TUMPEL_IMAGE_DIR" ${{ matrix.arch }} 2>&1 | tee "$LOG_DIR/guest-oci.log"
 
-      - name: Upload the supervisor, images and kernels
+      - name: Upload the supervisor, CLI, images and kernels
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
@@ -110,6 +113,7 @@ jobs:
         run: >-
           npm run release:publish -- upload ${{ matrix.arch }}
           "target/${{ matrix.target }}/release/tumpel-supervisor"
+          "target/${{ matrix.target }}/release/tumpel"
           "$TUMPEL_IMAGE_DIR"
           ".tmp/fragments/${{ matrix.arch }}.json"
           2>&1 | tee "$LOG_DIR/upload.log"
