@@ -28,7 +28,9 @@ const USAGE = `usage:
     URL without user info before the commands run, then writes <out dir>/layer.tar, one
     uncompressed OCI layer of the workspace, the changed image paths and whiteouts for the removed
     ones, and <out dir>/layer.json with its sha256 and size. A layer over 5 GiB fails LayerTooLarge.
-    TUMPEL_PREBUILD_SECONDS bounds the commands, 3600 by default.
+    TUMPEL_PREBUILD_SECONDS bounds the commands, 3600 by default. The environment is clean only
+    when the S7 workflow runs the build in docker run with no runner environment and no runner
+    mounts but the workspace: a command can read the runner's environment from /proc/$PPID/environ.
   prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>
     Runs in a GitHub Actions step with id-token: write that runs no repository code. Requests the
     job's OIDC token with aud <api origin>, exchanges it at POST /v1/prebuilds/<prebuild id>/uploads
@@ -135,12 +137,7 @@ const imageEnvironment = (root) => {
   const path = join(root, GUEST_CONFIG);
   if (!existsSync(path))
     die(`NotAGuestImage: ${path} is missing; run the prebuild in a tumpel guest image built by npm run guest:image`);
-  const environment = JSON.parse(readFileSync(path, "utf8")).environment;
-  if (!isStringMap(environment) || !environment.PATH || !environment.HOME)
-    die(
-      `NotAGuestImage: ${path} names no environment with PATH and HOME; build the image again with npm run guest:image`,
-    );
-  return environment;
+  return JSON.parse(readFileSync(path, "utf8")).environment;
 };
 
 const CONTAINER_ENV_REFERENCE = /\$\{containerEnv:([^}:]+)(?::([^}]*))?\}/g;
@@ -196,6 +193,7 @@ const runCommand = (command, cwd, env, deadline) =>
     });
     child.on("exit", (code, signal) => {
       clearTimeout(timer);
+      killGroup(child.pid);
       if (code === 0) resolveRun(undefined);
       else if (Date.now() >= deadline)
         resolveRun(`${command.label} ran past the ${BUILD_SECONDS} s build budget (TUMPEL_PREBUILD_SECONDS)`);
