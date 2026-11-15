@@ -254,9 +254,10 @@ const pollConnectorTurn = async (client, sessionId, turnId, t0) => {
     });
     polls += 1;
     cursor = page.cursor;
-    if (page.lines.length > 0) {
+    const texts = page.turns.flatMap((turn) => turn.lines.map((line) => line.text));
+    if (texts.length > 0) {
       firstLineMs ??= Date.now() - t0;
-      lines.push(...page.lines.map((line) => line.text));
+      lines.push(...texts);
     }
     if (page.finished) break;
     const elapsed = Date.now() - t0;
@@ -568,7 +569,7 @@ const steps = [
       const failure = tumpelJson(["turn", "failure", run.turnId]);
       if (failure.reason !== "CredentialRefused")
         fail(`the turn failed ${failure.reason}: ${failure.detail.slice(0, 300)}`);
-      if (!failure.detail.includes("secret set refused") || !failure.detail.includes("tumpel config apply")) {
+      if (!failure.detail.includes("secret set refused") || !failure.detail.includes("replace its value")) {
         fail(`the failure does not name the set and its replacement: ${failure.detail.slice(0, 300)}`);
       }
       return `Failed CredentialRefused naming secret set refused, ${run.firstLineMs} ms`;
