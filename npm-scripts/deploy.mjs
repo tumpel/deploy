@@ -257,6 +257,8 @@ wrangler([
   `ACCESS_PROOF_COMMON_NAME:${output("proof_common_name")}`,
   "--var",
   `ISSUER_HOSTNAME:${output("issuer_hostname")}`,
+  "--var",
+  `DASHBOARD_ORIGIN:https://${output("app_hostname")}`,
 ]);
 wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
 if (excluded.length > 0) apply([]);
