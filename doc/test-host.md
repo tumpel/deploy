@@ -2,7 +2,7 @@
 
 `tumpel-host` is a libvirt domain on the hypervisor `box` with nested KVM, for running the MicroVM runtime. Reach it from `sandbox` with `ssh tumpel-host` (192.168.122.188, user `mvhenten`, network `default`).
 
-Test hosts are amd64, and releases build amd64 only: the flag `BUILD_ARM64` in `.github/workflows/release.yml` stays `false`. Nothing claims arm64 host support until a real arm64 host passes the proof.
+Test hosts are amd64, and releases build amd64 only: the flag `BUILD_ARM64` in `.github/workflows/release.yml` and `.github/workflows/images.yml` stays `false`. Nothing claims arm64 host support until a real arm64 host passes the proof.
 
 - 4 vCPU, 8 GiB, q35, `<cpu mode='host-passthrough'>`, so `/dev/kvm` exists in the guest.
 - Disk `/mnt/nvme/vms/tumpel-host.qcow2`, 40 G, standalone qcow2 converted from `~/vm-staging/noble-server-cloudimg-amd64-20261017.img` (Ubuntu 24.04, sha256 `04e8f246...5b6c94`, checked against Ubuntu's SHA256SUMS).
@@ -58,7 +58,7 @@ After `cloud-init status --wait`, reboot it once, then check that `systemctl is-
 
 ## Release builds
 
-GitHub Actions runs `.github/workflows/release.yml` on the runner that the repository variable `BUILD_RUNNER` names, now the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
+GitHub Actions runs the build jobs of `.github/workflows/release.yml` and `.github/workflows/images.yml` on the runner that the repository variable `BUILD_RUNNER` names, now the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
 
 The self-hosted runner is a second runner instance on the VM `github-actions-runner` on `box`. It lives in `/home/runner/actions-runner-tumpel` as a service, registered to `mvhenten/tumpel` as `github-actions-runner-tumpel`. Leave the other project's runners there alone. The VM does not autostart. When it spins a vCPU, run `virsh destroy`, then `virsh start`. Never reboot it.
 
