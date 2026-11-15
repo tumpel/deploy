@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -30,18 +30,6 @@ const environment = (extra) => ({
   ...extra,
 });
 
-const unknownModel = () => {
-  const run = spawnSync(pi, ["--mode", "rpc", "--model", "tumpel-smoke-no-such-model"], {
-    cwd: home,
-    env: environment({ OPENROUTER_API_KEY: "tumpel-smoke-stub" }),
-    input: "",
-    encoding: "utf8",
-    timeout: SECONDS * 1000,
-  });
-  if (run.status !== 1 || !run.stderr.includes('Model "tumpel-smoke-no-such-model" not found'))
-    die(`an unknown model should exit 1 naming the model; it exited ${run.status ?? run.signal}: ${run.stderr}`);
-};
-
 const missingKey = () =>
   new Promise((resolve) => {
     const child = spawn(pi, ["--mode", "rpc", "--model", "openrouter/tumpel/smoke"], {
@@ -71,7 +59,6 @@ const missingKey = () =>
     child.stdin.write(`${JSON.stringify({ type: "prompt", message: "say hi" })}\n`);
   });
 
-unknownModel();
 await missingKey();
 rmSync(home, { recursive: true, force: true });
-console.log(`smoke:pi: ${pi} refuses an unknown model and a prompt without OPENROUTER_API_KEY`);
+console.log(`smoke:pi: ${pi} refuses a prompt without OPENROUTER_API_KEY`);

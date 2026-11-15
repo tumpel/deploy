@@ -1,12 +1,13 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { GuestHarnessSchema } from "@tumpel/api/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
 import {
   CLONE_SECONDS,
   ENVIRONMENT,
   HARNESS_RUNS,
-  harnessArchive,
   NODE_ARCH,
   TURN_PROTOCOLS,
   WORKING_DIRECTORY,
@@ -24,6 +25,9 @@ export const layerHarnesses = () => [
   "Shell",
   ...HARNESS_CATALOG.filter((entry) => TURN_PROTOCOLS.has(entry.harness)).map((entry) => entry.harness),
 ];
+
+const NPM_RECIPE = /^npm:((?:@[^/]+\/)?[^@]+)@(\S+)$/;
+const ARCHIVE_RECIPE = /^archive:(amd64|arm64):(\S+)#sha256=([0-9a-f]{64})$/;
 
 const rootOf = (harness, harnessVersion) => `${LAYER_ROOT}/${harness}/${harnessVersion}`;
 
@@ -56,28 +60,53 @@ const catalogRecipe = (name, arch) => {
     cloneSeconds: CLONE_SECONDS,
     environment: ENVIRONMENT,
   });
-  if (run.archive) {
-    const { name: binary, version, url, digest, stripComponents } = harnessArchive(entry, arch);
-    return { harness, install: { kind: "Archive", url, digest, stripComponents, version, binary } };
-  }
-  const pkg = entry.installRecipe.match(/^npm:((?:@[^/]+\/)?[^@]+)@(.+)$/);
-  if (!pkg) throw new Error(`install recipe ${entry.installRecipe} is not npm:<package>@<version>`);
-  const [, packageName, version] = pkg;
-  if (version !== entry.harnessVersion)
-    throw new Error(
-      `install recipe ${entry.installRecipe} installs ${version}, the catalog names ${entry.harnessVersion}; make them match`,
-    );
-  return {
-    harness,
-    install: {
+  return { harness, install: installOf(entry, run, arch) };
+};
+
+const installOf = (entry, run, arch) => {
+  const npm = entry.installRecipe.match(NPM_RECIPE);
+  if (npm) {
+    const [, packageName, version] = npm;
+    return {
       kind: "NpmNative",
       installRecipe: entry.installRecipe,
       package: `${packageName}-linux-${NODE_ARCH[arch]}`,
       version,
       cpu: NODE_ARCH[arch],
       binary: run.binary,
-    },
+    };
+  }
+  const archives = entry.installRecipe.split(" ").map((part) => part.match(ARCHIVE_RECIPE));
+  const archive = archives.find((match) => match?.[1] === arch);
+  if (archives.includes(null) || !archive)
+    throw new Error(
+      `install recipe ${entry.installRecipe} of ${entry.harness} is neither npm:<package>@<version> nor an archive:<arch>:<url>#sha256=<digest> for ${arch}; fix it in harness-catalog.ts`,
+    );
+  if (run.stripComponents === undefined)
+    throw new Error(`HARNESS_RUNS names no stripComponents for ${entry.harness}; add it in guest-image-settings.mjs`);
+  const [, , url, digest] = archive;
+  return {
+    kind: "Archive",
+    url,
+    digest,
+    stripComponents: run.stripComponents,
+    version: entry.harnessVersion,
+    binary: run.binary,
   };
+};
+
+export const extractArchive = (archive, bin, install) => {
+  const result = spawnSync(
+    "tar",
+    ["-xzf", archive, "-C", bin, `--strip-components=${install.stripComponents}`, "--no-same-owner"],
+    { stdio: ["ignore", "inherit", "inherit"] },
+  );
+  if (result.status !== 0)
+    throw new Error(`tar could not unpack ${install.url}; it exited with ${result.status ?? result.signal}`);
+  const installed = join(bin, install.binary);
+  if (!existsSync(installed))
+    throw new Error(`${install.url} holds no ${install.binary}; check the install recipe in harness-catalog.ts`);
+  chmodSync(installed, 0o755);
 };
 
 export const layerRecipe = (name, arch) => {

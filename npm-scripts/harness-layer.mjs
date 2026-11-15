@@ -14,7 +14,7 @@ import {
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { HarnessLayerManifestSchema } from "@tumpel/api/schemas";
-import { layerHarnesses, layerRecipe, MKSQUASHFS_FLAGS } from "./harness-recipes.mjs";
+import { extractArchive, layerHarnesses, layerRecipe, MKSQUASHFS_FLAGS } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
 const OUT = process.env.TUMPEL_LAYER_DIR ?? join(homedir(), "development", ".tmp", "tumpel-layers");
@@ -82,20 +82,13 @@ const installNpmNative = (install, tree, work) => {
 const installArchive = async (install, tree, work) => {
   const response = await fetch(install.url);
   if (!response.ok)
-    die(`downloading ${install.url} answered ${response.status}; check the archive pin in guest-image-settings.mjs`);
+    die(`downloading ${install.url} answered ${response.status}; check the install recipe in harness-catalog.ts`);
   const archive = join(work, "archive.tar.gz");
   writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
   const actual = await sha256(archive);
   if (actual !== install.digest)
-    die(
-      `${install.url} has digest ${actual}, guest-image-settings.mjs pins ${install.digest}; refusing a changed artifact`,
-    );
-  const bin = join(tree, "bin");
-  run("tar", ["-xzf", archive, "-C", bin, `--strip-components=${install.stripComponents}`, "--no-same-owner"]);
-  const installed = join(bin, install.binary);
-  if (!existsSync(installed))
-    die(`${install.url} holds no ${install.binary}; check the archive pin in guest-image-settings.mjs`);
-  chmodSync(installed, 0o755);
+    die(`${install.url} has digest ${actual}, harness-catalog.ts pins ${install.digest}; refusing a changed artifact`);
+  extractArchive(archive, join(tree, "bin"), install);
 };
 
 const buildLayer = async (name, arch) => {

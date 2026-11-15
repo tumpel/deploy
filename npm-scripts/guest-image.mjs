@@ -16,16 +16,8 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BaseImageManifestSchema, BaseLayout, GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/api/schemas";
-import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
-import {
-  CLONE_SECONDS,
-  ENVIRONMENT,
-  HARNESS_RUNS,
-  harnessArchive,
-  NODE_ARCH,
-  TURN_PROTOCOLS,
-  WORKING_DIRECTORY,
-} from "./guest-image-settings.mjs";
+import { ENVIRONMENT, NODE_ARCH, WORKING_DIRECTORY } from "./guest-image-settings.mjs";
+import { extractArchive, layerHarnesses, layerRecipe } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -193,83 +185,33 @@ const download = async ({ url, digest }) => {
   return path;
 };
 
-const buildable = () => [
-  "Shell",
-  ...HARNESS_CATALOG.filter((entry) => TURN_PROTOCOLS.has(entry.harness)).map((entry) => entry.harness),
-];
+const HARNESS_PREFIX = "/opt/tumpel/harness";
+
+const withBinary = (harness, binary) =>
+  GuestHarnessSchema.parse({ ...harness, command: [binary, ...harness.command.slice(1)] });
 
 const recipeFor = (name, pins) => {
-  if (name === "Shell") {
+  const { harness, install } = layerRecipe(name, pins.arch);
+  if (install.kind === "None") return { harness, install: async () => [] };
+  if (install.kind === "Archive") {
+    const component = { name: install.binary, version: install.version, url: install.url, digest: install.digest };
     return {
-      harness: GuestHarnessSchema.parse({
-        harness: "Shell",
-        harnessVersion: "1",
-        protocol: "ShellLines",
-        command: ["/bin/sh", "-s"],
-        workingDirectory: WORKING_DIRECTORY,
-        cloneSeconds: CLONE_SECONDS,
-        environment: ENVIRONMENT,
-      }),
-      install: async () => [],
-    };
-  }
-  const entry = HARNESS_CATALOG.find((candidate) => candidate.harness === name);
-  if (!entry) {
-    const known = ["Shell", ...HARNESS_CATALOG.map((candidate) => candidate.harness)].join(", ");
-    die(`the catalog has no harness ${name}; pass one of ${known}`);
-  }
-  if (!TURN_PROTOCOLS.has(entry.harness))
-    die(`the guest has no turn protocol for ${entry.harness} yet; build ${buildable().join(" or ")}`);
-  const launch = HARNESS_RUNS[entry.harness];
-  const harnessFor = (binary) =>
-    GuestHarnessSchema.parse({
-      harness: entry.harness,
-      harnessVersion: entry.harnessVersion,
-      protocol: launch.protocol,
-      command: [binary, ...launch.flags],
-      workingDirectory: WORKING_DIRECTORY,
-      cloneSeconds: CLONE_SECONDS,
-      environment: ENVIRONMENT,
-    });
-  if (launch.archive) {
-    const { stripComponents, ...component } = harnessArchive(entry, pins.arch);
-    const binary = `/opt/tumpel/harness/bin/${launch.binary}`;
-    return {
-      harness: harnessFor(binary),
+      harness: withBinary(harness, `${HARNESS_PREFIX}/bin/${install.binary}`),
       install: async (tree) => {
         await installNode(tree, pins);
-        const bin = join(tree, "opt", "tumpel", "harness", "bin");
+        const bin = join(tree, HARNESS_PREFIX, "bin");
         mkdirSync(bin, { recursive: true });
-        run("tar", [
-          "-xzf",
-          await download(component),
-          "-C",
-          bin,
-          `--strip-components=${stripComponents}`,
-          "--no-same-owner",
-        ]);
-        const installed = join(tree, binary);
-        if (!existsSync(installed))
-          die(`${component.url} holds no ${launch.binary}; check the archive pin in guest-image-settings.mjs`);
-        chmodSync(installed, 0o755);
+        extractArchive(await download(component), bin, install);
         return [pins.node, component];
       },
     };
   }
-  const pkg = entry.installRecipe.match(/^npm:((?:@[^/]+\/)?[^@]+)@(.+)$/);
-  if (!pkg) die(`install recipe ${entry.installRecipe} is not npm:<package>@<version>`);
-  const [, name_, version] = pkg;
-  if (version !== entry.harnessVersion)
-    die(
-      `install recipe ${entry.installRecipe} installs ${version}, the catalog names ${entry.harnessVersion}; make them match`,
-    );
-  const native = `${name_}-linux-${NODE_ARCH[pins.arch]}`;
-  const binary = `/opt/tumpel/harness/node_modules/${native}/${launch.binary}`;
+  const binary = `${HARNESS_PREFIX}/node_modules/${install.package}/${install.binary}`;
   return {
-    harness: harnessFor(binary),
+    harness: withBinary(harness, binary),
     install: async (tree) => {
       const node = await installNode(tree, pins);
-      const prefix = join(tree, "opt", "tumpel", "harness");
+      const prefix = join(tree, HARNESS_PREFIX);
       mkdirSync(prefix, { recursive: true });
       run(
         process.execPath,
@@ -283,18 +225,19 @@ const recipeFor = (name, pins) => {
           "--no-fund",
           "--no-save",
           "--cpu",
-          NODE_ARCH[pins.arch],
+          install.cpu,
           "--os",
           "linux",
           "--libc",
           "glibc",
           "--ignore-scripts",
-          `${native}@${version}`,
+          `${install.package}@${install.version}`,
         ],
         { env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env.PATH}` } },
       );
       const installed = join(tree, binary);
-      if (!existsSync(installed)) die(`npm installed no ${installed}; check that ${native}@${version} is published`);
+      if (!existsSync(installed))
+        die(`npm installed no ${installed}; check that ${install.package}@${install.version} is published`);
       chmodSync(installed, 0o755);
       return [pins.node];
     },
@@ -488,7 +431,7 @@ const main = async () => {
   const [name, arch = HOST_ARCH[process.arch]] = process.argv.slice(2);
   if (!name)
     die(
-      `pass a harness and optionally an architecture: npm run guest:image -- <base|${buildable().join("|")}|all> [amd64|arm64]`,
+      `pass a harness and optionally an architecture: npm run guest:image -- <base|${layerHarnesses().join("|")}|all> [amd64|arm64]`,
     );
   if (!PINS[arch]) die(`no pins for architecture ${arch}; pass amd64 or arm64`);
   if (!RELEASE_ARCHITECTURES.includes(arch)) die(disabledReason(arch));
@@ -499,7 +442,7 @@ const main = async () => {
   }
   if (!existsSync(pins.guestBin))
     die(`${pins.guestBin} is missing; build it with TUMPEL_TARGET=${PINS[arch].target} npm run guest:build`);
-  for (const harness of name === "all" ? buildable() : [name]) await buildImage(harness, pins);
+  for (const harness of name === "all" ? layerHarnesses() : [name]) await buildImage(harness, pins);
 };
 
 await main();
