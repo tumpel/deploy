@@ -17,26 +17,7 @@ const ArgsSchema = z.object({
     .min(1, "pass --model <name>, the model the session runs"),
 });
 
-const IssueSchema = z.object({
-  number: z.number().int().positive(),
-  title: z.string().min(1),
-  body: z.string(),
-  url: z.url(),
-});
-
 const PullRequestsSchema = z.array(z.object({ url: z.url() }));
-
-const PROMPT = ({
-  owner,
-  repo,
-  issue,
-  branch,
-}) => `Work GitHub issue #${issue.number} of ${owner}/${repo}: ${issue.title}
-${issue.url}
-
-${issue.body}
-
-The repository is cloned in your working directory at its default branch. Create the branch ${branch} from it and make the change the issue asks for, in one or more commits with conventional commit subjects. Push the branch to origin and open a draft pull request with gh pr create --draft --head ${branch}. Its title is a conventional commit subject, and its body is four short lines: what, why, how, and "Closes ${issue.url}". Print the pull request URL as the last line of your reply, then stop.`;
 
 const die = (message) => {
   console.error(`ticket: ${message}`);
@@ -55,14 +36,6 @@ const capture = (command, args, env) => {
   if (result.status !== 0) die(`${command} ${args.join(" ")} exited with ${result.status ?? result.signal}`);
   return JSON.parse(result.stdout);
 };
-
-const slug = (title) =>
-  title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40)
-    .replace(/-+$/, "");
 
 const follow = (args, env) =>
   new Promise((resolve) => {
@@ -87,14 +60,9 @@ const main = async () => {
     { issueUrl: positionals[0], persona: values.persona, endpoint: values.endpoint, model: values.model },
     "npm run ticket -- <issue url> --persona <name> --model <name> [--endpoint <url>]",
   );
-  const [, owner, repo] = args.issueUrl.match(ISSUE_URL);
+  const [, owner, repo, issueNumber] = args.issueUrl.match(ISSUE_URL);
   const env = args.endpoint ? { ...process.env, TUMPEL_ENDPOINT: args.endpoint } : process.env;
 
-  const issue = parsed(
-    IssueSchema,
-    capture("gh", ["issue", "view", args.issueUrl, "--json", "number,title,body,url"], process.env),
-    `gh issue view ${args.issueUrl}`,
-  );
   const personas = parsed(PersonaSchema.array(), capture(TUMPEL, ["persona", "list"], env), "tumpel persona list");
   const persona = personas.find((candidate) => candidate.name === args.persona);
   if (!persona) {
@@ -103,27 +71,30 @@ const main = async () => {
     );
   }
 
-  const branch = `ticket/${issue.number}-${slug(issue.title)}`;
   const started = parsed(
     StartedSessionSchema,
     capture(
       TUMPEL,
       [
         "session",
-        "start",
+        "start-from-issue",
         "--repository",
-        `https://github.com/${owner}/${repo}.git`,
+        `https://github.com/${owner}/${repo}`,
+        "--issue-number",
+        issueNumber,
         "--model",
         args.model,
         "--persona-id",
         persona.personaId,
-        "--prompt",
-        PROMPT({ owner, repo, issue, branch }),
       ],
       env,
     ),
-    "tumpel session start",
+    "tumpel session start-from-issue",
   );
+  if (started.session.origin.source !== "Issue") {
+    die(`session ${started.session.sessionId} was not started from ${args.issueUrl}; update the control plane`);
+  }
+  const { branch } = started.session.origin.issue;
   const { turnId } = started.turn;
   console.error(`ticket: session ${started.session.sessionId}, turn ${turnId}, branch ${branch}`);
 
