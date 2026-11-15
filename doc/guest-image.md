@@ -15,7 +15,7 @@ The vsock protocol is length-prefixed JSON: a 4-byte big-endian length, then one
 ## Host prerequisites
 
 - `/dev/kvm` readable by the supervisor's user (group `kvm`), and Firecracker v1.18.0 at `firecrackerPath` in `runtime.json` (`SupervisorRuntime`). Firecracker runs unjailed as that user.
-- A pool of `boxCapacity` TAP devices owned by that user, made once by `tumpel-supervisor install` (see `test-host.md`). Device `tumpel<k>` is a systemd-networkd TAP with host address 172.16.<k>.1/30 and IPv4 masquerade, and its guest takes 172.16.<k>.2/30. The supervisor never needs `CAP_NET_ADMIN`. Egress is open to the internet; private and link-local destinations are dropped.
+- A pool of `boxCapacity` TAP devices owned by that user, made once by `tumpel-supervisor install` (see `test-host.md`). Device `tumpel<k>` is a TAP with host address 172.16.<k>.1/30 and IPv4 masquerade, made by systemd-networkd or, without networkd, by `tumpel-tap-pool.service`, and its guest takes 172.16.<k>.2/30. The supervisor never needs `CAP_NET_ADMIN`. Egress is open to the internet; private and link-local destinations are dropped.
 - `unsquashfs`, `mkfs.ext4`, `debugfs`, `e2fsck` and `dpkg-deb` on the machine that builds images.
 
 The host test runs a Shell box through boot, a turn, a snapshot, resume and a second turn:

@@ -93,6 +93,6 @@ The installer:
 4. writes the runtime config, `runtime.json`;
 5. installs Firecracker at a pinned version, checked against its digest;
 6. installs the guest filter as a unit that loads before the host network comes up;
-7. makes `boxCapacity` TAP devices owned by that user through systemd-networkd, where device `tumpel<k>` has gateway 172.16.<k>.1/30 and IPv4 masquerade;
+7. makes `boxCapacity` TAP devices owned by that user, where device `tumpel<k>` has gateway 172.16.<k>.1/30, and masquerades their traffic in the guest filter table. A server cloud image runs systemd-networkd, which makes the devices. A desktop runs NetworkManager without networkd; there a oneshot unit makes them with `ip tuntap` at boot, and a NetworkManager config file leaves `tumpel*` devices unmanaged. Both are host targets. The installer never turns networkd on;
 8. installs the supervisor binary and a lingering user unit that runs `tumpel-supervisor run`;
 9. enrols the host and starts the unit.
