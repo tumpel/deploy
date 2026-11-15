@@ -89,7 +89,7 @@ A build provider is a connection kind that runs prebuilds on the tenant's own ac
 
 ## Prebuilds
 
-The Prebuilds screen lists the covered repositories (G7), each with its latest prebuild. A row shows the state (Dispatched, Building, Converting, Done or Failed), the provider, the input digest, start and finish times, the layer size and a link to the provider's log. Rebuild starts a job even when a prebuild with the same key is stored (G21).
+The Prebuilds screen lists each repository the tenant has prebuilt with its latest prebuild (G18). A row shows the state (Dispatched, Building, Converting, Done or Failed), the provider, the input digest, start and finish times, the layer size and a link to the provider's log. Rebuild starts a job even when a prebuild with the same key is stored (G21).
 
 A Failed prebuild stays on its repository row until a later one succeeds. It names the phase that failed (dispatch, build, upload or conversion), the detail with its fix, and the log link.
 
@@ -138,7 +138,7 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 15. G15 `Connections_list` holds the build providers with their billing account.
 16. G16 `GitHubActionsConnections_get`, `_start` and `_delete`, with the caller workflow to copy.
 17. G17 `NamespaceConnections_get`, `_start` and `_delete`. `get` answers the issuer, subject pattern and audience.
-18. G18 `Prebuilds_start`, `Prebuilds_list` per repository and `Prebuilds_get` (FR-1).
+18. G18 `Prebuilds_start`, `Prebuilds_list` per repository, `Prebuilds_listLatest` for the newest prebuild of each repository, and `Prebuilds_get` (FR-1).
 19. G19 `Prebuild` carries start and finish times, layer bytes and the provider's log URL.
 20. G20 `Prebuilds_getFailure`: the failed phase and its fix (FR-5).
 21. G21 A rebuild flag on `Prebuilds_start`.
