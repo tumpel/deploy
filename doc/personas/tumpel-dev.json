@@ -5,8 +5,6 @@
       "name": "tumpel-dev",
       "harness": "ClaudeCode",
       "secretSetName": "tumpel-dev",
-      "gitAuthorName": "Tumpel Dev",
-      "gitAuthorEmail": "tumpel-dev@users.noreply.github.com",
       "files": [
         { "path": ".claude/settings.json", "from": "tumpel-dev/settings.json" },
         { "path": ".claude/CLAUDE.md", "from": "tumpel-dev/CLAUDE.md" }

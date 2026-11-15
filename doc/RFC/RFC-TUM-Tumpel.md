@@ -77,7 +77,7 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 
 ### Functional requirements for accounts and hosts
 
-- **FR-1 Sign up.** A person signs up with their email through Cloudflare Access. The first sign-in creates a tenant with that person as owner. Sign-up also sets the git author name and email of the tenant's default persona. (BR-1)
+- **FR-1 Sign up.** A person signs up with their email through Cloudflare Access. The first sign-in creates a tenant with that person as owner. (BR-1)
 - **FR-2 Sign a client in.** The CLI signs in through a device code approved in a browser, and an MCP client signs in through OAuth. A tenant member lists its devices and revokes any of them. (BR-2)
 - **FR-3 Enrol a host.** A tenant member mints a one-time enrolment token. The host that presents it makes a key pair, spends the token and reads Online. A host without KVM refuses to enrol and names what is missing. Revoking a host closes its connection at once. (BR-1)
 - **FR-4 Harness catalog.** The catalog lists Claude Code, Codex, OpenCode and Pi.dev at pinned versions, and Mistral's coding agent joins it later. A tenant pins the version each harness runs. (BR-3)
@@ -263,8 +263,6 @@ model Persona {
   name: DisplayName;
   harness: Harness;
   secretSetId: EntityId;
-  gitAuthorName: DisplayName;
-  gitAuthorEmail: EmailAddress;
   files: PersonaFile[];
   createdAt: int64;
   updatedAt: int64;

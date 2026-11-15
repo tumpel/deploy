@@ -21,7 +21,7 @@ One operator runs a tenant today. Later a small team of owners and members share
 
 A new operator signs in through Access at `https://<stage>.tumpel.dev` and finishes setup there. The CLI and the device page stay for automation and agents.
 
-When the Access email holds no tenant, the consent page asks for the tenant name and the git author name and email that `Tenants_signUp` requires. It then finishes the same sign-in (G22).
+When the Access email holds no tenant, the consent page asks for the tenant name that `Tenants_signUp` requires. It then finishes the same sign-in (G22).
 
 The dashboard opens `/t/<tenantId>/setup` until every step reads done. Each step has one button and reads its state from the API. UX picks a checklist or a wizard.
 
@@ -49,7 +49,7 @@ The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId
 | Session     | Turns, live transcript, next prompt, failures, snapshots, handovers, stop failures | `Sessions_get`, `Turns_list`, `Turns_get`, `Turns_send`, `Turns_getFailure`, `Transcripts_read`, `Snapshots_list`, `Sessions_listCredentialHandovers`, `Sessions_listStopFailures`       |
 | Hosts       | Hosts with state, version, labels and usage; enrol, relabel, revoke                | `Hosts_list`, `Hosts_get`, `Hosts_listUsage`, `EnrolmentTokens_mint`, `Hosts_setLabels`, `Hosts_revoke`, G14                                                                             |
 | Harnesses   | The catalog and the tenant's pins; pin and unpin                                   | `HarnessCatalog_list`, `HarnessCatalog_listPins`, `HarnessCatalog_pin`, `HarnessCatalog_unpin`                                                                                           |
-| Personas    | Personas with harness, secret set, git author and files; create, edit, delete      | `Personas_list`, `Personas_get`, `Personas_create`, `Personas_update`, `Personas_delete`, `Personas_uploadFile`, `HarnessCatalog_list`                                                   |
+| Personas    | Personas with harness, secret set and files; create, edit, delete                  | `Personas_list`, `Personas_get`, `Personas_create`, `Personas_update`, `Personas_delete`, `Personas_uploadFile`, `HarnessCatalog_list`                                                   |
 | Secrets     | Secret sets with member names, kinds, providers and expiries; create, edit, delete | `SecretSets_list`, `SecretSets_get`, `SecretSets_create`, `SecretSets_update`, `SecretSets_delete`, G12                                                                                  |
 | Connections | Each connection with its state and account; connect, disconnect                    | `GitHubConnections_get`, `GitHubConnections_start`, G5, G6, G10, G15, G16, G17                                                                                                           |
 | Prebuilds   | The latest prebuild of each repository; rebuild                                    | `GitHubConnections_listRepositories`, G18, G19, G20, G21                                                                                                                                 |

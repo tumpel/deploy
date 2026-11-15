@@ -5,8 +5,6 @@
       "name": "proof",
       "harness": "ClaudeCode",
       "secretSetName": "proof",
-      "gitAuthorName": "Tumpel proof",
-      "gitAuthorEmail": "proof@tumpel.invalid",
       "files": [
         { "path": ".claude/settings.json", "from": "proof/settings.json" },
         { "path": ".claude/CLAUDE.md", "from": "proof-tenant/CLAUDE.md" }
@@ -16,16 +14,12 @@
       "name": "refused",
       "harness": "ClaudeCode",
       "secretSetName": "refused",
-      "gitAuthorName": "Tumpel proof",
-      "gitAuthorEmail": "proof@tumpel.invalid",
       "files": [{ "path": ".claude/settings.json", "from": "proof/settings.json" }]
     },
     {
       "name": "ticket-worker",
       "harness": "ClaudeCode",
       "secretSetName": "ticket-worker",
-      "gitAuthorName": "Tumpel Ticket Worker",
-      "gitAuthorEmail": "ticket-worker@users.noreply.github.com",
       "files": [
         { "path": ".claude/settings.json", "from": "ticket-worker/settings.json" },
         { "path": ".claude/CLAUDE.md", "from": "ticket-worker/CLAUDE.md" }

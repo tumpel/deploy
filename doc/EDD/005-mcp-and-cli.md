@@ -53,7 +53,7 @@ The API runs under a version prefix. TypeSpec generates the OpenAPI document, th
 
 ## Config as code
 
-`TenantConfig` holds personas, secret sets, harness pins and host labels. A secret entry names the environment variable its value comes from. A persona names its harness, its secret set by name, its `gitAuthorName` and `gitAuthorEmail`, and its files, each as `{ path, from }`. `path` is where the harness reads the file under its home in the box. `from` is the local file's path from the config file's directory.
+`TenantConfig` holds personas, secret sets, harness pins and host labels. A secret entry names the environment variable its value comes from. A persona names its harness, its secret set by name, and its files, each as `{ path, from }`. `path` is where the harness reads the file under its home in the box. `from` is the local file's path from the config file's directory.
 
 1. `tumpel config init` writes a file from the tenant's current state.
 2. `tumpel config validate` prints each schema error with its JSON pointer.

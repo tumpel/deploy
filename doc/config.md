@@ -10,8 +10,6 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
       "name": "Reviewer",
       "harness": "ClaudeCode",
       "secretSetName": "prod",
-      "gitAuthorName": "Tumpel Reviewer",
-      "gitAuthorEmail": "reviewer@users.noreply.github.com",
       "files": [{ "path": ".claude/CLAUDE.md", "from": "reviewer/CLAUDE.md" }]
     }
   ],
@@ -34,7 +32,7 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
 }
 ```
 
-The file holds no secret value. `valueFrom.env` names the environment variable `apply` reads it from. A box clones the session's repository with the tenant's GitHub App installation token, or else with the set's `GITHUB_TOKEN` Variable (EDD-003), and commits as the persona's `gitAuthorName` and `gitAuthorEmail`; a public repository needs no token. `doc/personas/ticket-worker` is a persona that works a GitHub issue.
+The file holds no secret value. `valueFrom.env` names the environment variable `apply` reads it from. A box clones the session's repository with the tenant's GitHub App installation token, or else with the set's `GITHUB_TOKEN` Variable (EDD-003), and commits as the bot of the stage's GitHub App, `<app-slug>[bot]` with the noreply address `<app-id>+<app-slug>[bot]@users.noreply.github.com`, when the tenant installed the App; otherwise the GitHub user of the secret set's `GITHUB_TOKEN`, read with `GET /user` at turn start, with the noreply address `<id>+<login>@users.noreply.github.com`. A box with neither commits as `Tumpel Agent <agent@tumpel.invalid>`. Nobody enters a git identity. A public repository needs no token. `doc/personas/ticket-worker` is a persona that works a GitHub issue.
 
 - `tumpel config init <file>` writes a new file from the tenant's current state.
 - `tumpel config validate <file>` prints every schema error with its JSON pointer.
