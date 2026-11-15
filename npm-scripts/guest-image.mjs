@@ -75,7 +75,7 @@ export PATH
 mount -t proc proc /proc
 mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
 if ! mount -t ext4 -o noatime /dev/vdb /overlay 2>/dev/null; then
-  mkfs.ext4 -q -F /dev/vdb
+  mkfs.ext4 -q -F -I 256 /dev/vdb
   mount -t ext4 -o noatime /dev/vdb /overlay
   mkdir -p /overlay/upper
   if [ -b /dev/vdc ]; then
