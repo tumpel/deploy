@@ -40,5 +40,5 @@
     "@biomejs/biome": "^2.6.0",
     "typescript": "^5.9.0"
   },
-  "license": "UNLICENSED"
+  "license": "Apache-2.0"
 }
