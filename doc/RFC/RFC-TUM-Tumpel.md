@@ -130,6 +130,12 @@ Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with pers
 
 Concurrency means any number of sessions per tenant across hosts, each with one running turn. On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#decisions)).
 
+### Domain and stages
+
+**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. Each stage has its own hostnames. `api.<stage>.tumpel.dev` serves the control plane. The stage reserves `app.<stage>.tumpel.dev` for the dashboard. The OIDC issuer gets `id.<stage>.tumpel.dev`, also reserved for now. Stage `prod` drops the stage label: `api.tumpel.dev`, `app.tumpel.dev` and `id.tumpel.dev`. OpenTofu manages every record. Once tenants pin the issuer hostname, it never moves ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#the-oidc-issuer)). On 2026-11-15 the ruling read:
+
+> tumpel.dev for everything
+
 ### Credentials and storage
 
 **The provider credential is an environment variable.** For each turn, the box exports the provider credential into the harness's environment. When the credential changes, the box restarts the harness before the next turn. A host-side gateway issuing per-session virtual keys is a non-goal for v1.
