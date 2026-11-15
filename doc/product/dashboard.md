@@ -44,19 +44,19 @@ Today an email holds a principal in one tenant only, so the switcher needs G1.
 
 ## Screens
 
-| Screen      | Shows and does                                                                     | Operations                                                                                                                                                                         |
-| ----------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Overview    | Host states, box slots, sessions by state, expiring tokens, connection state       | `Hosts_list`, `Hosts_listUsage`, `Sessions_list`, `SecretSets_list`, G5, G13                                                                                                       |
-| Sessions    | Sessions filtered by state and host; start, stop, archive                          | `Sessions_list`, `Sessions_start`, `Sessions_stop`, `Sessions_archive`, `Personas_list`, G7, G8, G9, G11                                                                           |
-| Session     | Turns, live transcript, next prompt, failures, snapshots, handovers, stop failures | `Sessions_get`, `Turns_list`, `Turns_get`, `Turns_send`, `Turns_getFailure`, `Transcripts_read`, `Snapshots_list`, `Sessions_listCredentialHandovers`, `Sessions_listStopFailures` |
-| Hosts       | Hosts with state, version, labels and usage; enrol, relabel, revoke                | `Hosts_list`, `Hosts_get`, `Hosts_listUsage`, `EnrolmentTokens_mint`, `Hosts_setLabels`, `Hosts_revoke`, G14                                                                       |
-| Harnesses   | The catalog and the tenant's pins; pin and unpin                                   | `HarnessCatalog_list`, `HarnessCatalog_listPins`, `HarnessCatalog_pin`, `HarnessCatalog_unpin`                                                                                     |
-| Personas    | Personas with harness, secret set, git author and files; create, edit, delete      | `Personas_list`, `Personas_get`, `Personas_create`, `Personas_update`, `Personas_delete`, `Personas_uploadFile`, `HarnessCatalog_list`                                             |
-| Secrets     | Secret sets with member names, kinds, providers and expiries; create, edit, delete | `SecretSets_list`, `SecretSets_get`, `SecretSets_create`, `SecretSets_update`, `SecretSets_delete`, G12                                                                            |
-| Connections | Each connection with its state and account; connect, disconnect                    | `GitHubConnections_get`, `GitHubConnections_start`, G5, G6, G10, G15, G16, G17                                                                                                     |
-| Prebuilds   | The latest prebuild of each repository; rebuild                                    | G7, G18, G19, G20, G21                                                                                                                                                             |
-| Members     | Members with role, open invites; invite, revoke, remove                            | G2, G3, G4                                                                                                                                                                         |
-| Account     | The signed-in principal and its devices; sign a device out                         | `Identity_whoami`, `Devices_list`, `Devices_revoke`                                                                                                                                |
+| Screen      | Shows and does                                                                     | Operations                                                                                                                                                                               |
+| ----------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview    | Host states, box slots, sessions by state, expiring tokens, connection state       | `Hosts_list`, `Hosts_listUsage`, `Sessions_list`, `SecretSets_list`, G5, G13                                                                                                             |
+| Sessions    | Sessions filtered by state and host; start, stop, archive                          | `Sessions_list`, `Sessions_start`, `Sessions_startFromIssue`, `Sessions_stop`, `Sessions_archive`, `Personas_list`, `GitHubConnections_listRepositories`, `GitHubConnections_listIssues` |
+| Session     | Turns, live transcript, next prompt, failures, snapshots, handovers, stop failures | `Sessions_get`, `Turns_list`, `Turns_get`, `Turns_send`, `Turns_getFailure`, `Transcripts_read`, `Snapshots_list`, `Sessions_listCredentialHandovers`, `Sessions_listStopFailures`       |
+| Hosts       | Hosts with state, version, labels and usage; enrol, relabel, revoke                | `Hosts_list`, `Hosts_get`, `Hosts_listUsage`, `EnrolmentTokens_mint`, `Hosts_setLabels`, `Hosts_revoke`, G14                                                                             |
+| Harnesses   | The catalog and the tenant's pins; pin and unpin                                   | `HarnessCatalog_list`, `HarnessCatalog_listPins`, `HarnessCatalog_pin`, `HarnessCatalog_unpin`                                                                                           |
+| Personas    | Personas with harness, secret set, git author and files; create, edit, delete      | `Personas_list`, `Personas_get`, `Personas_create`, `Personas_update`, `Personas_delete`, `Personas_uploadFile`, `HarnessCatalog_list`                                                   |
+| Secrets     | Secret sets with member names, kinds, providers and expiries; create, edit, delete | `SecretSets_list`, `SecretSets_get`, `SecretSets_create`, `SecretSets_update`, `SecretSets_delete`, G12                                                                                  |
+| Connections | Each connection with its state and account; connect, disconnect                    | `GitHubConnections_get`, `GitHubConnections_start`, G5, G6, G10, G15, G16, G17                                                                                                           |
+| Prebuilds   | The latest prebuild of each repository; rebuild                                    | `GitHubConnections_listRepositories`, G18, G19, G20, G21                                                                                                                                 |
+| Members     | Members with role, open invites; invite, revoke, remove                            | G2, G3, G4                                                                                                                                                                               |
+| Account     | The signed-in principal and its devices; sign a device out                         | `Identity_whoami`, `Devices_list`, `Devices_revoke`                                                                                                                                      |
 
 ## Screen rules
 
@@ -74,7 +74,7 @@ A connection links the tenant to an outside service. Every connection has the sa
 | NotConnected  | The stage has an app and the tenant has not linked it | Connect                      |
 | Connected     | The tenant holds a link to one account                | Disconnect                   |
 
-For GitHub, NotConfigured is today's `AppMissing`, whose `setupUrl` opens `/github/app/setup`. Connect sends the browser to the `installUrl` of `GitHubConnections_start`. GitHub returns to `/github/app/installed`, which links the installation and sends the browser back (G10). Connected shows the account login and the covered repositories (G7). Disconnect removes the link (G6) and says to uninstall the App on GitHub too.
+For GitHub, NotConfigured is today's `AppMissing`, whose `setupUrl` opens `/github/app/setup`. Connect sends the browser to the `installUrl` of `GitHubConnections_start`. GitHub returns to `/github/app/installed`, which links the installation and sends the browser back (G10). Connected shows the account login and the covered repositories (`GitHubConnections_listRepositories`). Disconnect removes the link (G6) and says to uninstall the App on GitHub too.
 
 A later service adds its own operation group with `get`, `start` and `delete`, and one row in `Connections_list` (G5).
 
@@ -127,25 +127,21 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 4. G4 `Members_remove`, which signs out the member's devices.
 5. G5 `Connections_list`: each connection kind with its state and account.
 6. G6 `GitHubConnections_delete`.
-7. G7 `GitHubConnections_listRepositories`.
-8. G8 `GitHubConnections_listIssues` for one repository.
-9. G9 `Sessions_start` takes an issue number and builds the prompt (#5).
-10. G10 `GitHubConnections_start` takes a return URL on the dashboard's origin.
-11. G11 `Session` carries its last turn's id, state and time.
-12. G12 `SecretSetUpdate` takes a member by name alone and keeps its stored value. Today an update needs every value again.
-13. G13 `Turns_listForTenant`, filtered by state and start time.
-14. G14 The supervisor version the stage serves. The supervisor has no update command yet (OR-1).
-15. G15 `Connections_list` holds the build providers with their billing account.
-16. G16 `GitHubActionsConnections_get`, `_start` and `_delete`, with the caller workflow to copy.
-17. G17 `NamespaceConnections_get`, `_start` and `_delete`. `get` answers the issuer, subject pattern and audience.
-18. G18 `Prebuilds_start`, `Prebuilds_list` per repository, `Prebuilds_listLatest` for the newest prebuild of each repository, and `Prebuilds_get` (FR-1).
-19. G19 `Prebuild` carries start and finish times, layer bytes and the provider's log URL.
-20. G20 `Prebuilds_getFailure`: the failed phase and its fix (FR-5).
-21. G21 A rebuild flag on `Prebuilds_start`.
-22. G22 The consent page signs up an Access email with no tenant for the client `tumpel-dashboard`: a form, `Tenants_signUp`, then the same consent.
-23. G23 `TenantConfigs_plan`: takes a `TenantConfig` and each persona file's digest by its `from` path. It answers each create, update and delete, as `tumpel config plan` prints them.
-24. G24 `TenantConfigs_apply`: takes the same document, each persona file's bytes inline or by digest, and the value of every variable the file names. It applies the plan as `tumpel config apply` does and rewrites every secret set the file names. Its MCP tool refuses values, as the secret-set tools do.
-25. G25 `OAuthGrants_list`: the OAuth clients that hold a live token for the caller, with name, redirect origin and last use. `Devices_list` holds device sign-ins only.
+7. G10 `GitHubConnections_start` takes a return URL on the dashboard's origin.
+8. G12 `SecretSetUpdate` takes a member by name alone and keeps its stored value. Today an update needs every value again.
+9. G13 `Turns_listForTenant`, filtered by state and start time.
+10. G14 The supervisor version the stage serves. The supervisor has no update command yet (OR-1).
+11. G15 `Connections_list` holds the build providers with their billing account.
+12. G16 `GitHubActionsConnections_get`, `_start` and `_delete`, with the caller workflow to copy.
+13. G17 `NamespaceConnections_get`, `_start` and `_delete`. `get` answers the issuer, subject pattern and audience.
+14. G18 `Prebuilds_start`, `Prebuilds_list` per repository, `Prebuilds_listLatest` for the newest prebuild of each repository, and `Prebuilds_get` (FR-1).
+15. G19 `Prebuild` carries start and finish times, layer bytes and the provider's log URL.
+16. G20 `Prebuilds_getFailure`: the failed phase and its fix (FR-5).
+17. G21 A rebuild flag on `Prebuilds_start`.
+18. G22 The consent page signs up an Access email with no tenant for the client `tumpel-dashboard`: a form, `Tenants_signUp`, then the same consent.
+19. G23 `TenantConfigs_plan`: takes a `TenantConfig` and each persona file's digest by its `from` path. It answers each create, update and delete, as `tumpel config plan` prints them.
+20. G24 `TenantConfigs_apply`: takes the same document, each persona file's bytes inline or by digest, and the value of every variable the file names. It applies the plan as `tumpel config apply` does and rewrites every secret set the file names. Its MCP tool refuses values, as the secret-set tools do.
+21. G25 `OAuthGrants_list`: the OAuth clients that hold a live token for the caller, with name, redirect origin and last use. `Devices_list` holds device sign-ins only.
 
 ## Open questions
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
-import { PersonaSchema, StartedSessionSchema } from "@tumpel/api/schemas";
+import { PersonaSchema, StartedSessionFromIssueSchema } from "@tumpel/api/schemas";
 import { z } from "zod";
 
 const TUMPEL = process.env.TUMPEL_BIN ?? "tumpel";
@@ -72,14 +72,16 @@ const main = async () => {
   }
 
   const started = parsed(
-    StartedSessionSchema,
+    StartedSessionFromIssueSchema,
     capture(
       TUMPEL,
       [
         "session",
         "start-from-issue",
-        "--repository",
-        `https://github.com/${owner}/${repo}`,
+        "--owner",
+        owner,
+        "--name",
+        repo,
         "--issue-number",
         issueNumber,
         "--model",
@@ -91,10 +93,7 @@ const main = async () => {
     ),
     "tumpel session start-from-issue",
   );
-  if (started.session.origin.source !== "Issue") {
-    die(`session ${started.session.sessionId} was not started from ${args.issueUrl}; update the control plane`);
-  }
-  const { branch } = started.session.origin.issue;
+  const { branch } = started.issue;
   const { turnId } = started.turn;
   console.error(`ticket: session ${started.session.sessionId}, turn ${turnId}, branch ${branch}`);
 
