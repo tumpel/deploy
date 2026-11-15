@@ -25,14 +25,14 @@ When the Access email holds no tenant, the consent page asks for the tenant name
 
 The setup wizard has six steps at `/t/<tenantId>/setup/<step>`. `/t/<tenantId>/setup` opens the first step that reads not done. Each step reads its state from the API, again on tab focus and on Check now. The overview shows Resume setup until the first five read done.
 
-| Step      | The step                                                                                                                             | Done when                                                                       |
-| --------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| Tenant    | Shows the tenant's name                                                                                                              | `Identity_whoami` answers                                                       |
-| GitHub    | Sends the tab to the `installUrl` of `GitHubConnections_start`, which returns to `/t/<tenantId>/setup/github?from=github` (G10)      | `GitHubConnections_list` holds an Active installation                           |
-| Host      | On request, calls `EnrolmentTokens_mint` and shows its `installCommand` fed the `token` on stdin, with the expiry and a copy control | `Hosts_list` holds a host that is not Revoked                                   |
-| claude.ai | Shows `https://api.<stage>.tumpel.dev/mcp` with a copy control and how to add it in claude.ai as a custom connector                  | `OAuthGrants_list` holds a grant from https://claude.ai                         |
-| Persona   | Writes a Claude token, and a GitHub token while the App is not installed, to the Default persona's secret set                        | A persona's secret set holds an unexpired credential for its harness's provider |
-| Done      | Sums up the five steps                                                                                                               |                                                                                 |
+| Step      | The step                                                                                                                                         | Done when                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Tenant    | Shows the tenant's name                                                                                                                          | `Identity_whoami` answers                                                       |
+| GitHub    | Sends the tab to the `installUrl` of `GitHubConnections_start`, which returns to `/t/<tenantId>/setup/github?from=github` (G10)                  | `GitHubConnections_list` holds an Active installation                           |
+| Host      | On request, calls `EnrolmentTokens_mint` and shows its `installCommand` fed the `token` on stdin, with the expiry and a copy control             | `Hosts_list` holds a host that is not Revoked                                   |
+| claude.ai | Shows `https://api.<stage>.tumpel.dev/mcp` with a copy control and how to add it in claude.ai as a custom connector                              | `OAuthGrants_list` holds a grant from https://claude.ai                         |
+| Persona   | Writes a Claude token, pasted or from Set up Claude Code, and a GitHub token while the App is not installed, to the Default persona's secret set | A persona's secret set holds an unexpired credential for its harness's provider |
+| Done      | Sums up the five steps                                                                                                                           |                                                                                 |
 
 The Secret sets page imports a `TenantConfig` file such as `doc/personas/tumpel-dev.json` and shows each schema error with its JSON pointer. It asks for each file a `from` names and each env-sourced value, in password fields. It shows the plan from G23 with its deletes and applies it on confirm (G24).
 
@@ -63,6 +63,18 @@ The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId
 Start a session reads GitHub as not connected from the `GitHubNotConnected` refusal of `GitHubConnections_listRepositories`, and shows Connect GitHub in place of the pickers. A start from an issue that does not exist is refused 404 `IssueNotFound`, and the form shows the refusal under the Issue field. Enrolment shows the minted token and its install command once, with the expiry. The persona file editor lists only the paths the catalog lists for the persona's harness. Per-harness config is the persona's files.
 
 Secret values go into a password field and travel once, in the create or update call. The API holds every value back. A subscription token past its `expiresAt` reads Expired and names the fix.
+
+Set up Claude Code sits beside the Claude token field of the persona step and on each secret set's page. It calls `ClaudeSetups_start` for that set and shows a panel driven by `ClaudeSetups_get`. The panel reads again on tab focus and on Check again, never on a timer; only the countdown ticks.
+
+| State        | The panel shows                                                                                                                                                                              |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Starting     | The box boots, with the pinned Claude Code version                                                                                                                                           |
+| AwaitingCode | The `signInUrl` with a copy control and a link that opens it in a new tab, "Sign in, then paste the code in the field below", the code field with focus, and the time left until `codeDueAt` |
+| Minting      | Claude Code makes the token and the box stores it                                                                                                                                            |
+| Completed    | The member name and its expiry, Next, and a live region that announces the save                                                                                                              |
+| Failed       | The reason (`SetupUrlMissing`, `CodeRejected`, `SetupTimedOut`, `TokenNotStored`) with the detail and fix, Start a new setup and the report link                                             |
+
+A `NoHostOnline` refusal of the start shows its Problem with Add a host, which opens the host step. The code goes once to `ClaudeSetups_submitCode` from a password field, which empties on send. It never reaches a URL, browser storage, the query cache or a log.
 
 ## Connections
 
