@@ -22,10 +22,9 @@ const USAGE = `usage:
   prebuild.mjs build <out dir>
     Runs in the guest image with the repository checked out at /root/workspace, a directory and
     not a symlink. Reads .devcontainer/devcontainer.json or .devcontainer.json; with neither, runs
-    the default: one onCreateCommand per stack it detects at the workspace root (npm, pnpm, Yarn,
-    Bun, Cargo, Go, Python, Bundler, Composer, Mix, Dart) that installs its dependencies, skipping a
-    stack whose tool the image lacks. Scans the image's
-    files just before the commands run, then runs onCreateCommand, updateContentCommand and
+    the default config: npm ci as onCreateCommand when package-lock.json or npm-shrinkwrap.json is
+    at the workspace root, and nothing otherwise, since npm is the one package manager the guest
+    image carries. Scans the image's files just before the commands run, then runs onCreateCommand, updateContentCommand and
     postCreateCommand in the workspace with exactly the environment /etc/tumpel/guest.json names
     plus containerEnv (remoteEnv is ignored). Replaces .git/config with core settings and an origin
     URL without user info before the commands run, then writes <out dir>/layer.tar, one
@@ -107,46 +106,23 @@ const withoutTrailingCommas = (text) =>
 
 const parseJsonc = (text) => JSON.parse(withoutTrailingCommas(withoutComments(text)));
 
-const DEFAULT_STACKS = [
-  [
-    "node",
-    [
-      ["package-lock.json", "npm", "npm ci"],
-      ["npm-shrinkwrap.json", "npm", "npm ci"],
-      ["pnpm-lock.yaml", "pnpm", "pnpm install --frozen-lockfile"],
-      ["yarn.lock", "yarn", "yarn install --frozen-lockfile"],
-      ["bun.lock", "bun", "bun install --frozen-lockfile"],
-      ["bun.lockb", "bun", "bun install --frozen-lockfile"],
-    ],
-  ],
-  ["rust", [["Cargo.toml", "cargo", "cargo fetch"]]],
-  ["go", [["go.mod", "go", "go mod download"]]],
-  [
-    "python",
-    [
-      ["uv.lock", "uv", "uv sync --frozen"],
-      ["poetry.lock", "poetry", "poetry install --no-root"],
-      ["Pipfile.lock", "pipenv", "pipenv sync"],
-      ["requirements.txt", "python3", "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"],
-      ["pyproject.toml", "python3", "python3 -m venv .venv && .venv/bin/pip install -e ."],
-    ],
-  ],
-  ["ruby", [["Gemfile.lock", "bundle", "bundle install"]]],
-  ["php", [["composer.lock", "composer", "composer install --no-interaction"]]],
-  ["elixir", [["mix.lock", "mix", "mix deps.get"]]],
-  ["dart", [["pubspec.lock", "dart", "dart pub get"]]],
+const DEFAULT_INSTALLS = [
+  ["package-lock.json", "npm ci"],
+  ["npm-shrinkwrap.json", "npm ci"],
 ];
 
-const guarded = (tool, command) =>
-  `if command -v ${tool} >/dev/null 2>&1; then ${command}; else echo "prebuild: ${tool} is not in the guest image, so ${command} is skipped"; fi`;
-
 const defaultConfig = (workspace) => {
-  const commands = DEFAULT_STACKS.flatMap(([stack, candidates]) => {
-    const found = candidates.find(([file]) => existsSync(join(workspace, file)));
-    return found === undefined ? [] : [[stack, guarded(found[1], found[2])]];
-  });
-  return commands.length === 0 ? {} : { onCreateCommand: Object.fromEntries(commands) };
+  const found = DEFAULT_INSTALLS.find(([file]) => existsSync(join(workspace, file)));
+  return found === undefined ? {} : { onCreateCommand: found[1] };
 };
+
+const sourceOf = (devcontainer) =>
+  devcontainer.kind === "RepositoryFile" ? devcontainer.path : "the default config, as no devcontainer.json exists";
+
+const fixOf = (devcontainer, name) =>
+  devcontainer.kind === "RepositoryFile"
+    ? `fix ${name} in ${devcontainer.path}`
+    : "fix what it names in package.json or the npm lockfile, or commit a .devcontainer/devcontainer.json whose onCreateCommand installs the dependencies";
 
 const readDevcontainer = (workspace) => {
   const path = [join(workspace, ".devcontainer", "devcontainer.json"), join(workspace, ".devcontainer.json")].find(
@@ -157,7 +133,7 @@ const readDevcontainer = (workspace) => {
     console.log(
       `prebuild: ${workspace} holds no devcontainer.json, so the prebuild runs the default: ${JSON.stringify(config)}`,
     );
-    return { path: "the default prebuild config", config };
+    return { kind: "Default", config };
   }
   let config;
   try {
@@ -172,7 +148,7 @@ const readDevcontainer = (workspace) => {
     const empty = value === undefined || (field === "features" && Object.keys(value ?? {}).length === 0);
     if (!empty) die(`${message} (${path})`);
   }
-  return { path, config };
+  return { kind: "RepositoryFile", path, config };
 };
 
 const isStringMap = (value) =>
@@ -190,10 +166,11 @@ const imageEnvironment = (root) => {
 
 const CONTAINER_ENV_REFERENCE = /\$\{containerEnv:([^}:]+)(?::([^}]*))?\}/g;
 
-const commandEnvironment = (image, { path, config }) => {
+const commandEnvironment = (image, devcontainer) => {
+  const { config } = devcontainer;
   if (config.containerEnv === undefined) return image;
   if (!isStringMap(config.containerEnv))
-    die(`DevcontainerInvalid: containerEnv in ${path} is not an object of strings; fix the file`);
+    die(`DevcontainerInvalid: containerEnv in ${sourceOf(devcontainer)} is not an object of strings; fix the file`);
   const added = Object.fromEntries(
     Object.entries(config.containerEnv).map(([name, value]) => [
       name,
@@ -203,7 +180,7 @@ const commandEnvironment = (image, { path, config }) => {
   return { ...image, ...added };
 };
 
-const commandsOf = (name, value, path) => {
+const commandsOf = (name, value, source) => {
   if (value === undefined) return [];
   if (typeof value === "string") return [{ label: name, file: "/bin/sh", args: ["-c", value] }];
   if (Array.isArray(value) && value.length > 0 && value.every((part) => typeof part === "string"))
@@ -211,10 +188,10 @@ const commandsOf = (name, value, path) => {
   if (typeof value === "object" && value !== null && !Array.isArray(value))
     return Object.entries(value).flatMap(([key, entry]) => {
       if (typeof entry === "object" && !Array.isArray(entry))
-        die(`DevcontainerInvalid: ${name}.${key} in ${path} is neither a string nor an array; fix the file`);
-      return commandsOf(`${name}.${key}`, entry, path);
+        die(`DevcontainerInvalid: ${name}.${key} in ${source} is neither a string nor an array; fix the file`);
+      return commandsOf(`${name}.${key}`, entry, source);
     });
-  return die(`DevcontainerInvalid: ${name} in ${path} is neither a string, an array nor an object; fix the file`);
+  return die(`DevcontainerInvalid: ${name} in ${source} is neither a string, an array nor an object; fix the file`);
 };
 
 const killGroup = (pid) => {
@@ -249,15 +226,17 @@ const runCommand = (command, cwd, env, deadline) =>
     });
   });
 
-const runLifecycle = async (workspace, env, { path, config }) => {
+const runLifecycle = async (workspace, env, devcontainer) => {
   const deadline = Date.now() + BUILD_SECONDS * 1000;
   for (const name of LIFECYCLE) {
     const failures = (
       await Promise.all(
-        commandsOf(name, config[name], path).map((command) => runCommand(command, workspace, env, deadline)),
+        commandsOf(name, devcontainer.config[name], sourceOf(devcontainer)).map((command) =>
+          runCommand(command, workspace, env, deadline),
+        ),
       )
     ).filter(Boolean);
-    if (failures.length > 0) die(`BuildFailed: ${failures.join("; ")}; fix ${name} in ${path}`);
+    if (failures.length > 0) die(`BuildFailed: ${failures.join("; ")}; ${fixOf(devcontainer, name)}`);
   }
 };
 
