@@ -775,6 +775,11 @@ const steps = [
     name: "Prebuild refused",
     needs: [3],
     run: async () => {
+      const rows = tumpelJson(["connection", "list"]);
+      const builders = rows.filter((row) => row.kind !== "GitHub");
+      if (builders.length !== 3 || builders.some((row) => row.state !== "NotConnected")) {
+        fail(`the build provider rows are not all NotConnected: ${JSON.stringify(rows)}`);
+      }
       const result = spawnSync(
         CLI,
         ["prebuild", "start", "--repository", REPOSITORY, "--persona-id", state.personaId],
@@ -785,7 +790,7 @@ const steps = [
       if (!refusal.includes("No build provider")) fail(`the start was refused for another reason: ${refusal}`);
       const listed = tumpelJson(["prebuild", "list", "--repository", REPOSITORY]);
       if (listed.length !== 0) fail(`the refused start left ${listed.length} prebuilds of ${REPOSITORY}`);
-      return `refused NoBuildProvider, 0 prebuilds of ${REPOSITORY}`;
+      return `3 build provider rows NotConnected; refused NoBuildProvider, 0 prebuilds of ${REPOSITORY}`;
     },
   },
   {
