@@ -152,7 +152,7 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 17. G21 A rebuild flag on `Prebuilds_start`.
 18. G22 The consent page signs up an Access email with no tenant for the client `tumpel-dashboard`: a form, `Tenants_signUp`, then the same consent.
 19. G23 `TenantConfigs_plan`: takes a `TenantConfig` and each persona file's digest by its `from` path. It answers each create, update and delete, as `tumpel config plan` prints them.
-20. G24 `TenantConfigs_apply`: takes the same document, each persona file's bytes inline or by digest, and the value of every variable the file names. It applies the plan as `tumpel config apply` does and rewrites a kept secret set when every value it names is sent. Its MCP tool refuses values, as the secret-set tools do.
+20. G24 `TenantConfigs_apply`: takes the same document, each persona file's bytes inline or by digest, and the value of every variable the file names. It applies the plan as `tumpel config apply` does and writes only the values it carries; a kept secret set keeps its values unless every value it names is sent. Its MCP tool refuses values, as the secret-set tools do.
 21. G25 `OAuthGrants_list`: the OAuth clients that hold a live token for the caller, with name, redirect origin and last use. `Devices_list` holds device sign-ins only.
 
 ## Open questions

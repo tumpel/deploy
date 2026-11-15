@@ -20,7 +20,7 @@ The test run holds a Cloudflare Access service token. Access issues a JWT for it
 
 1. Sign in. `tumpel whoami` names the test tenant.
 2. Enrol. The run copies the published supervisor to the host. Its installer sets up the host, which enrols with a freshly minted token and reads Online.
-3. Configure. `npm-scripts/proof-tenant.mjs` applies `doc/personas/proof-tenant.json`: the `proof`, `refused` and `ticket-worker` personas and their secret sets. Every value comes from the environment, the token's expiry from the credential. Each set carries `GITHUB_TOKEN` from `PROOF_GITHUB_TOKEN`.
+3. Configure. `npm-scripts/proof-tenant.mjs` applies `doc/personas/proof-tenant.json`: the `proof`, `refused` and `ticket-worker` personas and their secret sets. The run exports every value the file names, the token's expiry from the credential, so apply writes each set with those values. Each set carries `GITHUB_TOKEN` from `PROOF_GITHUB_TOKEN`.
 4. First turn. A start names the persona, a model, a small test repository and a prompt, and returns ids before the first line. Lines arrive, and the turn reads Completed.
 5. Warm turn. A second turn inside the warm window resumes the paused box and reaches the same harness process.
 6. Snapshot. After the quiet delay the snapshot reads Stored.

@@ -62,7 +62,7 @@ The API runs under a version prefix. TypeSpec generates the OpenAPI document, th
 3. `tumpel config plan` prints each create, update and delete, and writes nothing. It compares persona files by digest.
 4. `tumpel config apply` applies the plan: secret sets, then personas, then deletes, pins and host labels. It uploads only the persona files whose digest changed. It stops when a live persona runs another harness than the file names.
 
-Personas and secret sets match by name, pins by harness and hosts by host id. Apply deletes whatever the file leaves out. Apply writes fresh values for every set and keeps its id and key names.
+Personas and secret sets match by name, pins by harness and hosts by host id. Apply deletes whatever the file leaves out. Apply writes only the values the request carries: a kept set is written again when every variable it names is sent and keeps its values when none is. It keeps the set's id and key names.
 
 ## Persona files
 
