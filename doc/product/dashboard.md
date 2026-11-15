@@ -15,6 +15,24 @@ One operator runs a tenant today. Later a small team of owners and members share
 5. Connect GitHub, build providers and later other services.
 6. See each repository's latest prebuild and rebuild it.
 7. Invite a teammate by email and remove them again.
+8. Sign in and set up a new tenant on one page.
+
+## First run
+
+A new operator signs in through Access at `https://app.<stage>.tumpel.dev` and finishes setup there. The CLI and the device page stay for automation and agents.
+
+When the Access email holds no tenant, the consent page asks for the tenant name and the git author name and email that `Tenants_signUp` requires. It then finishes the same sign-in (G22).
+
+The dashboard opens `/t/<tenantId>/setup` until every step reads done. Each step has one button and reads its state from the API. UX picks a checklist or a wizard.
+
+| Step              | The button                                                                                                                            | Done when                                                                                      |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Connect GitHub    | Opens the `installUrl` of `GitHubConnections_start`, which returns to the setup page (G10)                                            | `GitHubConnections_get` reads Connected                                                        |
+| Add a host        | Calls `EnrolmentTokens_mint` and shows its `installCommand` with the expiry and a copy control                                        | `Hosts_list` holds an Online host                                                              |
+| Connect claude.ai | Shows `https://api.<stage>.tumpel.dev/mcp` with a copy control and two lines: add it in claude.ai as a custom connector, then sign in | G25 lists a claude.ai client                                                                   |
+| Apply a config    | Imports a config file, or opens the persona and secret set forms (#4, #14)                                                            | A persona's secret set holds a credential for its harness (`Personas_list`, `SecretSets_list`) |
+
+An import reads a `TenantConfig` file such as `doc/personas/tumpel-dev.json` and shows each schema error with its JSON pointer. It asks for each file a `from` names and each env-sourced value, in password fields. It shows the plan from G23 with its deletes and applies it on confirm (G24). A refusal shows its `Problem` and leaves the step not done.
 
 ## Sign-in and tenancy
 
@@ -124,6 +142,10 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 19. G19 `Prebuild` carries start and finish times, layer bytes and the provider's log URL.
 20. G20 `Prebuilds_getFailure`: the failed phase and its fix (FR-5).
 21. G21 A rebuild flag on `Prebuilds_start`.
+22. G22 The consent page signs up an Access email with no tenant for the client `tumpel-dashboard`: a form, `Tenants_signUp`, then the same consent.
+23. G23 `TenantConfigs_plan`: takes a `TenantConfig` and each persona file's digest by its `from` path. It answers each create, update and delete, as `tumpel config plan` prints them.
+24. G24 `TenantConfigs_apply`: takes the same document, each persona file's bytes inline or by digest, and the value of every variable the file names. It applies the plan as `tumpel config apply` does and rewrites every secret set the file names. Its MCP tool refuses values, as the secret-set tools do.
+25. G25 `OAuthGrants_list`: the OAuth clients that hold a live token for the caller, with name, redirect origin and last use. `Devices_list` holds device sign-ins only.
 
 ## Open questions
 
@@ -131,6 +153,7 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 2. Where does the model list come from? The catalog names a provider and no models (#5).
 3. Which actions does a Member role lose against an Owner?
 4. How does Tumpel learn that Namespace Support registered the issuer for a workspace?
+5. Does `https://dev.tumpel.dev`, which does not resolve, redirect to the dashboard at `https://app.dev.tumpel.dev`?
 
 ## FAQ
 
