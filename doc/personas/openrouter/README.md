@@ -23,4 +23,4 @@ tumpel persona create --name openrouter-glm --harness OpenCode --secret-set-id <
 
 Then open the `openrouter` secret set in the dashboard and choose Connect OpenRouter, or run `tumpel openrouter authorize --secret-set-id <secretSetId>` and open the URL it prints. Approve on OpenRouter within 10 minutes; the browser comes back to the secret set, which then lists `OPENROUTER_API_KEY`. Delete the key on [OpenRouter](https://openrouter.ai/settings/keys) to revoke it.
 
-A session start names a model; pass the persona's, such as `--model openrouter/z-ai/glm-5.3`. A session needs a guest image of OpenCode in the current release.
+OpenCode takes its model from the persona's `opencode.json` and ignores the `--model` a session start requires, so pass the same id, such as `--model openrouter/z-ai/glm-5.3`, to keep the session record true. A session needs a guest image of OpenCode in the current release.
