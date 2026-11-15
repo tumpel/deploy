@@ -156,6 +156,8 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **MCP and CLI parity is a build check.** Every signed-in operation is one MCP tool and one CLI command on the same handler. The build fails on a gap.
 
+**A transcript read is the live poll.** A caller reads the transcript page by page until a page reads `finished`. A compact read of a Claude Code turn keeps the assistant's text and one line per tool call.
+
 **The Shell harness exists for tests only.** The catalog leaves it out.
 
 **The proof signs in with an Access service token.** The test run approves its own device code with a Cloudflare Access service token tied to a test tenant.

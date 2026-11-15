@@ -32,7 +32,9 @@ Change detection compares modification times to the nanosecond.
 
 Line numbers start at 1 for each session and never restart. Each turn offer carries the session's last line number, and the guest keeps its counter in the overlay, so a fresh box keeps counting. Lines travel from the host in order. In object storage, the control plane writes them in chunks of 64 lines, a setting, under the tenant, session and turn. Only the cursor index sits in the tenant's database. A skipped number fails the turn `TranscriptGap`. TurnComplete names the turn's last line, and the turn reads Completed once the control plane holds every line up to it.
 
-A read returns lines after a cursor and a new cursor naming the last line returned. An empty page means nothing new.
+The read operation returns the lines after the cursor `after`, for the session or for one turn. `limit` caps the lines, one chunk when left out. `maxBytes` caps the bytes, 32,768 when left out, and cuts on a line boundary. A line longer than `maxBytes` comes back alone. A raw page counts the stored JSONL bytes, and a compact page counts the text it returns. `compact` takes Claude Code only. The assistant's text stays, and a tool call becomes one line, `[Tool] first-argument`. Tool results, system lines and result lines drop out. Any other harness gets 422 `InvalidRequest`, which names the harness.
+
+A page holds `sessionState`, `lines`, `cursor` and `finished`. `cursor` is the line number the page read up to, dropped lines included, and the next read passes it as `after`. A compact page can be empty while its cursor moves forward. `finished` is true when no turn that matches the filter is in flight and no line follows the cursor. The control plane reads it in the same Durable Object call as the page. The MCP tool `tumpel_transcript_read` takes the same parameters. `tumpel transcript read <turnId>` takes `--after`, `--limit`, `--max-bytes` and `--compact`. With `--follow` it reads until the page reads `finished`, and it exits with an error when the turn failed.
 
 ## Stop and archive
 
