@@ -128,9 +128,11 @@ On 2026-11-15 the following rulings were made:
 
 **Tumpel is open source under Apache-2.0.** The repository stays private for now. Anyone can fetch the reusable workflow, the installer and the images. Self-hosting the control plane is supported next to the hosted `tumpel.dev`. Nothing proprietary or secret lives in the repository. Secrets stay in tofu and the key-store port.
 
-### Proposed decisions
+**The issuer defaults stand: 300 s token life, 24 h key overlap and RS256.** His ruling: safe default, 2026-11-15.
 
-**A job gets its upload URLs by presenting its provider's OIDC token.** The options are to put presigned URLs in the dispatch inputs, or to have the job exchange its provider's OIDC token with the control plane for them. A URL in the dispatch inputs is a credential in the run's record. The recommendation is the exchange. GitHub, CircleCI, GitLab and Bitbucket each issue a job token.
+**A job gets its upload URLs by presenting its provider's OIDC token.** A URL in the dispatch inputs is a credential in the run's record. GitHub, CircleCI, GitLab and Bitbucket each issue a job token. His ruling: safe default, 2026-11-15.
+
+### Open decisions
 
 **Where the BuildKit client and the conversion run is open.** Namespace needs a BuildKit client that sends it the recipe, and the uploaded layer needs cutting into chunks. The candidates are a tenant host or a machine at the provider. No recommendation exists yet.
 
