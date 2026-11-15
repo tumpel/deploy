@@ -28,7 +28,7 @@ Commands, for bootstrap only:
 - `npm run proof -- <command>` runs a command with `TUMPEL_PROOF_CLIENT_ID` and `TUMPEL_PROOF_CLIENT_SECRET` read from the stage's tofu outputs. It prints neither value. A command named `tumpel` runs the release CLI.
 - `npm run proof` and `npm run proof:e2e` download the current release's CLI for this machine and its Amd64 supervisor into `.tmp/proof-release/`, and check each against the sha256 that `current.json` names. `TUMPEL_PROOF_CLI` and `TUMPEL_PROOF_SUPERVISOR` replace them with local builds (`npm run cli:build`, `npm run supervisor:build`).
 
-Sign a terminal in with `tumpel login --endpoint https://api.dev.tumpel.dev`.
+Install the CLI on a Linux machine with `curl -fsSL https://api.dev.tumpel.dev/v1/releases/install.sh | sh`, then sign the terminal in with `tumpel login --endpoint https://api.dev.tumpel.dev`. The Account page of the dashboard shows the same command for its stage.
 
 Connect claude.ai in Settings, Connectors, Add custom connector. Enter the stage's origin followed by `/mcp`, and leave the client id and secret empty. Choose Connect and sign in through Access, with an email that is an approver and owns a tenant.
 
@@ -145,7 +145,7 @@ Every object in the bucket is stored once under its digest and never changes:
 
 Two objects change. `images.json` is the latest image release. `current.json` is the current release as a `ReleaseManifest` (`packages/api/release.tsp`). It holds `releaseVersion`, `commit`, `channelProtocolVersion`, `supervisors` and `clis` (each `architecture`, `sha256`, `sizeBytes`) and `images` (`harness`, `harnessVersion`, `architecture`, `imageDigest`, `kernelDigest`, `manifestDigest`, `ociDigest`, `rootfsDigest`). The control plane refuses a manifest whose `channelProtocolVersion` differs from the channel protocol.
 
-The control plane serves `GET /v1/releases/current` without sign-in. `GET /v1/releases/supervisor/{architecture}` and `GET /v1/releases/cli/{architecture}` answer 302 to a presigned URL that lives 5 minutes, so a fresh host needs only `curl -fL <origin>/v1/releases/supervisor/Amd64`. Hosts on `dev` boot only images that a published release carries. A turn whose release lacks the session's image fails ImageNotReleased. `tumpel harness pin` refuses a version that the release carries for none of the tenant's host architectures.
+The control plane serves `GET /v1/releases/current` without sign-in. `GET /v1/releases/supervisor/{architecture}` and `GET /v1/releases/cli/{architecture}` answer 302 to a presigned URL that lives 5 minutes, so a fresh host needs only `curl -fL <origin>/v1/releases/supervisor/Amd64`. `GET /v1/releases/install.sh` serves `packages/control-plane/src/install.sh` without sign-in, with the origin filled in: it picks the architecture, downloads the CLI through `/v1/releases/cli/{architecture}`, checks it against the sha256 in `current.json`, and installs it to `~/.local/bin/tumpel`, or to the folder `TUMPEL_INSTALL_DIR` names. Hosts on `dev` boot only images that a published release carries. A turn whose release lacks the session's image fails ImageNotReleased. `tumpel harness pin` refuses a version that the release carries for none of the tenant's host architectures.
 
 The token `tumpel-releases-upload-<stage>` writes the bucket. `npm run release:secrets` sets the workflow's secrets `CLOUDFLARE_ACCOUNT_ID`, `R2_RELEASES_SECRET_ACCESS_KEY` and `R2_RELEASES_ACCESS_KEY_ID` from the tofu outputs. It prints none of them.
 

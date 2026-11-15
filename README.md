@@ -10,6 +10,15 @@ Tumpel has three layers:
 
 The API is defined once in TypeSpec (`packages/api`) and its OpenAPI and JSON Schema output is committed under `packages/api/generated`.
 
+## Install the CLI
+
+On Linux, install the `tumpel` CLI and sign in:
+
+```sh
+curl -fsSL https://api.dev.tumpel.dev/v1/releases/install.sh | sh
+tumpel login --endpoint https://api.dev.tumpel.dev
+```
+
 ## Develop
 
 Needs Node 22 or later and a stable Rust toolchain.
