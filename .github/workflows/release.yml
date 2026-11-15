@@ -87,6 +87,7 @@ jobs:
         run: npm test
 
       - name: Run the cargo tests
+        if: ${{ !cancelled() }}
         run: cargo test --workspace
 
   build:
