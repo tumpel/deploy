@@ -485,6 +485,7 @@ const steps = [
   {
     id: 13,
     name: "Connector",
+    needs: [2],
     run: async () => {
       const t0 = Date.now();
       const mcpUrl = `${ENDPOINT}/mcp`;
@@ -607,7 +608,10 @@ const steps = [
       const usage = await result(4, "tools/call", { name: "tumpel_host_list_usage", arguments: {} });
       if (usage.isError) fail(`tumpel_host_list_usage failed: ${usage.content?.[0]?.text}`);
       const hosts = JSON.parse(usage.content[0].text);
-      return `discovered, registered, consented and redeemed; protocol ${initialized.protocolVersion}, ${tools.length} tools, usage of ${hosts.length} hosts in ${Date.now() - t0} ms`;
+      if (!hosts.some((row) => row.hostId === state.hostId)) {
+        fail(`tumpel_host_list_usage over /mcp does not list the enrolled host ${state.hostId}`);
+      }
+      return `discovered, registered, consented and redeemed; protocol ${initialized.protocolVersion}, ${tools.length} tools, usage of ${hosts.length} hosts including ${state.hostId} in ${Date.now() - t0} ms`;
     },
   },
 ];
