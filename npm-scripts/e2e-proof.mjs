@@ -622,6 +622,9 @@ const steps = [
       const cookies = page.headers.getSetCookie().map((cookie) => cookie.split(";")[0]);
       const csrfCookie = cookies.find((cookie) => cookie.startsWith("__Host-tumpel_connect="));
       if (!csrfCookie) fail("the consent page set no consent cookie");
+      const tenant =
+        /<input type="hidden" name="tenant" value="([^"]+)">/.exec(await page.text())?.[1] ??
+        fail("the consent page names no single tenant; the proof account must belong to exactly one tenant");
       const consented = await fetch(`${ENDPOINT}${consentAt.pathname}`, {
         method: "POST",
         redirect: "manual",
@@ -633,6 +636,7 @@ const steps = [
         },
         body: new URLSearchParams({
           request: consentAt.searchParams.get("request") ?? "",
+          tenant,
           csrf: csrfCookie.slice(csrfCookie.indexOf("=") + 1),
           action: "approve",
         }).toString(),
