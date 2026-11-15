@@ -38,6 +38,7 @@
     "guest:build": "RUSTFLAGS=\"-C target-feature=+crt-static\" cargo build --release -p tumpel-guest --target ${TUMPEL_TARGET:-x86_64-unknown-linux-gnu}",
     "guest:drive": "node npm-scripts/guest-drive.mjs",
     "guest:image": "node npm-scripts/guest-image.mjs",
+    "harness:layer": "node npm-scripts/harness-layer.mjs",
     "release:publish": "node npm-scripts/release-publish.mjs",
     "release:secrets": "node npm-scripts/release-secrets.mjs"
   },

@@ -17,7 +17,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/api/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
-import { CLONE_SECONDS } from "./guest-image-settings.mjs";
+import {
+  CLAUDE_FLAGS,
+  CLONE_SECONDS,
+  ENVIRONMENT,
+  NODE_ARCH,
+  TURN_PROTOCOLS,
+  WORKING_DIRECTORY,
+} from "./guest-image-settings.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -50,7 +57,6 @@ const PINS = {
   },
 };
 const FIRECRACKER_ARCH = { amd64: "x86_64", arm64: "aarch64" };
-const NODE_ARCH = { amd64: "x64", arm64: "arm64" };
 const HOST_ARCH = { x64: "amd64", arm64: "arm64" };
 
 const pinsFor = (arch) => {
@@ -87,22 +93,7 @@ const pinsFor = (arch) => {
     },
   };
 };
-const WORKING_DIRECTORY = "/root/workspace";
-const ENVIRONMENT = {
-  PATH: "/opt/tumpel/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-  HOME: "/root",
-  LANG: "C.UTF-8",
-};
 const OCI_TAG = "rootfs";
-const CLAUDE_FLAGS = [
-  "-p",
-  "--input-format",
-  "stream-json",
-  "--output-format",
-  "stream-json",
-  "--verbose",
-  "--dangerously-skip-permissions",
-];
 
 const INIT = `#!/bin/sh
 set -eu
@@ -185,8 +176,6 @@ const download = async ({ url, digest }) => {
   renameSync(staged, path);
   return path;
 };
-
-const TURN_PROTOCOLS = new Set(["ClaudeCode"]);
 
 const buildable = () => [
   "Shell",

@@ -47,6 +47,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.include) }}
     env:
       TUMPEL_TARGET: ${{ matrix.target }}
+      TUMPEL_LAYER_DIR: ${{ github.workspace }}/.tmp/layers-${{ matrix.arch }}
       CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.arch == 'arm64' && 'aarch64-linux-gnu-gcc' || '' }}
       CC_aarch64_unknown_linux_gnu: ${{ matrix.arch == 'arm64' && 'aarch64-linux-gnu-gcc' || '' }}
       AR_aarch64_unknown_linux_gnu: ${{ matrix.arch == 'arm64' && 'aarch64-linux-gnu-ar' || '' }}
@@ -70,11 +71,10 @@ jobs:
           shared-key: release-${{ matrix.target }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - if: matrix.packages != ''
-        name: Install the cross toolchain
+      - name: Install squashfs-tools and the cross toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
+          sudo apt-get install -y --no-install-recommends squashfs-tools ${{ matrix.packages }}
 
       - name: Install npm workspaces
         run: npm ci --no-audit --no-fund
@@ -97,6 +97,43 @@ jobs:
         with:
           name: binaries-${{ matrix.arch }}
           path: .tmp/fragments/${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - id: layers
+        name: Look up the harness layers the release bucket holds
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+        run: |
+          npm run release:publish -- layer-plan ${{ matrix.arch }} ".tmp/layer-plan-${{ matrix.arch }}.json"
+          echo "missing=$(jq -r '.missing | join(" ")' ".tmp/layer-plan-${{ matrix.arch }}.json")" >> "$GITHUB_OUTPUT"
+
+      - if: steps.layers.outputs.missing != ''
+        name: Build the missing harness layers
+        env:
+          MISSING: ${{ steps.layers.outputs.missing }}
+        run: |
+          for harness in $MISSING; do
+            npm run harness:layer -- "$harness" ${{ matrix.arch }}
+          done
+
+      - name: Upload the harness layers
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+        run: >-
+          npm run release:publish -- layers ${{ matrix.arch }}
+          ".tmp/layer-plan-${{ matrix.arch }}.json"
+          "$TUMPEL_LAYER_DIR"
+          ".tmp/layer-fragments/${{ matrix.arch }}.json"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: layers-${{ matrix.arch }}
+          path: .tmp/layer-fragments/${{ matrix.arch }}.json
           if-no-files-found: error
           retention-days: 7
 
@@ -125,9 +162,14 @@ jobs:
           pattern: binaries-*
           path: .tmp/fragments
 
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: layers-*
+          path: .tmp/layer-fragments
+
       - name: Write current.json
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
           R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
-        run: npm run release:publish -- manifest .tmp/fragments
+        run: npm run release:publish -- manifest .tmp/fragments .tmp/layer-fragments

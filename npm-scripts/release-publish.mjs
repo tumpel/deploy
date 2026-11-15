@@ -8,10 +8,13 @@ import {
   ChannelProtocol,
   GuestImageManifestSchema,
   GuestProtocol,
+  HarnessLayerManifestSchema,
   ImageReleaseSchema,
+  ReleaseHarnessLayerSchema,
   ReleaseManifestSchema,
 } from "@tumpel/api/schemas";
 import { CHECKSUM_HEADER, checksumOf, presignUrl } from "../packages/control-plane/src/presign.ts";
+import { layerHarnesses, layerPrefix, layerRecipe, recipeKey } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
@@ -24,6 +27,11 @@ const SIGNED_SECONDS = 3600;
 
 const BinaryFragmentSchema = ReleaseManifestSchema.pick({ supervisors: true, clis: true });
 const ImageFragmentSchema = ReleaseManifestSchema.pick({ images: true });
+const LayerFragmentSchema = ReleaseManifestSchema.pick({ harnessLayers: true });
+const LayerPlanSchema = LayerFragmentSchema.extend({
+  harnessLayers: ReleaseHarnessLayerSchema.array(),
+  missing: ReleaseHarnessLayerSchema.shape.harness.array(),
+});
 const PublishedCommitSchema = ReleaseManifestSchema.pick({ commit: true });
 
 const die = (message) => {
@@ -252,6 +260,67 @@ const uploadImages = async (arch, imageDir, fragmentPath) => {
   writeFragment(fragmentPath, ImageFragmentSchema.parse({ images }));
 };
 
+const planLayers = async (arch, planPath) => {
+  architectureOf(arch);
+  const store = storage();
+  const recipes = layerHarnesses().map((name) => layerRecipe(name, arch));
+  const published = await Promise.all(recipes.map((recipe) => readJson(store, recipeKey(recipe))));
+  const harnessLayers = published
+    .filter((layer) => layer !== undefined)
+    .map((layer) => ReleaseHarnessLayerSchema.parse(layer));
+  const missing = recipes.filter((_, index) => published[index] === undefined).map((recipe) => recipe.harness.harness);
+  for (const layer of harnessLayers)
+    console.log(`kept layer ${layer.harness} ${layer.harnessVersion} ${arch} ${layer.layerDigest}`);
+  for (const name of missing)
+    console.log(`missing layer ${name} ${arch}; build it with npm run harness:layer -- ${name} ${arch}`);
+  writeFragment(planPath, LayerPlanSchema.parse({ harnessLayers, missing }));
+};
+
+const uploadLayers = async (arch, planPath, layerDir, fragmentPath) => {
+  const architecture = architectureOf(arch);
+  const { harnessLayers, missing } = LayerPlanSchema.parse(JSON.parse(readFileSync(planPath, "utf8")));
+  const store = storage();
+  const built = missing.length === 0 ? [] : readdirSync(layerDir).filter((name) => /^[0-9a-f]{64}\.json$/.test(name));
+  const manifests = built.map((name) => ({
+    path: join(layerDir, name),
+    manifest: HarnessLayerManifestSchema.parse(JSON.parse(readFileSync(join(layerDir, name), "utf8"))),
+  }));
+  const uploadLayer = async (name) => {
+    const recipe = layerRecipe(name, arch);
+    const match = manifests.find(({ manifest }) => manifest.recipeDigest === recipe.recipeDigest);
+    if (!match)
+      die(
+        `${layerDir} holds no layer of recipe ${recipe.recipeDigest} for ${name}; build it with npm run harness:layer -- ${name} ${arch}`,
+      );
+    const { manifest, path } = match;
+    if (manifest.architecture !== architecture)
+      die(`${path} is built for ${manifest.architecture}, not ${architecture}`);
+    const prefix = layerPrefix(recipe);
+    const layer = await uploadFile(
+      store,
+      `${prefix}/${manifest.layerDigest}`,
+      join(layerDir, `${manifest.layerDigest}.squashfs`),
+    );
+    if (layer.digest !== manifest.layerDigest)
+      die(`${path} names layer ${manifest.layerDigest}, the file is ${layer.digest}`);
+    const manifestDigest = await sha256(path);
+    await uploadFile(store, `${prefix}/${manifestDigest}`, path);
+    const released = ReleaseHarnessLayerSchema.parse({
+      harness: recipe.harness.harness,
+      harnessVersion: recipe.harness.harnessVersion,
+      architecture,
+      layerDigest: layer.digest,
+      manifestDigest,
+      sizeBytes: layer.size,
+    });
+    await putJson(store, recipeKey(recipe), released);
+    console.log(`published layer ${name} ${recipe.harness.harnessVersion} ${arch} ${layer.digest}`);
+    return released;
+  };
+  const uploaded = await Promise.all(missing.map(uploadLayer));
+  writeFragment(fragmentPath, LayerFragmentSchema.parse({ harnessLayers: [...harnessLayers, ...uploaded] }));
+};
+
 const headCommit = () => {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
   const result = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" });
@@ -297,8 +366,11 @@ const publishImageRelease = async (fragmentDir) => {
   );
 };
 
-const publishRelease = async (fragmentDir) => {
+const publishRelease = async (fragmentDir, layerFragmentDir) => {
   const fragments = readFragments(fragmentDir, BinaryFragmentSchema, "binaries");
+  const harnessLayers = readFragments(layerFragmentDir, LayerFragmentSchema, "layers").flatMap(
+    (fragment) => fragment.harnessLayers,
+  );
   const supervisors = fragments.flatMap((fragment) => fragment.supervisors);
   const clis = fragments.flatMap((fragment) => fragment.clis);
   for (const architecture of new Set([...supervisors, ...clis].map((binary) => binary.architecture))) {
@@ -309,6 +381,10 @@ const publishRelease = async (fragmentDir) => {
       die(`the fragments hold no ${architecture} supervisor; run release:publish binaries first`);
     if (!clis.some((cli) => cli.architecture === architecture))
       die(`the fragments hold no ${architecture} CLI; run release:publish binaries first`);
+    for (const name of layerHarnesses()) {
+      if (!harnessLayers.some((layer) => layer.architecture === architecture && layer.harness === name))
+        die(`the layer fragments hold no ${architecture} layer of ${name}; run release:publish layers first`);
+    }
   }
   const store = storage();
   const imageRelease = await readJson(store, IMAGE_RELEASE);
@@ -341,6 +417,7 @@ const publishRelease = async (fragmentDir) => {
     supervisors,
     clis,
     images,
+    harnessLayers,
   });
   await putJson(store, CURRENT, manifest);
   console.log(`published ${bucket}/${CURRENT} for ${releaseVersion} with the images of ${imageReleaseVersion}`);
@@ -350,8 +427,10 @@ const [command, ...args] = process.argv.slice(2);
 if (command === "binaries" && args.length === 4) await uploadBinaries(...args);
 else if (command === "images" && args.length === 3) await uploadImages(...args);
 else if (command === "image-release" && args.length === 1) await publishImageRelease(args[0]);
-else if (command === "manifest" && args.length === 1) await publishRelease(args[0]);
+else if (command === "layer-plan" && args.length === 2) await planLayers(...args);
+else if (command === "layers" && args.length === 4) await uploadLayers(...args);
+else if (command === "manifest" && args.length === 2) await publishRelease(...args);
 else
   die(
-    `usage: ${basename(process.argv[1])} binaries <amd64|arm64> <supervisor binary> <cli binary> <fragment.json> | images <amd64|arm64> <image dir> <fragment.json> | image-release <fragment dir> | manifest <fragment dir>`,
+    `usage: ${basename(process.argv[1])} binaries <amd64|arm64> <supervisor binary> <cli binary> <fragment.json> | images <amd64|arm64> <image dir> <fragment.json> | image-release <fragment dir> | layer-plan <amd64|arm64> <plan.json> | layers <amd64|arm64> <plan.json> <layer dir> <fragment.json> | manifest <binary fragment dir> <layer fragment dir>`,
   );
