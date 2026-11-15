@@ -40,6 +40,7 @@
     "guest:drive": "node npm-scripts/guest-drive.mjs",
     "guest:image": "node npm-scripts/guest-image.mjs",
     "harness:layer": "node npm-scripts/harness-layer.mjs",
+    "smoke:pi": "node npm-scripts/pi-smoke.mjs",
     "release:publish": "node npm-scripts/release-publish.mjs",
     "release:secrets": "node npm-scripts/release-secrets.mjs"
   },

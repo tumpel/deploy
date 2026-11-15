@@ -22,7 +22,7 @@ const OPENCODE_VERSION = "1.19.5";
 export const HARNESS_RUNS = {
   ClaudeCode: { protocol: "ClaudeStreamJson", binary: "claude", flags: CLAUDE_FLAGS },
   PiDev: {
-    protocol: "ClaudeStreamJson",
+    protocol: "PiRpc",
     binary: "pi",
     flags: ["--mode", "rpc"],
     archive: {
