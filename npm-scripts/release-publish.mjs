@@ -4,19 +4,26 @@ import { createHash } from "node:crypto";
 import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { basename, dirname, join } from "node:path";
-import { ChannelProtocol, GuestImageManifestSchema, ReleaseManifestSchema } from "@tumpel/api/schemas";
+import {
+  ChannelProtocol,
+  GuestImageManifestSchema,
+  ImageReleaseSchema,
+  ReleaseManifestSchema,
+} from "@tumpel/api/schemas";
 import { CHECKSUM_HEADER, checksumOf, presignUrl } from "../packages/control-plane/src/presign.ts";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
 const ENABLED = new Set(RELEASE_ARCHITECTURES.map((arch) => ARCHITECTURES[arch]));
+const CURRENT = "current.json";
+const IMAGE_RELEASE = "images.json";
+const IMAGE_RELEASE_TAG = /^images-v\d+\.\d+\.\d+$/;
 const REQUEST_SECONDS = 900;
 const SIGNED_SECONDS = 3600;
 
-const FragmentSchema = ReleaseManifestSchema.pick({ images: true }).extend({
-  supervisor: ReleaseManifestSchema.shape.supervisors.element,
-  cli: ReleaseManifestSchema.shape.clis.element,
-});
+const BinaryFragmentSchema = ReleaseManifestSchema.pick({ supervisors: true, clis: true });
+const ImageFragmentSchema = ReleaseManifestSchema.pick({ images: true });
+const PublishedCommitSchema = ReleaseManifestSchema.pick({ commit: true });
 
 const die = (message) => {
   console.error(`release:publish: ${message}`);
@@ -78,6 +85,19 @@ const exists = async (store, key) => {
   return die(`HEAD ${bucket}/${key} answered ${status}; check that the R2 token can read ${bucket}`);
 };
 
+const readJson = async (store, key) => {
+  const url = await presignUrl(store.credentials, "GET", store.origin, segmentsOf(key), SIGNED_SECONDS, new Date());
+  const { status, text } = await send(url, "GET", {});
+  if (status === 404) return undefined;
+  if (status !== 200)
+    die(`GET ${bucket}/${key} answered ${status}: ${text}; check that the R2 token can read ${bucket}`);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    return die(`${bucket}/${key} is not JSON (${String(error)}); publish it again`);
+  }
+};
+
 const put = async (store, key, digest, headers, body, size) => {
   const url = await presignUrl(store.credentials, "PUT", store.origin, segmentsOf(key), SIGNED_SECONDS, new Date(), [
     [CHECKSUM_HEADER, checksumOf(digest)],
@@ -90,6 +110,19 @@ const put = async (store, key, digest, headers, body, size) => {
   );
   if (status !== 200)
     die(`PUT ${bucket}/${key} answered ${status}: ${text}; check that the R2 token can write ${bucket}`);
+};
+
+const putJson = async (store, key, value) => {
+  const body = `${JSON.stringify(value, null, 2)}\n`;
+  const digest = createHash("sha256").update(body).digest("hex");
+  await put(
+    store,
+    key,
+    digest,
+    { "content-type": "application/json", "cache-control": "no-cache" },
+    body,
+    Buffer.byteLength(body),
+  );
 };
 
 const uploadFile = async (store, key, path) => {
@@ -131,19 +164,46 @@ const uploadOci = async (store, prefix, layout) => {
   return { ociDigest, rootfsDigest: diffIds[0] };
 };
 
-const upload = async (arch, supervisorPath, cliPath, imageDir, fragmentPath) => {
+const architectureOf = (arch) => {
   const architecture = ARCHITECTURES[arch];
   if (!architecture) die(`no architecture ${arch}; pass amd64 or arm64`);
   if (!ENABLED.has(architecture)) die(disabledReason(arch));
+  return architecture;
+};
+
+const writeFragment = (fragmentPath, fragment) => {
+  mkdirSync(dirname(fragmentPath), { recursive: true });
+  writeFileSync(fragmentPath, `${JSON.stringify(fragment, null, 2)}\n`);
+  console.log(fragmentPath);
+};
+
+const readFragments = (fragmentDir, schema, command) => {
+  const files = readdirSync(fragmentDir, { recursive: true }).filter((name) => String(name).endsWith(".json"));
+  if (files.length === 0) die(`${fragmentDir} holds no fragments; run release:publish ${command} first`);
+  return files.map((name) => schema.parse(JSON.parse(readFileSync(join(fragmentDir, String(name)), "utf8"))));
+};
+
+const uploadBinaries = async (arch, supervisorPath, cliPath, fragmentPath) => {
+  const architecture = architectureOf(arch);
   const store = storage();
-  const supervisorDigest = await sha256(supervisorPath);
-  const supervisor = await uploadFile(store, `supervisor/${arch}/${supervisorDigest}`, supervisorPath);
-  const cliDigest = await sha256(cliPath);
-  const cli = await uploadFile(store, `cli/${arch}/${cliDigest}`, cliPath);
+  const uploadBinary = async (binary, path) => {
+    const digest = await sha256(path);
+    const uploaded = await uploadFile(store, `${binary}/${arch}/${digest}`, path);
+    return { architecture, sha256: uploaded.digest, sizeBytes: uploaded.size };
+  };
+  const [supervisor, cli] = await Promise.all([
+    uploadBinary("supervisor", supervisorPath),
+    uploadBinary("cli", cliPath),
+  ]);
+  writeFragment(fragmentPath, BinaryFragmentSchema.parse({ supervisors: [supervisor], clis: [cli] }));
+};
+
+const uploadImages = async (arch, imageDir, fragmentPath) => {
+  const architecture = architectureOf(arch);
+  const store = storage();
   const manifests = readdirSync(imageDir).filter((name) => /^[0-9a-f]{64}\.json$/.test(name));
   if (manifests.length === 0) die(`${imageDir} holds no <imageDigest>.json; build the images with npm run guest:image`);
-  const images = [];
-  for (const name of manifests) {
+  const uploadImage = async (name) => {
     const manifestPath = join(imageDir, name);
     const manifest = GuestImageManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
     const { harness, harnessVersion } = manifest.harness;
@@ -176,7 +236,7 @@ const upload = async (arch, supervisorPath, cliPath, imageDir, fragmentPath) => 
       die(`${name} names image ${manifest.imageDigest}, the file is ${image.digest}`);
     if (kernel.digest !== manifest.kernelDigest)
       die(`${name} names kernel ${manifest.kernelDigest}, the file is ${kernel.digest}`);
-    images.push({
+    return {
       harness,
       harnessVersion,
       architecture,
@@ -185,16 +245,10 @@ const upload = async (arch, supervisorPath, cliPath, imageDir, fragmentPath) => 
       manifestDigest,
       ociDigest,
       rootfsDigest,
-    });
-  }
-  const fragment = FragmentSchema.parse({
-    supervisor: { architecture, sha256: supervisor.digest, sizeBytes: supervisor.size },
-    cli: { architecture, sha256: cli.digest, sizeBytes: cli.size },
-    images,
-  });
-  mkdirSync(dirname(fragmentPath), { recursive: true });
-  writeFileSync(fragmentPath, `${JSON.stringify(fragment, null, 2)}\n`);
-  console.log(fragmentPath);
+    };
+  };
+  const images = await Promise.all(manifests.map(uploadImage));
+  writeFragment(fragmentPath, ImageFragmentSchema.parse({ images }));
 };
 
 const headCommit = () => {
@@ -204,43 +258,96 @@ const headCommit = () => {
   return result.stdout.trim();
 };
 
-const publish = async (fragmentDir) => {
-  const files = readdirSync(fragmentDir, { recursive: true }).filter((name) => String(name).endsWith(".json"));
-  if (files.length === 0)
-    die(`${fragmentDir} holds no fragments; run release:publish upload for each architecture first`);
-  const fragments = files.map((name) =>
-    FragmentSchema.parse(JSON.parse(readFileSync(join(fragmentDir, String(name)), "utf8"))),
+const git = (...args) => spawnSync("git", args, { encoding: "utf8" });
+
+const supersededBy = (commit, published) => {
+  if (published === commit) return false;
+  if (git("cat-file", "-e", `${published}^{commit}`).status !== 0) return false;
+  const ancestor = git("merge-base", "--is-ancestor", commit, published);
+  if (ancestor.status === 0) return true;
+  if (ancestor.status === 1) return false;
+  return die(
+    `git merge-base --is-ancestor ${commit} ${published} failed: ${ancestor.stderr.trim()}; check out the full history (fetch-depth 0)`,
   );
-  const disabled = fragments.find((fragment) => !ENABLED.has(fragment.supervisor.architecture));
-  if (disabled) die(disabledReason(disabled.supervisor.architecture.toLowerCase()));
+};
+
+const publishImageRelease = async (fragmentDir) => {
+  const imageReleaseVersion = process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : undefined;
+  if (!imageReleaseVersion || !IMAGE_RELEASE_TAG.test(imageReleaseVersion))
+    die(
+      `publish an image release only from a tag images-vX.Y.Z; this run is on ${process.env.GITHUB_REF_NAME ?? "(no ref)"}`,
+    );
+  const images = readFragments(fragmentDir, ImageFragmentSchema, "images").flatMap((fragment) => fragment.images);
+  const missing = [...ENABLED].filter((architecture) => !images.some((image) => image.architecture === architecture));
+  if (missing.length > 0)
+    die(`the fragments hold no images for ${missing.join(", ")}; build them with npm run guest:image`);
+  const release = ImageReleaseSchema.parse({ imageReleaseVersion, commit: headCommit(), images });
+  const store = storage();
+  await putJson(store, IMAGE_RELEASE, release);
+  console.log(`published ${bucket}/${IMAGE_RELEASE} for ${imageReleaseVersion} with ${images.length} images`);
+  const current = await readJson(store, CURRENT);
+  if (current === undefined) {
+    console.log(`${bucket}/${CURRENT} does not exist yet; the next release from main carries these images`);
+    return;
+  }
+  const manifest = ReleaseManifestSchema.parse({ ...ReleaseManifestSchema.parse(current), images });
+  await putJson(store, CURRENT, manifest);
+  console.log(
+    `published ${bucket}/${CURRENT} for ${manifest.releaseVersion} with the images of ${imageReleaseVersion}`,
+  );
+};
+
+const publishRelease = async (fragmentDir) => {
+  const fragments = readFragments(fragmentDir, BinaryFragmentSchema, "binaries");
+  const supervisors = fragments.flatMap((fragment) => fragment.supervisors);
+  const clis = fragments.flatMap((fragment) => fragment.clis);
+  for (const architecture of new Set([...supervisors, ...clis].map((binary) => binary.architecture))) {
+    if (!ENABLED.has(architecture)) die(disabledReason(architecture.toLowerCase()));
+  }
+  for (const architecture of ENABLED) {
+    if (!supervisors.some((supervisor) => supervisor.architecture === architecture))
+      die(`the fragments hold no ${architecture} supervisor; run release:publish binaries first`);
+    if (!clis.some((cli) => cli.architecture === architecture))
+      die(`the fragments hold no ${architecture} CLI; run release:publish binaries first`);
+  }
+  const store = storage();
+  const imageRelease = await readJson(store, IMAGE_RELEASE);
+  if (imageRelease === undefined)
+    die(
+      `${bucket}/${IMAGE_RELEASE} does not exist; push a tag images-vX.Y.Z to build and publish the guest images first`,
+    );
+  const { imageReleaseVersion, images } = ImageReleaseSchema.parse(imageRelease);
   const commit = headCommit();
+  const current = await readJson(store, CURRENT);
+  if (current !== undefined) {
+    const published = PublishedCommitSchema.parse(current).commit;
+    if (supersededBy(commit, published)) {
+      if (process.env.GITHUB_REF_TYPE === "tag")
+        die(`${bucket}/${CURRENT} holds ${published}, which descends from ${commit}; tag a newer commit`);
+      console.log(`kept ${bucket}/${CURRENT}: it holds ${published}, which descends from ${commit}`);
+      return;
+    }
+  }
   const releaseVersion =
     process.env.GITHUB_REF_TYPE === "tag" ? required("GITHUB_REF_NAME") : `0.0.0-${commit.slice(0, 12)}`;
   const manifest = ReleaseManifestSchema.parse({
     releaseVersion,
     commit,
     channelProtocolVersion: ChannelProtocol.Version,
-    supervisors: fragments.map((fragment) => fragment.supervisor),
-    clis: fragments.map((fragment) => fragment.cli),
-    images: fragments.flatMap((fragment) => fragment.images),
+    supervisors,
+    clis,
+    images,
   });
-  const body = `${JSON.stringify(manifest, null, 2)}\n`;
-  const digest = createHash("sha256").update(body).digest("hex");
-  await put(
-    storage(),
-    "current.json",
-    digest,
-    { "content-type": "application/json", "cache-control": "no-cache" },
-    body,
-    Buffer.byteLength(body),
-  );
-  console.log(`published ${bucket}/current.json for ${releaseVersion} with ${manifest.images.length} images`);
+  await putJson(store, CURRENT, manifest);
+  console.log(`published ${bucket}/${CURRENT} for ${releaseVersion} with the images of ${imageReleaseVersion}`);
 };
 
 const [command, ...args] = process.argv.slice(2);
-if (command === "upload" && args.length === 5) await upload(...args);
-else if (command === "manifest" && args.length === 1) await publish(args[0]);
+if (command === "binaries" && args.length === 4) await uploadBinaries(...args);
+else if (command === "images" && args.length === 3) await uploadImages(...args);
+else if (command === "image-release" && args.length === 1) await publishImageRelease(args[0]);
+else if (command === "manifest" && args.length === 1) await publishRelease(args[0]);
 else
   die(
-    `usage: ${basename(process.argv[1])} upload <amd64|arm64> <supervisor binary> <cli binary> <image dir> <fragment.json> | manifest <fragment dir>`,
+    `usage: ${basename(process.argv[1])} binaries <amd64|arm64> <supervisor binary> <cli binary> <fragment.json> | images <amd64|arm64> <image dir> <fragment.json> | image-release <fragment dir> | manifest <fragment dir>`,
   );
