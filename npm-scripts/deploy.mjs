@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PACKAGE = join(ROOT, "packages", "control-plane");
+const DASHBOARD = join(ROOT, "packages", "dashboard");
 const INFRA = join(PACKAGE, "infra");
 const WORK = join(ROOT, ".tmp", "deploy");
 const ENV_FILE = process.env.TUMPEL_CF_ENV ?? join(homedir(), ".config", "tumpel", "cf-env");
@@ -102,7 +103,7 @@ const run = (command, args, { cwd = ROOT, env = {}, capture = false, input } = {
 const wranglerEnv = { CLOUDFLARE_API_TOKEN: token, CLOUDFLARE_ACCOUNT_ID: accountId };
 const wrangler = (args, options = {}) =>
   run(join(ROOT, "node_modules", ".bin", "wrangler"), [...args, "--env", STAGE], {
-    cwd: PACKAGE,
+    cwd: options.cwd ?? PACKAGE,
     env: wranglerEnv,
     ...options,
   });
@@ -124,9 +125,8 @@ const cfGet = async (path) => {
 
 const config = JSON.parse(readFileSync(join(PACKAGE, "wrangler.jsonc"), "utf8").replace(/^\s*\/\/.*$/gm, ""));
 const stageConfig = config.env?.[STAGE] ?? die(`wrangler.jsonc has no env ${STAGE}`);
-const workerName = `${config.name}-${STAGE}`;
-const workerExists = async () => {
-  const path = `/accounts/${accountId}/workers/scripts/${workerName}/settings`;
+const workerExists = async (name) => {
+  const path = `/accounts/${accountId}/workers/scripts/${name}-${STAGE}/settings`;
   const response = await fetch(`${API}${path}`, {
     headers: { authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(30_000),
@@ -216,8 +216,13 @@ const apply = (extra) => {
   if (destroyed.length > 0) die(`the plan destroys ${destroyed.map((change) => change.address).join(", ")}; refusing`);
   tofu(["apply", "-input=false", planPath]);
 };
-const firstWorkerDeploy = !(await workerExists());
-apply(firstWorkerDeploy ? ["-exclude=cloudflare_workers_custom_domain.api"] : []);
+const firstDeploys = [
+  [config.name, "-exclude=cloudflare_workers_custom_domain.api"],
+  ["tumpel-dashboard", "-exclude=cloudflare_workers_route.app"],
+];
+const excluded = [];
+for (const [name, exclusion] of firstDeploys) if (!(await workerExists(name))) excluded.push(exclusion);
+apply(excluded);
 const outputs = JSON.parse(tofu(["output", "-json"], { capture: true }));
 const output = (name) => outputs[name]?.value ?? die(`tofu output ${name} is missing`);
 
@@ -241,5 +246,9 @@ wrangler([
   `ACCESS_PROOF_COMMON_NAME:${output("proof_common_name")}`,
 ]);
 wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
-if (firstWorkerDeploy) apply([]);
-console.log(`deploy: https://${output("hostname")}`);
+run("npm", ["run", "build", "-w", "@tumpel/dashboard"], {
+  env: { VITE_TUMPEL_API_ORIGIN: `https://${output("hostname")}` },
+});
+wrangler(["deploy"], { cwd: DASHBOARD });
+if (excluded.length > 0) apply([]);
+console.log(`deploy: https://${output("hostname")} and https://${output("app_hostname")}`);
