@@ -18,9 +18,10 @@ import { fileURLToPath } from "node:url";
 import { BaseImageManifestSchema, BaseLayout, GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/api/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
 import {
-  CLAUDE_FLAGS,
   CLONE_SECONDS,
   ENVIRONMENT,
+  HARNESS_RUNS,
+  harnessArchive,
   NODE_ARCH,
   TURN_PROTOCOLS,
   WORKING_DIRECTORY,
@@ -218,7 +219,43 @@ const recipeFor = (name, pins) => {
     die(`the catalog has no harness ${name}; pass one of ${known}`);
   }
   if (!TURN_PROTOCOLS.has(entry.harness))
-    die(`the guest has no turn protocol for ${entry.harness} yet; build ClaudeCode or Shell`);
+    die(`the guest has no turn protocol for ${entry.harness} yet; build ${buildable().join(" or ")}`);
+  const launch = HARNESS_RUNS[entry.harness];
+  const harnessFor = (binary) =>
+    GuestHarnessSchema.parse({
+      harness: entry.harness,
+      harnessVersion: entry.harnessVersion,
+      protocol: launch.protocol,
+      command: [binary, ...launch.flags],
+      workingDirectory: WORKING_DIRECTORY,
+      cloneSeconds: CLONE_SECONDS,
+      environment: ENVIRONMENT,
+    });
+  if (launch.archive) {
+    const { stripComponents, ...component } = harnessArchive(entry, pins.arch);
+    const binary = `/opt/tumpel/harness/bin/${launch.binary}`;
+    return {
+      harness: harnessFor(binary),
+      install: async (tree) => {
+        await installNode(tree, pins);
+        const bin = join(tree, "opt", "tumpel", "harness", "bin");
+        mkdirSync(bin, { recursive: true });
+        run("tar", [
+          "-xzf",
+          await download(component),
+          "-C",
+          bin,
+          `--strip-components=${stripComponents}`,
+          "--no-same-owner",
+        ]);
+        const installed = join(tree, binary);
+        if (!existsSync(installed))
+          die(`${component.url} holds no ${launch.binary}; check the archive pin in guest-image-settings.mjs`);
+        chmodSync(installed, 0o755);
+        return [pins.node, component];
+      },
+    };
+  }
   const pkg = entry.installRecipe.match(/^npm:((?:@[^/]+\/)?[^@]+)@(.+)$/);
   if (!pkg) die(`install recipe ${entry.installRecipe} is not npm:<package>@<version>`);
   const [, name_, version] = pkg;
@@ -227,17 +264,9 @@ const recipeFor = (name, pins) => {
       `install recipe ${entry.installRecipe} installs ${version}, the catalog names ${entry.harnessVersion}; make them match`,
     );
   const native = `${name_}-linux-${NODE_ARCH[pins.arch]}`;
-  const binary = `/opt/tumpel/harness/node_modules/${native}/claude`;
+  const binary = `/opt/tumpel/harness/node_modules/${native}/${launch.binary}`;
   return {
-    harness: GuestHarnessSchema.parse({
-      harness: entry.harness,
-      harnessVersion: entry.harnessVersion,
-      protocol: "ClaudeStreamJson",
-      command: [binary, ...CLAUDE_FLAGS],
-      workingDirectory: WORKING_DIRECTORY,
-      cloneSeconds: CLONE_SECONDS,
-      environment: { ...ENVIRONMENT, DISABLE_AUTOUPDATER: "1" },
-    }),
+    harness: harnessFor(binary),
     install: async (tree) => {
       const node = await installNode(tree, pins);
       const prefix = join(tree, "opt", "tumpel", "harness");

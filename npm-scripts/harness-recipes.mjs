@@ -3,9 +3,10 @@ import { readFileSync } from "node:fs";
 import { GuestHarnessSchema } from "@tumpel/api/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
 import {
-  CLAUDE_FLAGS,
   CLONE_SECONDS,
   ENVIRONMENT,
+  HARNESS_RUNS,
+  harnessArchive,
   NODE_ARCH,
   TURN_PROTOCOLS,
   WORKING_DIRECTORY,
@@ -44,6 +45,21 @@ const catalogRecipe = (name, arch) => {
   if (!entry) throw new Error(`the catalog has no harness ${name}; pass one of ${layerHarnesses().join(", ")}`);
   if (!TURN_PROTOCOLS.has(entry.harness))
     throw new Error(`the guest has no turn protocol for ${entry.harness} yet; build ${layerHarnesses().join(" or ")}`);
+  const run = HARNESS_RUNS[entry.harness];
+  const root = rootOf(entry.harness, entry.harnessVersion);
+  const harness = GuestHarnessSchema.parse({
+    harness: entry.harness,
+    harnessVersion: entry.harnessVersion,
+    protocol: run.protocol,
+    command: [`${root}/bin/${run.binary}`, ...run.flags],
+    workingDirectory: WORKING_DIRECTORY,
+    cloneSeconds: CLONE_SECONDS,
+    environment: ENVIRONMENT,
+  });
+  if (run.archive) {
+    const { name: binary, version, url, digest, stripComponents } = harnessArchive(entry, arch);
+    return { harness, install: { kind: "Archive", url, digest, stripComponents, version, binary } };
+  }
   const pkg = entry.installRecipe.match(/^npm:((?:@[^/]+\/)?[^@]+)@(.+)$/);
   if (!pkg) throw new Error(`install recipe ${entry.installRecipe} is not npm:<package>@<version>`);
   const [, packageName, version] = pkg;
@@ -51,24 +67,15 @@ const catalogRecipe = (name, arch) => {
     throw new Error(
       `install recipe ${entry.installRecipe} installs ${version}, the catalog names ${entry.harnessVersion}; make them match`,
     );
-  const root = rootOf(entry.harness, entry.harnessVersion);
   return {
-    harness: GuestHarnessSchema.parse({
-      harness: entry.harness,
-      harnessVersion: entry.harnessVersion,
-      protocol: "ClaudeStreamJson",
-      command: [`${root}/bin/claude`, ...CLAUDE_FLAGS],
-      workingDirectory: WORKING_DIRECTORY,
-      cloneSeconds: CLONE_SECONDS,
-      environment: { ...ENVIRONMENT, DISABLE_AUTOUPDATER: "1" },
-    }),
+    harness,
     install: {
       kind: "NpmNative",
       installRecipe: entry.installRecipe,
       package: `${packageName}-linux-${NODE_ARCH[arch]}`,
       version,
       cpu: NODE_ARCH[arch],
-      binary: "claude",
+      binary: run.binary,
     },
   };
 };

@@ -79,6 +79,25 @@ const installNpmNative = (install, tree, work) => {
   chmodSync(bin, 0o755);
 };
 
+const installArchive = async (install, tree, work) => {
+  const response = await fetch(install.url);
+  if (!response.ok)
+    die(`downloading ${install.url} answered ${response.status}; check the archive pin in guest-image-settings.mjs`);
+  const archive = join(work, "archive.tar.gz");
+  writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
+  const actual = await sha256(archive);
+  if (actual !== install.digest)
+    die(
+      `${install.url} has digest ${actual}, guest-image-settings.mjs pins ${install.digest}; refusing a changed artifact`,
+    );
+  const bin = join(tree, "bin");
+  run("tar", ["-xzf", archive, "-C", bin, `--strip-components=${install.stripComponents}`, "--no-same-owner"]);
+  const installed = join(bin, install.binary);
+  if (!existsSync(installed))
+    die(`${install.url} holds no ${install.binary}; check the archive pin in guest-image-settings.mjs`);
+  chmodSync(installed, 0o755);
+};
+
 const buildLayer = async (name, arch) => {
   const recipe = layerRecipe(name, arch);
   const mksquashfs = tool("mksquashfs");
@@ -87,6 +106,7 @@ const buildLayer = async (name, arch) => {
   mkdirSync(join(tree, "bin"), { recursive: true });
   try {
     if (recipe.install.kind === "NpmNative") installNpmNative(recipe.install, tree, work);
+    if (recipe.install.kind === "Archive") await installArchive(recipe.install, tree, work);
     writeFileSync(join(tree, "tumpel-harness.json"), `${JSON.stringify(recipe.harness, null, 2)}\n`);
     run("chmod", ["-R", "u+rwX,go+rX,go-w", tree]);
     const layer = join(work, "layer.squashfs");
