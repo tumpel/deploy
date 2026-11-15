@@ -22,7 +22,7 @@ A host chunk cache under `imageCacheDir/chunks` keeps snapshot chunks by digest,
 
 Each turn offer names a guest image of the current release: its image, kernel and manifest digests, with a presigned URL for each (EDD-002). The supervisor boots a box only from its image cache, `imageCacheDir`. When the cache lacks the image, the supervisor sends TurnImageFetching and downloads the three files, one fetch at a time. Each file lands under a temporary name. The supervisor checks each file against its sha256 and only then renames it into place. The cache keeps one image per harness version, so a new image replaces the one before it. Kernels are shared by digest, and the supervisor skips a kernel the cache already holds. The release's kernel is the only kernel. A warm box keeps the image it booted from.
 
-The fetch runs before the claim, under its own budget: `turnImageFetchBudgetSeconds` in `ControlPlaneSettings`, 900 s by default. When a download fails or misses its digest, the turn fails ImageNotCached. A fetch that outlasts the budget fails it ImageFetchTimedOut. The turn fails ImageNotReleased when the current release lacks its image for the host's architecture.
+The fetch runs before the claim, under its own budget: `turnImageFetchBudgetSeconds` in `ControlPlaneSettings`, 900 s by default. When a download fails, misses its digest or names another image in its manifest, the turn fails ImageFetchFailed. A fetch that outlasts the budget fails it ImageFetchTimedOut. The turn fails ImageNotReleased when the current release lacks its image for the host's architecture.
 
 ## Repository
 
