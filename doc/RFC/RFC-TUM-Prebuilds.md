@@ -23,9 +23,9 @@ The guest image holds Ubuntu, git, the GitHub CLI and the harness, and none of a
 
 ### Prebuilds
 
-A prebuild is a job of its own. Its input is a repository plus one digest over the repository's devcontainer files and lockfiles. Its output is one content-addressed layer. The repository, the input digest and the guest image digest form the prebuild's key, so every commit with the same devcontainer, lockfiles and image shares one layer.
+A prebuild is a job of its own. Its input is a repository plus one digest over the repository's devcontainer files and lockfiles. Its output is one content-addressed layer. The repository, the input digest and the base image digest form the prebuild's key, so every commit with the same devcontainer, lockfiles and base shares one layer, whatever the harness (EDD-007).
 
-At a session's first turn, the control plane reads those files through the GitHub App, computes the digest and finds the stored prebuild with that key. When one exists, the turn offer names it. The supervisor restores the layer from packs the way it restores a snapshot (EDD-004), and the box boots with three layers: the image, the prebuild layer and the session's own overlay. A session keeps the prebuild it started with. When no prebuild matches, the box boots from the image alone, as it does now.
+At a session's first turn, the control plane reads those files through the GitHub App, computes the digest and finds the stored prebuild with that key. When one exists, the turn offer names it. The supervisor restores the layer from packs the way it restores a snapshot (EDD-004), and the box boots with three layers: the base image, the prebuild layer and the session's own overlay. The harness layer mounts beside them. A session keeps the prebuild it started with. When no prebuild matches, the box boots from the image alone, as it does now.
 
 ### The output contract
 
@@ -140,7 +140,7 @@ The Worker generates each RS256 key itself, at 2048 bits, and a key's `kid` is i
 
 ### Prebuilds
 
-The input digest covers every file under `.devcontainer/`, `.devcontainer.json` and the root lockfiles that `packages/control-plane/src/prebuild-inputs.ts` lists, as they stand on the default branch. Each file gives one line, `<path>\0<git blob sha>\n`. The lines are sorted by path, and the digest is the sha256 over them. The key stores the repository as `https://github.com/<owner>/<name>` in lower case. Its image digest is the current release's Amd64 image of the persona's pinned or default harness version. Prebuilds build on Amd64 until Arm64 images exist.
+The input digest covers every file under `.devcontainer/`, `.devcontainer.json` and the root lockfiles that `packages/control-plane/src/prebuild-inputs.ts` lists, as they stand on the default branch. Each file gives one line, `<path>\0<git blob sha>\n`. The lines are sorted by path, and the digest is the sha256 over them. The key stores the repository as `https://github.com/<owner>/<name>` in lower case. Its image digest is the current release's Amd64 base image. Prebuilds build on Amd64 until Arm64 images exist.
 
 The control plane reads the files with the GitHub App's installation token, or else with the persona's `GITHUB_TOKEN`.
 
@@ -153,7 +153,7 @@ Each start names its provider. The first check that fails refuses the start, in 
 3. NoBuildProvider: the named provider is not connected.
 4. HarnessNotInCatalog: the catalog lists no version of the persona's harness that the tenant can run.
 5. NoRelease: the stage has published no release.
-6. ImageNotReleased: the current release has no Amd64 image of that harness version.
+6. ImageNotReleased: the current release has no Amd64 base image.
 7. RepositoryUnreadable: neither token can read the repository.
 8. NoPrebuildInputs: the repository holds none of the files.
 
@@ -172,7 +172,7 @@ A CI prebuild uploads its layer through `POST /v1/prebuilds/{prebuildId}/uploads
 
 ### Build script
 
-Each guest image carries the build script at `/opt/tumpel/prebuild.mjs`, so the image digest pins it.
+Each base image carries the build script at `/opt/tumpel/prebuild.mjs`, so the base digest pins it.
 
 `prebuild.mjs build <out dir>` runs with a git checkout of the repository at `/root/workspace`, which must be a real directory. Before the lifecycle commands run, it replaces `.git/config` with the core settings and an origin URL without user info. Right before the commands run, it scans the image's files as a baseline. It runs `onCreateCommand`, `updateContentCommand` and `postCreateCommand` with exactly the environment that `guest.json` names, plus `containerEnv`. On timeout it kills the whole process group. It writes `layer.tar` and `layer.json` to the out directory, and a layer over 5 GiB fails `LayerTooLarge`.
 
@@ -180,7 +180,7 @@ Each guest image carries the build script at `/opt/tumpel/prebuild.mjs`, so the 
 
 ### Release
 
-The release stores each image's root filesystem tar in the private releases bucket, under `images/<harness>/<version>/<arch>/rootfs/<sha256>`. That sha256 is `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`, so prod's `current.json` must be published again before the control plane deploys to prod.
+The release stores the base image's root filesystem tar in the private releases bucket, under `bases/<arch>/rootfs/<sha256>`. The tar holds no harness and no guest agent. That sha256 is `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`, so prod's `current.json` must be published again before the control plane deploys to prod.
 
 ### Connections
 
@@ -227,13 +227,13 @@ The CircleCI API maps no GitHub repository to a project of a GitHub App organiza
 
 The adapter calls `POST /api/v2/project/<slug>/pipeline/run` with the binding's `definition_id`, and with `config` and `checkout` on the default branch. It passes these pipeline parameters:
 
-| Parameter             | Value                                                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------- |
-| `tumpel_prebuild_id`  | The prebuild the start recorded                                                                    |
-| `tumpel_tenant_id`    | The tenant that started it                                                                         |
-| `tumpel_api_origin`   | The API origin the upload job calls and names as the token's `aud`                                 |
-| `tumpel_rootfs_url`   | A presigned GET of the guest image's root filesystem tar, valid for the dispatch and build budgets |
-| `tumpel_image_digest` | The digest of the guest image the layer is built on                                                |
+| Parameter             | Value                                                                                             |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| `tumpel_prebuild_id`  | The prebuild the start recorded                                                                   |
+| `tumpel_tenant_id`    | The tenant that started it                                                                        |
+| `tumpel_api_origin`   | The API origin the upload job calls and names as the token's `aud`                                |
+| `tumpel_rootfs_url`   | A presigned GET of the base image's root filesystem tar, valid for the dispatch and build budgets |
+| `tumpel_image_digest` | The digest of the base image the layer is built on                                                |
 
 CircleCI caps a parameter value at 512 characters. The adapter refuses a start whose presigned URL is longer, before it triggers anything. A 201 answer carries the pipeline id. The prebuild records it in `prebuild_pipelines` and moves to Building, because CircleCI sends no event when a pipeline starts. A 200 answer created no pipeline, and the start is refused DispatchRefused with CircleCI's message. An answer in state `errored` is refused the same way.
 

@@ -98,6 +98,15 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 - **FR-13 Config as code.** `tumpel config validate`, `plan` and `apply` keep a tenant's personas, secret sets, pins and host labels in one schema-checked file. A persona in the file names its harness and lists its files by local path. The file names environment variables for secret values and holds no value. A persona keeps the harness it was created with, and `apply` stops when a live persona runs another harness than the file names. A delete of a persona that a session ran on, or of a secret set a persona names, is refused with 409. (BR-2)
 - **FR-14 Bring your own super harness.** A tenant plugs its own super harness in through the hosted MCP server and the channel into each box. Every other requirement holds with none plugged in. (BR-4)
 
+### Functional requirements for guest layers
+
+- **FR-15 Base image.** An image release tag builds the base image: Ubuntu and the dev tools, with no harness and no guest agent. (BR-3)
+- **FR-16 Harness layers.** Each harness version has one read-only squashfs layer per architecture, named by its sha256. A harness pin bump publishes a layer and no image. (BR-3)
+- **FR-17 Guest drive.** Each supervisor carries the guest agent of its own build as a read-only drive. A guest change needs no image release. (BR-1)
+- **FR-18 Layer cache.** A host attaches a cached layer only after its sha256 matched the release. It evicts the least recently attached layer past `layerCacheMib`. (BR-1)
+- **FR-19 Boot stack.** A box stacks the prebuild layer over the base, under the session overlay, and mounts the harness at `/opt/harness/<harness>/<version>`. A failed step fails BoxBootFailed and names the step. (BR-2)
+- **FR-20 Base layout.** A release refuses an image release of another `baseLayoutVersion`. (BR-1)
+
 ### Non-functional requirements
 
 - **NFR-1 No inbound ports.** A host accepts no connection from outside itself.
@@ -117,6 +126,7 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 - **OR-2 Static binaries.** The installer, the supervisor and the CLI ship as static binaries for Linux on x86_64 only for now. (BR-1)
 - **OR-3 Audit.** Every credential handover records the turn, host, box and secret names. (BR-3)
 - **OR-4 Agents prove each stage.** Agents run the proof on a real host against every stage after its deploy. (BR-2)
+- **OR-5 CLI on crates.io.** A `v*` tag publishes the CLI to crates.io. (BR-2)
 
 ## Decisions
 
@@ -172,6 +182,14 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 **The proof signs in with an Access service token.** The test run approves its own device code with a Cloudflare Access service token tied to a test tenant.
 
+### Guest layers
+
+**Squashfs drives on virtio-blk carry the harness layers and the guest drive, and CI builds the layers (EDD-007).** On 2026-11-15 the rulings read:
+
+> we don't want to ship an image for every harness
+
+> tumpel can go onto crates
+
 ### Placement
 
 **Placement after a host loss.** When a session's host is offline, its next turn boots on another of the tenant's online hosts, provided the snapshots cover the last completed turn. Otherwise the refusal names the host and the missing turns.
@@ -180,7 +198,7 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 > we're going to hook up different sized boxes, right? a Raspberry Pi, an older Pentium, whatever
 
-A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns fill its `boxCapacity`. A start goes to an Online host that is not Full and has an image for its architecture. The tenant ranks those hosts by free slots, then by available memory. When every host is Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A placed session keeps its host.
+A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns fill its `boxCapacity`. A start goes to an Online host that is not Full, whose architecture has a base and the session's harness layer in the release. The tenant ranks those hosts by free slots, then by available memory. When every host is Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A placed session keeps its host.
 
 **Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. Its size, the host's `boxCapacity`, is 8 by default.
 
@@ -215,6 +233,9 @@ A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Run
 | Secret set    | Named encrypted values that a persona's sessions read                                    |
 | Warm window   | How long a paused box waits for its next turn                                            |
 | Snapshot      | A session's overlay files as a manifest plus chunks in packs                             |
+| Base image    | The read-only ext4 root of every box: Ubuntu and the dev tools                           |
+| Harness layer | One harness at one version as a read-only squashfs drive                                 |
+| Guest drive   | The guest agent of the supervisor's own build as a read-only squashfs drive              |
 
 ## Appendix of entities
 
@@ -363,3 +384,4 @@ model Snapshot {
 | [EDD-004](../EDD/004-snapshots-and-transcripts.md) | Snapshots and transcripts: storage, upload, restore                               |
 | [EDD-005](../EDD/005-mcp-and-cli.md)               | MCP and CLI: hosted MCP, sign-in, parity, config as code                          |
 | [EDD-006](../EDD/006-end-to-end-proof.md)          | Proof: what agents run, where, and what passes                                    |
+| [EDD-007](../EDD/007-guest-layers.md)              | Guest layers: base image, harness layers, guest drive, boot stack                 |

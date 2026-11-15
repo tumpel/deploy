@@ -8,9 +8,9 @@ The supervisor runs each session in a Firecracker microVM, the box, on a tenant'
 
 ## Box lifecycle
 
-Each harness version has one read-only root image and one kernel, both named by digest, and a manifest that lists their parts. The supervisor refuses a guest whose greeting, GuestHello, disagrees with the manifest. GuestHello also carries `protocolVersion`, now 2. On any other version the turn fails BoxBootFailed, and the detail names both versions and says to rebuild the image.
+A box boots from a base image, a kernel, a harness layer and the supervisor's guest drive, each named by digest (EDD-007). The supervisor refuses a guest whose greeting, GuestHello, names another harness than the offer. GuestHello also carries `protocolVersion`, now 2. On any other version the turn fails BoxBootFailed, and the detail names both versions and says to rebuild the image.
 
-A second drive per session holds the overlay upper directory, which the guest's init mounts over the image before it starts the guest agent. A cold boot of a session with snapshots attaches a third, read-only drive with the restored files (EDD-004). The agent dials the host over vsock once ready and speaks length-prefixed JSON.
+A second drive per session holds the overlay upper directory, which the guest's init mounts over the image before it starts the guest agent. A cold boot of a session with snapshots attaches one more read-only drive with the restored files (EDD-004). The agent dials the host over vsock once ready and speaks length-prefixed JSON.
 
 Claude Code and every other harness that reads turns as a stream gets one process per box. One that reads one prompt per process gets one process per turn. A process stays in use while the model, the exported variables and the persona's files stay the same. The harness runs as root with full permissions.
 
@@ -18,7 +18,7 @@ Each turn offer carries the persona's file list with a download URL per digest. 
 
 ## Guest images
 
-Each turn offer names a guest image of the current release (EDD-002). The supervisor boots a box only from its image cache, `imageCacheDir`. When the cache lacks the image, the supervisor sends TurnImageFetching before the claim and downloads the image, kernel and manifest one at a time. Each file lands under a temporary name and moves into place once its sha256 matches. The cache keeps one image per harness version, so a new image replaces the one before it. Kernels are shared by digest, and a kernel the cache holds is not fetched again. The release's kernel is the only kernel. A warm box keeps the image it booted from.
+Each turn offer names a guest image of the current release (EDD-002). The supervisor boots a box only from its image cache, `imageCacheDir`. When the cache lacks the image, the supervisor sends TurnImageFetching before the claim and downloads the image, kernel and manifest one at a time. Each file lands under a temporary name and moves into place once its sha256 matches. The cache keeps base images, harness layers and the guest drive as EDD-007 describes. Kernels are shared by digest, and a kernel the cache holds is not fetched again. The release's kernel is the only kernel. A warm box keeps the image it booted from.
 
 The fetch budget is `turnImageFetchBudgetSeconds` in `ControlPlaneSettings`; EDD-002 lists its value and failure. A download that fails, misses its digest or names another image in its manifest fails the turn ImageFetchFailed. A release without an image for the host's architecture fails it ImageNotReleased.
 
@@ -38,7 +38,7 @@ The warm state is the paused process in host memory. The supervisor writes no me
 
 The supervisor reads its usage from /proc: warm boxes, the one-minute load average and `MemAvailable` in MiB. When it cannot, it exits `UsageUnreadable`, code 7. It sends that usage and its `boxCapacity` over the channel (EDD-002). The tenant's Durable Object keeps the latest per host in its `host_usage` table and places one request at a time.
 
-A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns reach its `boxCapacity`. Warm boxes never make a host Full: its supervisor evicts one as Networking describes. The tenant picks an Online host that is not Full and whose architecture has an image of the session's harness version in the current release. It ranks those by free slots, then by available memory, and ignores the load.
+A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns reach its `boxCapacity`. Warm boxes never make a host Full: its supervisor evicts one as Networking describes. The tenant picks an Online host that is not Full and whose architecture has a base and the session's harness layer in the current release. It ranks those by free slots, then by available memory, and ignores the load.
 
 With every host Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. With no host at all, the tenant refuses it `NoHostAvailable`. A start on an Online host that has sent no usage yet is refused with the host's name and the fix: restart `tumpel-supervisor run` there, so that its Hello carries its usage. `tumpel host list-usage` lists the slots, load and memory of each host that has connected, leaving out revoked hosts.
 

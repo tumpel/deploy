@@ -8,7 +8,7 @@ A snapshot is every file in a box's overlay upper directory, stored as a manifes
 
 ## Taking a snapshot
 
-A completed turn starts the session's snapshot timer, 30 s by default, and a new turn resets it. When it fires, the control plane sends a SnapshotRequest. The request carries the snapshot's number, a storage key under the tenant and session, and an upload URL for that key that expires at the snapshot deadline. The supervisor reads the overlay upper directory from the paused box's drive. No memory file leaves the host.
+A completed turn starts the session's snapshot timer, 30 s by default, and a new turn resets it. When it fires, the control plane sends a SnapshotRequest. The request carries the snapshot's number, a storage key under the tenant and session, and an upload URL for that key that expires at the snapshot deadline. The supervisor reads the overlay upper directory from the paused box's drive. The harness layer and the guest drive mount outside the overlay, so no snapshot holds their files (EDD-007). No memory file leaves the host.
 
 The manifest records a deleted file as an overlay whiteout, a character device 0/0. It marks an opaque directory with `trusted.overlay.opaque`, which the supervisor reads from the drive's inodes after it replays the ext4 journal. The guest's init restores these attributes, so a restored box keeps a deletion and a replaced directory. A damaged attribute block, a truncated attribute entry or a reference to inode 0 fails the snapshot `UpperDirectoryUnreadable`, naming the inode and the block. The supervisor answers SnapshotDone, or SnapshotFailed with one of these reasons:
 

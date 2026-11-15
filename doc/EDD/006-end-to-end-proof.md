@@ -95,4 +95,4 @@ A cloud agent in a box worked a real issue of this repository and opened a draft
 
 **Does a person approve anything?** No. The service token approves the device code and the connector's consent.
 
-**Which harnesses does the proof cover?** Claude Code, plus each harness the catalog adds once its image builds.
+**Which harnesses does the proof cover?** Claude Code, plus each harness the catalog adds once its layer builds.
