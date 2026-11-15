@@ -70,13 +70,14 @@ A person who has no Claude Code installed gets a subscription token from a short
 
 The token reaches neither the host nor any response, log, transcript or Problem detail. Ledger frames hold the offer and the code without their secrets: the control plane adds the box token, the image URLs and the code when it sends them. A detail that quotes Claude Code's output before the code is typed replaces any `sk-ant-` string with `[token]`; once the code is typed, a detail quotes none of it. Claude Code's documentation gives the token one year and does not say that `setup-token` prints an expiry, so the guest sets `expiresAt` one year after the token was printed.
 
-| Budget (ControlPlaneSettings)  | Default | Failure         |
-| ------------------------------ | ------- | --------------- |
-| `claudeSetupUrlBudgetSeconds`  | 300 s   | SetupUrlMissing |
-| `claudeSetupCodeBudgetSeconds` | 600 s   | SetupTimedOut   |
-| `claudeSetupMintBudgetSeconds` | 120 s   | SetupTimedOut   |
+| Budget (ControlPlaneSettings)    | Default | Failure         |
+| -------------------------------- | ------- | --------------- |
+| `claudeSetupUrlBudgetSeconds`    | 300 s   | SetupUrlMissing |
+| `claudeSetupCodeBudgetSeconds`   | 600 s   | SetupTimedOut   |
+| `claudeSetupMintBudgetSeconds`   | 120 s   | SetupTimedOut   |
+| `claudeSetupReportBudgetSeconds` | 10 s    | SetupTimedOut   |
 
-The URL budget covers the image fetch and the boot. Claude Code refusing the code, or exiting without a token, fails the setup `CodeRejected`. A token the control plane does not store fails it `TokenNotStored`, and the box discards the token. Each failure stops the box, which also stops at the sum of the three budgets. The code is a secret value, so EDD-005's rule keeps it off MCP: `tumpel_claude_setup_start` and `tumpel_claude_setup_get` exist, and the code goes through the dashboard or `tumpel claude-setup submit-code --stdin`.
+The URL budget covers the image fetch and the boot. Claude Code refusing the code, or exiting without a token, fails the setup `CodeRejected`. A token the control plane does not store fails it `TokenNotStored`, and the box discards the token. A setup past the mint budget asks the box for the last lines Claude Code printed after the code, and its SetupTimedOut detail quotes them, or says the box did not answer within the report budget. Each failure stops the box, which also stops at the sum of the four budgets. The code is a secret value, so EDD-005's rule keeps it off MCP: `tumpel_claude_setup_start` and `tumpel_claude_setup_get` exist, and the code goes through the dashboard or `tumpel claude-setup submit-code --stdin`.
 
 ## Audit
 
