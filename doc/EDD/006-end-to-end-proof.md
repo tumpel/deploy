@@ -36,6 +36,7 @@ Step 13 makes every call as a JSON-RPC `tools/call` on `/mcp`, with the bearer t
 
 12. Connector. The run follows the 401 from `/mcp` to both metadata documents, registers a client and signs in with PKCE through the service token. It redeems the code and calls `initialize` with protocol 2025-06-18. Every later call sends the agreed version as `MCP-Protocol-Version`. `tools/list` must list the session tools, and `tumpel_host_list_usage` must list the host that step 2 enrolled.
 13. Connector session. `tumpel_session_start` names the persona, repository, model and prompt. The run polls a compact `tumpel_transcript_read` by cursor every 2 s. A turn fails with no line in 180 s (60 s claim, 120 s first line) or past 3,600 s. `tumpel_turn_get` must read Completed, or `tumpel_turn_failure` names the reason. Each turn needs an assistant text line, one that does not open with a tool call like `[Bash] ...`. `tumpel_turn_send` repeats this with a second prompt. After `tumpel_session_stop`, `tumpel_session_get` must read Stopped. It times each turn to ids, first line and finish, counts the polls and times the stop.
+
 ## Issuer and prebuild steps
 
 14. Issuer. Discovery and the JWKS answer on `id.<stage>.tumpel.dev` and name the stage's issuer, its JWKS URL and RS256. Any other path there answers 404. The run then rotates the key and mints no token. The rotation's `signsFrom` must fall within the next 24 h, and the JWKS must publish both the signing key and the next key.
@@ -56,9 +57,34 @@ A run passes when all sixteen steps pass with no super harness plugged in. A fai
 | First line, warm box                     | 0.6 to 0.8 s |
 | Snapshot stored after the turn           | about 31 s   |
 | Snapshot capture and upload              | about 1 s    |
-| `session stop`, then first line restored | 5.6 s, 19 s  |
+| `session stop`, then first line restored | 5.6, 19 s    |
 
 The session also restored on a fresh box after its warm window ran out. Step 9 ran its probe in a Claude Code box, because the Shell harness stays out of the catalog. Step 10 found zero copies of the credential.
+
+## Release run
+
+On 2026-11-15 both test hosts ran the proof on the published release 0.0.0-3d5b8e9. The supervisor came from the control plane's release redirect (sha256 `85a682fa...`).
+
+| Step               | `tumpel-host` (s) | `tumpel-host-2` (s) |
+| ------------------ | ----------------- | ------------------- |
+| Sign in            | 5.8               | 5.8                 |
+| Enrol              | 4.2               | 4.3                 |
+| Configure          | 2.2               | 1.7                 |
+| First turn         | 69.6              | 30.6                |
+| Warm turn          | 2.4               | 2.1                 |
+| Snapshot           | 31.3              | 30.4                |
+| Restore            | 26.8              | 27.6                |
+| Concurrency        | 23.8              | 23.6                |
+| Isolation          | 177.2             | 180.7               |
+| Secrecy            | 254.3             | 150.3               |
+| Refused credential | 118.2             | 81.0                |
+| Connector          | 1.5               | 1.1                 |
+| Connector session  | 32.5              | 43.6                |
+| Issuer             | 0.5               | 0.4                 |
+| Prebuild refused   | failed            | failed              |
+| Revoke             | 5.7               | 5.6                 |
+
+The first turn on `tumpel-host` includes fetching the guest images by digest. Prebuild refused failed because the proof's CLI predates a connection kind that main added during the run. That CLI cannot parse the new kind. The fix publishes the CLI in the release. A full run takes about sixteen minutes. The script cannot run a range of steps.
 
 ## Ticket run
 
