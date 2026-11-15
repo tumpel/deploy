@@ -79,7 +79,7 @@ A run that is not `in_progress` within `prebuildDispatchBudgetSeconds` (600) fai
 
 The reusable workflow `tumpel/workflows/.github/workflows/prebuild.yml` runs two jobs:
 
-- `build` holds `contents: read` and no `id-token`. It imports the root filesystem tar as a local `linux/amd64` image, checks the repository out without credentials, bind-mounts it at `/root/workspace`, runs `/opt/tumpel/prebuild.mjs build /out` in the container and keeps `/out` as a job artifact.
+- `build` holds `contents: read` and no `id-token`. A repository without a devcontainer.json builds with the default config, which installs the dependencies of each stack `prebuild.mjs` detects. It imports the root filesystem tar as a local `linux/amd64` image, checks the repository out without credentials, bind-mounts it at `/root/workspace`, runs `/opt/tumpel/prebuild.mjs build /out` in the container and keeps `/out` as a job artifact.
 - `upload` holds `id-token: write` and runs no repository code. It extracts `/opt/tumpel/prebuild.mjs` and the image's Node.js from the same root filesystem tar, never from the artifact, and runs `prebuild.mjs upload` with the artifact.
 
 The upload job's token must carry a `job_workflow_ref` of `tumpel/workflows/.github/workflows/prebuild.yml` at tag `v1` or at a release tag `v1.x.y`; the upload start refuses any other with `JobTokenMismatch` on `job_workflow_ref`. A caller that pins a commit SHA is refused too, because its `job_workflow_ref` names no tag.

@@ -155,9 +155,10 @@ Each start names its provider. The first check that fails refuses the start, in 
 5. NoRelease: the stage has published no release.
 6. ImageNotReleased: the current release has no Amd64 base image.
 7. RepositoryUnreadable: neither token can read the repository.
-8. NoPrebuildInputs: the repository holds none of the files.
 
-A start whose key matches a prebuild that is not Failed then returns the newest such prebuild, unless it asks for a rebuild. Past that point, Namespace is refused BuildProviderUnavailable. A GitHub Actions start is refused GitHubNotConnected while no App installation links the tenant, and DispatchRefused when GitHub refuses the token or the dispatch. Otherwise it dispatches the caller workflow and follows the run (`doc/github-actions-prebuild.md`). Without a project binding for the repository, a CircleCI start is refused CircleCIProjectMissing. A Namespace connection is refused IssuerMissing while the stage has no issuer.
+A repository without a devcontainer.json builds with the default config: `prebuild.mjs` installs the dependencies of each stack it detects at the root, and the prebuild records `configSource` Default. The input digest then also covers `Cargo.toml`, `go.mod`, `requirements.txt` and `pyproject.toml`. The dashboard offers a session that commits a devcontainer.json through a pull request.
+
+A start whose key matches a prebuild that is not Failed then returns the newest such prebuild, unless it asks for a rebuild. Past that point, Namespace is refused BuildProviderUnavailable. A GitHub Actions start is refused GitHubNotConnected while no App installation links the tenant, GitHubAppPermissionMissing when the installation cannot write Actions, or Contents and Workflows while the caller workflow needs committing, CallerWorkflowRefused when GitHub refuses that commit, and DispatchRefused when GitHub refuses the token or the dispatch. Otherwise it commits the caller workflow when it is missing or stale, dispatches the caller workflow and follows the run (`doc/github-actions-prebuild.md`). Without a project binding for the repository, a CircleCI start is refused CircleCIProjectMissing. A Namespace connection is refused IssuerMissing while the stage has no issuer.
 
 ### Layer upload
 

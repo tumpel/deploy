@@ -21,7 +21,10 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 const USAGE = `usage:
   prebuild.mjs build <out dir>
     Runs in the guest image with the repository checked out at /root/workspace, a directory and
-    not a symlink. Reads .devcontainer/devcontainer.json or .devcontainer.json, scans the image's
+    not a symlink. Reads .devcontainer/devcontainer.json or .devcontainer.json; with neither, runs
+    the default: one onCreateCommand per stack it detects at the workspace root (npm, pnpm, Yarn,
+    Bun, Cargo, Go, Python, Bundler, Composer, Mix, Dart) that installs its dependencies, skipping a
+    stack whose tool the image lacks. Scans the image's
     files just before the commands run, then runs onCreateCommand, updateContentCommand and
     postCreateCommand in the workspace with exactly the environment /etc/tumpel/guest.json names
     plus containerEnv (remoteEnv is ignored). Replaces .git/config with core settings and an origin
@@ -104,14 +107,58 @@ const withoutTrailingCommas = (text) =>
 
 const parseJsonc = (text) => JSON.parse(withoutTrailingCommas(withoutComments(text)));
 
+const DEFAULT_STACKS = [
+  [
+    "node",
+    [
+      ["package-lock.json", "npm", "npm ci"],
+      ["npm-shrinkwrap.json", "npm", "npm ci"],
+      ["pnpm-lock.yaml", "pnpm", "pnpm install --frozen-lockfile"],
+      ["yarn.lock", "yarn", "yarn install --frozen-lockfile"],
+      ["bun.lock", "bun", "bun install --frozen-lockfile"],
+      ["bun.lockb", "bun", "bun install --frozen-lockfile"],
+    ],
+  ],
+  ["rust", [["Cargo.toml", "cargo", "cargo fetch"]]],
+  ["go", [["go.mod", "go", "go mod download"]]],
+  [
+    "python",
+    [
+      ["uv.lock", "uv", "uv sync --frozen"],
+      ["poetry.lock", "poetry", "poetry install --no-root"],
+      ["Pipfile.lock", "pipenv", "pipenv sync"],
+      ["requirements.txt", "python3", "python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"],
+      ["pyproject.toml", "python3", "python3 -m venv .venv && .venv/bin/pip install -e ."],
+    ],
+  ],
+  ["ruby", [["Gemfile.lock", "bundle", "bundle install"]]],
+  ["php", [["composer.lock", "composer", "composer install --no-interaction"]]],
+  ["elixir", [["mix.lock", "mix", "mix deps.get"]]],
+  ["dart", [["pubspec.lock", "dart", "dart pub get"]]],
+];
+
+const guarded = (tool, command) =>
+  `if command -v ${tool} >/dev/null 2>&1; then ${command}; else echo "prebuild: ${tool} is not in the guest image, so ${command} is skipped"; fi`;
+
+const defaultConfig = (workspace) => {
+  const commands = DEFAULT_STACKS.flatMap(([stack, candidates]) => {
+    const found = candidates.find(([file]) => existsSync(join(workspace, file)));
+    return found === undefined ? [] : [[stack, guarded(found[1], found[2])]];
+  });
+  return commands.length === 0 ? {} : { onCreateCommand: Object.fromEntries(commands) };
+};
+
 const readDevcontainer = (workspace) => {
   const path = [join(workspace, ".devcontainer", "devcontainer.json"), join(workspace, ".devcontainer.json")].find(
     (candidate) => existsSync(candidate),
   );
-  if (!path)
-    die(
-      `NoDevcontainer: ${workspace} holds neither .devcontainer/devcontainer.json nor .devcontainer.json; add one with an onCreateCommand`,
+  if (!path) {
+    const config = defaultConfig(workspace);
+    console.log(
+      `prebuild: ${workspace} holds no devcontainer.json, so the prebuild runs the default: ${JSON.stringify(config)}`,
     );
+    return { path: "the default prebuild config", config };
+  }
   let config;
   try {
     config = parseJsonc(readFileSync(path, "utf8"));

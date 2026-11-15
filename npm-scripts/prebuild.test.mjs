@@ -31,7 +31,7 @@ const fixture = (name, devcontainer) => {
   write(join(root, "usr", "share", "doc", "nested", "file"), "doc\n");
   write(join(root, "tmp", "scratch"), "scratch\n");
   write(join(workspace, "package.json"), "{}\n");
-  write(join(workspace, ".devcontainer", "devcontainer.json"), devcontainer(root));
+  if (devcontainer !== null) write(join(workspace, ".devcontainer", "devcontainer.json"), devcontainer(root));
   execFileSync("git", ["init", "-q", workspace]);
   execFileSync("git", [
     "-C",
@@ -114,6 +114,25 @@ test("the layer holds the workspace, the changed base paths and a whiteout for e
     sha256: createHash("sha256").update(bytes).digest("hex"),
     sizeBytes: bytes.length,
   });
+});
+
+test("a repository without devcontainer.json installs each detected stack and skips a tool the image lacks", () => {
+  const { root, out } = fixture("default", null);
+  const workspace = join(root, "root", "workspace");
+  const bin = join(root, "usr", "local", "bin");
+  write(join(bin, "cargo"), `#!/bin/sh\necho "$@" > ${join(workspace, "cargo-args")}\n`);
+  execFileSync("chmod", ["+x", join(bin, "cargo")]);
+  write(
+    join(root, "etc", "tumpel", "guest.json"),
+    JSON.stringify({ environment: { PATH: `${bin}:/usr/bin:/bin`, HOME: join(root, "root"), LANG: "C.UTF-8" } }),
+  );
+  write(join(workspace, "Cargo.toml"), "[package]\n");
+  write(join(workspace, "mix.lock"), "%{}\n");
+  const result = prebuild(root, out);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(join(workspace, "cargo-args"), "utf8"), "fetch\n");
+  assert.match(result.stdout, /runs the default/);
+  assert.match(result.stdout, /mix is not in the guest image, so mix deps.get is skipped/);
 });
 
 test("features are refused with a named failure", () => {
