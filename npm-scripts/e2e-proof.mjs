@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -480,6 +480,134 @@ const steps = [
       } finally {
         ssh(`rm -rf ${REVOKE_DIR}`);
       }
+    },
+  },
+  {
+    id: 13,
+    name: "Connector",
+    run: async () => {
+      const t0 = Date.now();
+      const mcpUrl = `${ENDPOINT}/mcp`;
+      const rpc = (accessToken, id, method, params = {}) =>
+        fetch(mcpUrl, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            accept: "application/json, text/event-stream",
+            ...(accessToken === "" ? {} : { authorization: `Bearer ${accessToken}` }),
+          },
+          body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+        });
+      const getJson = async (url, what) => {
+        const response = await fetch(url);
+        if (response.status !== 200) fail(`${what} at ${url} answered ${response.status}`);
+        return response.json();
+      };
+
+      const signedOut = await rpc("", 1, "initialize");
+      if (signedOut.status !== 401) fail(`an unsigned ${mcpUrl} answered ${signedOut.status}, not 401`);
+      const pointer = /resource_metadata="([^"]+)"/.exec(signedOut.headers.get("www-authenticate") ?? "")?.[1];
+      if (!pointer) fail("the 401 from /mcp carries no WWW-Authenticate resource_metadata");
+      const resource = await getJson(pointer, "the protected resource metadata");
+      if (resource.resource !== mcpUrl) fail(`the resource metadata names ${resource.resource}, not ${mcpUrl}`);
+      const authority = resource.authorization_servers?.[0];
+      if (!authority) fail("the resource metadata names no authorization server");
+      const server = await getJson(`${authority}/.well-known/oauth-authorization-server`, "the server metadata");
+      if (!server.code_challenge_methods_supported?.includes("S256")) fail("the server metadata lacks S256 PKCE");
+      if (!server.registration_endpoint) fail("the server metadata names no registration endpoint");
+
+      const callback = "https://claude.ai/api/mcp/auth_callback";
+      const registered = await fetch(server.registration_endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ redirect_uris: [callback], client_name: `tumpel proof ${STAGE}` }),
+      });
+      if (registered.status !== 201) fail(`registration answered ${registered.status}: ${await registered.text()}`);
+      const clientId = (await registered.json()).client_id;
+
+      const verifier = randomBytes(32).toString("base64url");
+      const state = randomBytes(8).toString("hex");
+      const ask = new URLSearchParams({
+        response_type: "code",
+        client_id: clientId,
+        redirect_uri: callback,
+        state,
+        code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+        code_challenge_method: "S256",
+        resource: mcpUrl,
+      });
+      const authorized = await fetch(`${server.authorization_endpoint}?${ask}`, { redirect: "manual" });
+      const consentAt = new URL(authorized.headers.get("location") ?? "", ENDPOINT);
+      if (authorized.status !== 303 || consentAt.origin !== new URL(ENDPOINT).origin) {
+        fail(`authorize answered ${authorized.status} towards ${consentAt.origin}, not 303 to the consent page`);
+      }
+      const accessHeaders = {
+        "cf-access-client-id": process.env.TUMPEL_PROOF_CLIENT_ID ?? fail("TUMPEL_PROOF_CLIENT_ID is unset"),
+        "cf-access-client-secret":
+          process.env.TUMPEL_PROOF_CLIENT_SECRET ?? fail("TUMPEL_PROOF_CLIENT_SECRET is unset"),
+      };
+      const page = await fetch(consentAt, { headers: accessHeaders, redirect: "manual" });
+      if (page.status !== 200) fail(`the consent page answered ${page.status} to the proof's service token`);
+      const cookies = page.headers.getSetCookie().map((cookie) => cookie.split(";")[0]);
+      const csrfCookie = cookies.find((cookie) => cookie.startsWith("__Host-tumpel_connect="));
+      if (!csrfCookie) fail("the consent page set no consent cookie");
+      const consented = await fetch(`${ENDPOINT}${consentAt.pathname}`, {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          ...accessHeaders,
+          origin: new URL(ENDPOINT).origin,
+          cookie: cookies.join("; "),
+          "content-type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          request: consentAt.searchParams.get("request") ?? "",
+          csrf: csrfCookie.slice(csrfCookie.indexOf("=") + 1),
+          action: "approve",
+        }).toString(),
+      });
+      const back = new URL(consented.headers.get("location") ?? "", ENDPOINT);
+      if (consented.status !== 303 || `${back.origin}${back.pathname}` !== callback) {
+        fail(`consent answered ${consented.status} towards ${back.origin}${back.pathname}, not 303 to ${callback}`);
+      }
+      if (back.searchParams.get("state") !== state) fail("the callback does not carry the state back");
+      if (back.searchParams.get("iss") !== server.issuer) fail("the callback names another issuer");
+      const code = back.searchParams.get("code") ?? fail(`the callback carries ${back.searchParams.get("error")}`);
+
+      const issued = await fetch(server.token_endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          grant_type: "authorization_code",
+          client_id: clientId,
+          code,
+          code_verifier: verifier,
+          redirect_uri: callback,
+          resource: mcpUrl,
+        }).toString(),
+      });
+      if (issued.status !== 200) fail(`the token endpoint answered ${issued.status}: ${await issued.text()}`);
+      const grant = await issued.json();
+      if (grant.token_type !== "Bearer" || !grant.refresh_token) fail("the token answer lacks a bearer and refresh");
+
+      const result = async (id, method, params) => {
+        const answered = await rpc(grant.access_token, id, method, params);
+        if (answered.status !== 200) fail(`${method} over /mcp answered ${answered.status}`);
+        const body = await answered.json();
+        if (body.error) fail(`${method} over /mcp failed: ${body.error.message}`);
+        return body.result;
+      };
+      const initialized = await result(2, "initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "tumpel-proof", version: "0" },
+      });
+      const tools = (await result(3, "tools/list", {})).tools.map((tool) => tool.name);
+      if (!tools.includes("tumpel_host_list_usage")) fail("tools/list does not list tumpel_host_list_usage");
+      const usage = await result(4, "tools/call", { name: "tumpel_host_list_usage", arguments: {} });
+      if (usage.isError) fail(`tumpel_host_list_usage failed: ${usage.content?.[0]?.text}`);
+      const hosts = JSON.parse(usage.content[0].text);
+      return `discovered, registered, consented and redeemed; protocol ${initialized.protocolVersion}, ${tools.length} tools, usage of ${hosts.length} hosts in ${Date.now() - t0} ms`;
     },
   },
 ];
