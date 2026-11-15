@@ -18,6 +18,12 @@ Each turn offer carries the persona's file list with a download URL per digest. 
 
 A host chunk cache under `imageCacheDir/chunks` keeps snapshot chunks by digest, with no eviction (EDD-004).
 
+## Guest images
+
+Each turn offer names a guest image of the current release: its image, kernel and manifest digests, with a presigned URL for each (EDD-002). The supervisor boots a box only from its image cache, `imageCacheDir`. When the cache lacks the image, the supervisor sends TurnImageFetching and downloads the three files, one fetch at a time. Each file lands under a temporary name. The supervisor checks each file against its sha256 and only then renames it into place. The cache keeps one image per harness version, so a new image replaces the one before it. Kernels are shared by digest, and the supervisor skips a kernel the cache already holds. The release's kernel is the only kernel. A warm box keeps the image it booted from.
+
+The fetch runs before the claim, under its own budget: `turnImageFetchBudgetSeconds` in `ControlPlaneSettings`, 900 s by default. When a download fails or misses its digest, the turn fails ImageNotCached. A fetch that outlasts the budget fails it ImageFetchTimedOut. The turn fails ImageNotReleased when the current release lacks its image for the host's architecture.
+
 ## Repository
 
 The images carry pinned git and gh. Before the harness starts, the guest clones the session's repository into the working directory `/root/workspace`. A directory that holds the repository already skips the clone. Git reads `GITHUB_TOKEN` from the environment through a credential helper, so the token stays out of the URL and off the disk. The clone runs within the image's `cloneSeconds`, 120 s. A clone that fails or runs out of time arrives as `TurnRepositoryCloneFailed`, with a cause and what git reported. Its cause is `Refused`, `TimedOut`, `DirectoryNotEmpty` or `Other`. That message fails the turn `RepositoryCloneFailed`, and its detail asks for a `GITHUB_TOKEN` member only on `Refused`, when the turn's credential handover carried no such variable. Until the guest sends `TurnRepositoryReady`, the first line is due within `cloneSeconds` plus `budgets.firstLineSeconds`; once it arrives, the first-line budget restarts there. Commits carry the persona's `gitAuthorName` and `gitAuthorEmail`, and gh reads the token as `GH_TOKEN`.
@@ -32,21 +38,23 @@ The warm state is the paused process in host memory. The supervisor writes no me
 
 The supervisor reads its usage from /proc: warm boxes, the one-minute load average and `MemAvailable` in MiB. When it cannot, it stops with `UsageUnreadable`, exit code 7. It sends that usage and its `boxCapacity` over the channel (EDD-002). The tenant's Durable Object keeps the latest per host in its `host_usage` table and places one request at a time.
 
-A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns reach its `boxCapacity`. The tenant picks an Online host whose architecture has an image and that is not Full. It ranks those by free slots, then by available memory. Images exist for amd64 only. With every host Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A tenant with no host gets `NoHostAvailable`. The tenant refuses a start on an Online host that has sent no usage yet. The refusal names the host and says to restart `tumpel-supervisor run` there, so that its Hello carries its usage. `tumpel host list-usage` lists the slots, load and memory of each host that has connected, leaving out revoked hosts. Placement ignores the load.
+A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns reach its `boxCapacity`. The tenant picks an Online host that is not Full and whose architecture has an image of the session's harness version in the current release. It ranks those by free slots, then by available memory. With every host Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A tenant with no host gets `NoHostAvailable`. The tenant refuses a start on an Online host that has sent no usage yet. The refusal names the host and says to restart `tumpel-supervisor run` there, so that its Hello carries its usage. `tumpel host list-usage` lists the slots, load and memory of each host that has connected, leaving out revoked hosts. Placement ignores the load.
 
 Warm boxes never make a host Full. A host whose slots are all warm still takes a session, and its supervisor evicts a warm box as Networking describes.
+
+## Moving a session
 
 A placed session keeps its host. Each turn records the host it runs on. A send stays on the session's host while that host is Online. When the host is not Online and a completed turn is newer than the latest snapshotted turn, the tenant refuses the send `HostOffline` and names the host and the missing turns. Otherwise the tenant places the session as it places a new one. It fails the session's pending snapshot requests `NotAnswered` and sends BoxDiscard to the old host, unless the session's state is Stopped. A fresh box then boots on the new host from the latest snapshot. The tenant refuses a stop `HostOffline` while the host is offline.
 
 ## Host setup
 
-Adding a host is one command over ssh. `tumpel host mint-token` mints a one-time enrolment token. `tumpel-supervisor install --endpoint <stage origin> --token-file <path|->` then sets the host up, enrols it and starts the unit. It reads the token from a file or from stdin (`-`), so the token stays off the command line. Sudo runs for the installer's own run only. The supervisor itself never asks for admin rights. The installer:
+A fresh host fetches the supervisor binary with `curl -fL <origin>/v1/releases/supervisor/Amd64`. Adding the host is then one command over ssh. `tumpel host mint-token` mints a one-time enrolment token. `tumpel-supervisor install --endpoint <stage origin> --token-file <path|->` then sets the host up, enrols it and starts the unit. It reads the token from a file or from stdin (`-`), so the token stays off the command line. Sudo runs for the installer's own run only. The supervisor itself never asks for admin rights. The installer:
 
 1. refuses a host that is already enrolled, before any setup step;
 2. tries `sudo -n`, then asks for the password when it has a terminal. Without a terminal it stops and names two fixes: the NOPASSWD sudoers line, or a run from a terminal with the token saved to a file;
 3. adds the supervisor's user to the `kvm` group, restarts the user manager and checks once that the group can read and write `/dev/kvm`;
 4. writes the runtime config, `runtime.json`;
-5. installs Firecracker and the guest kernel at pinned versions, each checked against its digest;
+5. installs Firecracker at a pinned version, checked against its digest;
 6. installs the guest filter as a unit that loads before the host network comes up;
 7. makes `boxCapacity` TAP devices owned by that user through systemd-networkd, where device `tumpel<k>` has gateway 172.16.<k>.1/30 and IPv4 masquerade;
 8. installs the supervisor binary and a lingering user unit that runs `tumpel-supervisor run`;
@@ -58,7 +66,7 @@ A supervisor that fails restarts after 5 s. Exit codes 3 (NotEnrolled) and 5 (Ho
 
 Running `install` without `--endpoint` and `--token-file` only sets up the host, and it restarts the unit when the host is enrolled. `tumpel-supervisor enrol` re-enrols a host. It takes `-` for stdin too and keeps an existing runtime config.
 
-`boxCapacity` sits in `runtime.json`, between 1 and 256, 8 by default. A small host gets a lower `boxCapacity` at install, and placement counts its slots from that number. Firecracker runs without its jailer, because the jailer needs root. The installer and the binaries are built for x86_64 only for now. The supervisor does not fetch guest images yet, so someone copies them into `imageCacheDir` by hand.
+`boxCapacity` sits in `runtime.json`, between 1 and 256, 8 by default. A small host gets a lower `boxCapacity` at install, and placement counts its slots from that number. Firecracker runs without its jailer, because the jailer needs root. The installer pins Firecracker for x86_64 only for now.
 
 ## Networking and isolation
 

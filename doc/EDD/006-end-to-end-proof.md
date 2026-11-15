@@ -4,13 +4,13 @@ An appendix of [RFC: Tumpel](../RFC/RFC-TUM-Tumpel.md).
 
 ## Summary
 
-Agents prove every stage after its deploy, against that stage's control plane and a real host, with no mocks and no person in a browser. A test run signs in, enrols the host, runs turns on Claude Code, restores a session from its snapshots and checks isolation and secrecy. The stage passes when every step passes in one run.
+Agents prove every stage after its deploy, against that stage's control plane and a real host, with no mocks and no person in a browser. A test run signs in, enrols the host, runs turns on Claude Code, restores a session from its snapshots and checks isolation and secrecy. It also checks the issuer and a refused prebuild. The stage passes when every step passes in one run.
 
 ## Where it runs
 
 The reference host is a Linux VM on the hypervisor `box`, with a host-passthrough CPU so it exposes KVM, 4 vCPU and 8 GiB. The control plane is the stage's deployed Worker. An agent on the development machine drives the release's CLI and the hosted MCP server.
 
-`npm run proof:e2e` runs the fourteen steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
+`npm run proof:e2e` runs the sixteen steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
 
 ## Signing in
 
@@ -36,11 +36,15 @@ Step 13 makes every call as a JSON-RPC `tools/call` on `/mcp`, with the bearer t
 
 12. Connector. The run follows the 401 from `/mcp` to both metadata documents, registers a client and signs in with PKCE through the service token. It redeems the code and calls `initialize` with protocol 2025-06-18. Every later call sends the agreed version as `MCP-Protocol-Version`. `tools/list` must list the session tools, and `tumpel_host_list_usage` must list the host that step 2 enrolled.
 13. Connector session. `tumpel_session_start` names the persona, repository, model and prompt. The run polls a compact `tumpel_transcript_read` by cursor every 2 s. A turn fails with no line in 180 s (60 s claim, 120 s first line) or past 3,600 s. `tumpel_turn_get` must read Completed, or `tumpel_turn_failure` names the reason. Each turn needs an assistant text line, one that does not open with a tool call like `[Bash] ...`. `tumpel_turn_send` repeats this with a second prompt. After `tumpel_session_stop`, `tumpel_session_get` must read Stopped. It times each turn to ids, first line and finish, counts the polls and times the stop.
-14. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
+## Issuer and prebuild steps
+
+14. Issuer. Discovery and the JWKS answer on `id.<stage>.tumpel.dev` and name the stage's issuer, its JWKS URL and RS256. Any other path there answers 404. After a rotation, the JWKS lists both the old and the new key.
+15. Prebuild refused. `tumpel connection list` reads every build provider row NotConnected. A prebuild start on the proof repository is refused NoBuildProvider, and the repository then has no prebuild.
+16. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
 
 ## Passing
 
-A run passes when all fourteen steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
+A run passes when all sixteen steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
 
 ## Result
 

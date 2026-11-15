@@ -8,7 +8,7 @@ Each host keeps one persistent two-way connection to the control plane, and the 
 
 ## Handshake
 
-The control plane sends a Challenge with a nonce. The host answers with a Hello. Its Ed25519 host key signs `tumpel-channel-hello-v1`, a zero byte, the nonce, a zero byte and the host id. The control plane checks the signature against the key it stored at enrolment and answers Welcome. Hello and Welcome carry `protocolVersion`, now 7. The control plane checks `protocolVersion` before the rest of the Hello. It closes a Hello on any other version with UnsupportedVersion, and the reason tells the host to update the supervisor. Hello also carries the host's `boxCapacity` and its usage: warm boxes, the one-minute load average and available memory in MiB. The tenant writes both to its `host_usage` table before the control plane reads the host Online. Challenge, Hello, Welcome and Heartbeat travel outside the numbered frames.
+The control plane sends a Challenge with a nonce. The host answers with a Hello. Its Ed25519 host key signs `tumpel-channel-hello-v1`, a zero byte, the nonce, a zero byte and the host id. The control plane checks the signature against the key it stored at enrolment and answers Welcome. Hello and Welcome carry `protocolVersion`, now 9. The control plane checks `protocolVersion` before the rest of the Hello. It closes a Hello on any other version with UnsupportedVersion, and the reason tells the host to update the supervisor. Hello also carries the host's `boxCapacity` and its usage: warm boxes, the one-minute load average and available memory in MiB. The tenant writes both to its `host_usage` table before the control plane reads the host Online. Challenge, Hello, Welcome and Heartbeat travel outside the numbered frames.
 
 | Close code | Meaning                        |
 | ---------- | ------------------------------ |
@@ -21,7 +21,7 @@ The control plane sends a Challenge with a nonce. The host answers with a Hello.
 
 ## Messages
 
-The control plane sends TurnOffer, TurnWithdrawn, SnapshotRequest, BoxTeardown and BoxDiscard. A TurnOffer carries the turn, the session, the box id, the harness, the prompt, the turn's credential grant, the session's last line number and a download URL for the session's latest snapshot. The host sends TurnClaim, TurnRepositoryReady, TurnLine, TurnComplete and TurnFailed. It also sends TurnRepositoryCloneFailed, SnapshotDone, SnapshotFailed, BoxGone and BoxTeardownFailed. BoxDiscard tells a host to drop a session's box after the session moved, even when the box holds unsaved changes. The host answers BoxGone. BoxTeardown and BoxDiscard act only on the box they name.
+The control plane sends TurnOffer, TurnWithdrawn, SnapshotRequest, BoxTeardown and BoxDiscard. A TurnOffer carries the turn, the session, the box id, the harness, the prompt, the turn's credential grant, the session's last line number and a download URL for the session's latest snapshot. It also carries the guest image: its image, kernel and manifest digests, a presigned URL for each and `fetchSeconds`, the fetch budget. The host sends TurnImageFetching, TurnClaim, TurnRepositoryReady, TurnLine, TurnComplete and TurnFailed. It also sends TurnRepositoryCloneFailed, SnapshotDone, SnapshotFailed, BoxGone and BoxTeardownFailed. BoxDiscard tells a host to drop a session's box after the session moved, even when the box holds unsaved changes. The host answers BoxGone. BoxTeardown and BoxDiscard act only on the box they name.
 
 Three exchanges move snapshot chunks (EDD-004). The host sends SnapshotChunks, SnapshotPacks and RestoreChunks. The control plane answers SnapshotChunksHeld, SnapshotPackUploads and RestoreDownloads. Each exchange runs in lockstep parts of up to 500 chunks: the host sends the next part only after the answer to the last one arrives. So the control plane's ledger never holds more than one unanswered reply. The host channel sends the tenant's reply from inside the same blocking section that forwarded the message, because a call back into the blocked object deadlocks.
 
@@ -38,14 +38,15 @@ Each budget runs as one timer of its session and ends with the turn.
 | Budget              | Value   | Failure                   |
 | ------------------- | ------- | ------------------------- |
 | Claim               | 60 s    | NotClaimed                |
+| Image fetch         | 900 s   | ImageFetchTimedOut        |
 | First line          | 120 s   | NoFirstOutput             |
 | Whole turn          | 3,600 s | TurnTimedOut              |
 | Host reconnect      | 30 s    | HostOffline               |
 | Credential handover | 300 s   | DispatchCredentialExpired |
 
-The first line counts from TurnRepositoryReady, which the host sends once the box holds the repository. Before it, the clone runs within the image's cloneSeconds, which the host sends on TurnClaim. Until then, the first line is due by the claim time plus cloneSeconds plus turnFirstLineBudgetSeconds. The host reports a failed clone as TurnRepositoryCloneFailed (EDD-001). A lost TurnRepositoryReady still ends the turn NoFirstOutput.
+The first line counts from TurnRepositoryReady, which the host sends once the box holds the repository. Before it, the clone runs within the image's cloneSeconds, which the host sends on TurnClaim. Until then, the first line is due by the claim time plus cloneSeconds plus turnFirstLineBudgetSeconds. The host reports a failed clone as TurnRepositoryCloneFailed (EDD-001). A lost TurnRepositoryReady still ends the turn NoFirstOutput. TurnImageFetching, from a host whose cache lacks the offer's image, gives the host the image fetch budget before the claim budget starts again (EDD-001).
 
-A turn also fails BoxBootFailed, PoolExhausted, HarnessExited, HarnessReportedError, CredentialRefused, SnapshotUnreadable or TranscriptGap. When the harness ends with an error result, the turn fails. A refused credential fails it CredentialRefused. Any other error fails it HarnessReportedError with the harness's text, capped at 2 KiB. The turn keeps the first error result. One without text gives its subtype, or states that it carries neither text nor subtype. Every failure carries a detail that states what failed and what fixes it, with the tail of the harness's standard error when the harness wrote any. The budgets sit in one schema-checked settings object of the control plane.
+A turn also fails BoxBootFailed, ImageNotReleased, ImageNotCached or PoolExhausted. It can fail HarnessExited, HarnessReportedError, CredentialRefused, SnapshotUnreadable or TranscriptGap. When the harness ends with an error result, the turn fails. A refused credential fails it CredentialRefused. Any other error fails it HarnessReportedError with the harness's text, capped at 2 KiB. The turn keeps the first error result. One without text gives its subtype, or states that it carries neither text nor subtype. Every failure carries a detail that states what failed and what fixes it, with the tail of the harness's standard error when the harness wrote any. The budgets sit in one schema-checked settings object of the control plane.
 
 ## Backends
 

@@ -24,11 +24,11 @@ $V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V start tumpel-host 
 
 It was made with the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `/mnt/nvme/vms/tumpel-host-2.qcow2` from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `~/vm-staging/tumpel-host-2-seed/tumpel-host-2.xml` and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
 
-It is set up like the first host, with `tumpel-supervisor install` and the guest images in `~/development/.tmp/tumpel-images`.
+It runs the same `tumpel-supervisor install` as the first host and fetches its guest images from the release.
 
 ## Release builds
 
-GitHub Actions runs `.github/workflows/release.yml` on the runner that the repository variable `BUILD_RUNNER` names, now the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools.
+GitHub Actions runs `.github/workflows/release.yml` on the runner that the repository variable `BUILD_RUNNER` names, now the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
 
 The self-hosted runner is a second runner instance on the VM `github-actions-runner` on `box`. It lives in `/home/runner/actions-runner-tumpel` as a service, registered to `mvhenten/tumpel` as `github-actions-runner-tumpel`. Leave the other project's runners there alone. The VM does not autostart. When it spins a vCPU, run `virsh destroy`, then `virsh start`. Never reboot it.
 
@@ -41,8 +41,7 @@ On 2026-11-15 `box` has 16 threads and 58.7 GiB. `sandbox` takes 8 vCPU and 16 G
 `tumpel-supervisor install --endpoint <url> --token-file <path|->` turns the host into an enrolled, running Tumpel host in one run. Run it as `mvhenten`, never as root. It asks for admin rights only for its one-time setup, and a second run changes nothing that is already in place. The running supervisor never escalates.
 
 ```sh
-cargo build --release -p tumpel-supervisor
-scp target/release/tumpel-supervisor tumpel-host:
+ssh tumpel-host 'curl -fL -o tumpel-supervisor <url>/v1/releases/supervisor/Amd64 && chmod +x tumpel-supervisor'
 tumpel host mint-token --expires-in 600 | ssh tumpel-host ./tumpel-supervisor install --endpoint <url> --token-file -
 ```
 
@@ -50,7 +49,7 @@ The installer:
 
 1. checks that `mvhenten` can open `/dev/kvm`; when not, it adds the user to group `kvm`, restarts the user manager so the supervisor runs with that group, and checks the access once with `sg kvm`;
 2. writes `~/.local/state/tumpel-supervisor/runtime.json` (`SupervisorRuntime`) with defaults when it is missing, and brings an older one to the current schema: it adds missing fields with their defaults and drops fields the schema no longer has;
-3. downloads Firecracker v1.18.0 to `firecrackerPath` and the guest kernel to `imageCacheDir`, each checked against the digest pinned in `crates/tumpel-supervisor/src/install.rs`;
+3. downloads Firecracker v1.18.0 to `firecrackerPath`, checked against the digest pinned in `crates/tumpel-supervisor/src/install.rs`;
 4. writes the guest filter `/etc/tumpel-guest-filter.nft` and the unit `tumpel-guest-filter.service` that loads it at boot;
 5. makes the TAP pool through systemd-networkd: `boxCapacity` devices, 8 by default. Device `tumpel<k>` is owned by `mvhenten` and has gateway 172.16.<k>.1/30 with IPv4 masquerade out of `enp1s0`, for guest 172.16.<k>.2;
 6. turns on lingering for `mvhenten`, copies itself to `~/.local/bin/tumpel-supervisor` and enables the user unit `tumpel-supervisor.service`, which runs `tumpel-supervisor run`;
