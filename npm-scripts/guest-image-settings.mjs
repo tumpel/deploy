@@ -28,14 +28,12 @@ export const HARNESS_RUNS = {
     binary: "pi",
     flags: ["--mode", "rpc"],
     fixedVariables: [{ name: "PI_SKIP_VERSION_CHECK", value: "1" }],
-    stripComponents: 1,
   },
   OpenCode: {
     protocol: "PromptOnStdin",
     binary: "opencode",
     flags: ["run", "--format", "json", "--auto"],
     fixedVariables: [{ name: "OPENCODE_DISABLE_AUTOUPDATE", value: "1" }],
-    stripComponents: 0,
   },
 };
 export const TURN_PROTOCOLS = new Set(Object.keys(HARNESS_RUNS));

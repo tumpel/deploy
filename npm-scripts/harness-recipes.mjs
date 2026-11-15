@@ -26,9 +26,6 @@ export const layerHarnesses = () => [
   ...HARNESS_CATALOG.filter((entry) => TURN_PROTOCOLS.has(entry.harness)).map((entry) => entry.harness),
 ];
 
-const NPM_RECIPE = /^npm:((?:@[^/]+\/)?[^@]+)@(\S+)$/;
-const ARCHIVE_RECIPE = /^archive:(amd64|arm64):(\S+)#sha256=([0-9a-f]{64})$/;
-
 const rootOf = (harness, harnessVersion) => `${LAYER_ROOT}/${harness}/${harnessVersion}`;
 
 const shellRecipe = () => ({
@@ -66,32 +63,26 @@ const catalogRecipe = (name, arch) => {
 };
 
 const installOf = (entry, run, arch) => {
-  const npm = entry.installRecipe.match(NPM_RECIPE);
-  if (npm) {
-    const [, packageName, version] = npm;
+  const recipe = entry.installRecipe;
+  if (recipe.kind === "Npm") {
     return {
       kind: "NpmNative",
-      installRecipe: entry.installRecipe,
-      package: `${packageName}-linux-${NODE_ARCH[arch]}`,
-      version,
+      package: `${recipe.package}-linux-${NODE_ARCH[arch]}`,
+      version: recipe.packageVersion,
       cpu: NODE_ARCH[arch],
       binary: run.binary,
     };
   }
-  const archives = entry.installRecipe.split(" ").map((part) => part.match(ARCHIVE_RECIPE));
-  const archive = archives.find((match) => match?.[1] === arch);
-  if (archives.includes(null) || !archive)
+  const archive = recipe.archives.find((each) => each.architecture === LAYER_ARCHITECTURES[arch]);
+  if (!archive)
     throw new Error(
-      `install recipe ${entry.installRecipe} of ${entry.harness} is neither npm:<package>@<version> nor an archive:<arch>:<url>#sha256=<digest> for ${arch}; fix it in harness-catalog.ts`,
+      `the install recipe of ${entry.harness} ${entry.harnessVersion} names no archive for ${LAYER_ARCHITECTURES[arch]}; add one in harness-catalog.ts`,
     );
-  if (run.stripComponents === undefined)
-    throw new Error(`HARNESS_RUNS names no stripComponents for ${entry.harness}; add it in guest-image-settings.mjs`);
-  const [, , url, digest] = archive;
   return {
     kind: "Archive",
-    url,
-    digest,
-    stripComponents: run.stripComponents,
+    url: archive.url,
+    digest: archive.sha256,
+    stripComponents: recipe.stripComponents,
     version: entry.harnessVersion,
     binary: run.binary,
   };
