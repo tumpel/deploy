@@ -28,8 +28,6 @@ const required = (name) => {
 
 const stage = process.env.TUMPEL_STAGE || "dev";
 const bucket = `tumpel-releases-${stage}`;
-const stageOrigin = `https://api.${stage === "prod" ? "" : `${stage}.`}tumpel.dev`;
-const baseUrl = process.env.RELEASES_BASE_URL || `${stageOrigin}/v1/releases`;
 
 const storage = () => ({
   origin: `https://${required("CLOUDFLARE_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
@@ -96,11 +94,11 @@ const uploadFile = async (store, key, path) => {
   const size = statSync(path).size;
   if (await exists(store, key)) {
     console.log(`kept ${key}`);
-    return { url: `${baseUrl}/${key}`, digest, size };
+    return { digest, size };
   }
   await put(store, key, digest, { "content-type": "application/octet-stream" }, createReadStream(path), size);
   console.log(`uploaded ${key} (${size} bytes)`);
-  return { url: `${baseUrl}/${key}`, digest, size };
+  return { digest, size };
 };
 
 const upload = async (arch, supervisorPath, imageDir, fragmentPath) => {
@@ -137,15 +135,13 @@ const upload = async (arch, supervisorPath, imageDir, fragmentPath) => {
       harness,
       harnessVersion,
       architecture,
-      imageUrl: image.url,
       imageDigest: image.digest,
-      kernelUrl: kernel.url,
       kernelDigest: kernel.digest,
       manifestDigest,
     });
   }
   const fragment = FragmentSchema.parse({
-    supervisor: { architecture, url: supervisor.url, sha256: supervisor.digest, sizeBytes: supervisor.size },
+    supervisor: { architecture, sha256: supervisor.digest, sizeBytes: supervisor.size },
     images,
   });
   mkdirSync(dirname(fragmentPath), { recursive: true });

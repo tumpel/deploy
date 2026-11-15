@@ -9,6 +9,7 @@ on:
       - "Cargo.lock"
       - "npm-scripts/guest-image.mjs"
       - "npm-scripts/release-publish.mjs"
+      - "packages/api/release.tsp"
       - "packages/control-plane/src/harness-catalog.ts"
       - ".github/workflows/release.yml"
   workflow_dispatch:
@@ -40,11 +41,11 @@ jobs:
         include:
           - arch: amd64
             target: x86_64-unknown-linux-gnu
-            packages: squashfs-tools e2fsprogs dpkg
+            packages: squashfs-tools e2fsprogs dpkg build-essential pkg-config unzip
             experimental: false
           - arch: arm64
             target: aarch64-unknown-linux-gnu
-            packages: squashfs-tools e2fsprogs dpkg gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+            packages: squashfs-tools e2fsprogs dpkg build-essential pkg-config unzip gcc-aarch64-linux-gnu libc6-dev-arm64-cross
             experimental: false
     env:
       TUMPEL_TARGET: ${{ matrix.target }}
