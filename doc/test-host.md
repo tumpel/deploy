@@ -28,24 +28,25 @@ It is set up like the first host, with `tumpel-supervisor install` and the guest
 
 ## Host setup
 
-`tumpel-supervisor install` turns the host into a Tumpel host in one run. Run it as `mvhenten`, never as root. It asks for admin rights only for its one-time setup, and a second run changes nothing that is already in place. The running supervisor never escalates.
+`tumpel-supervisor install --endpoint <url> --token-file <path|->` turns the host into an enrolled, running Tumpel host in one run. Run it as `mvhenten`, never as root. It asks for admin rights only for its one-time setup, and a second run changes nothing that is already in place. The running supervisor never escalates.
 
 ```sh
 cargo build --release -p tumpel-supervisor
 scp target/release/tumpel-supervisor tumpel-host:
-ssh tumpel-host ./tumpel-supervisor install
+tumpel host mint-token --expires-in 600 | ssh tumpel-host ./tumpel-supervisor install --endpoint <url> --token-file -
 ```
 
 The installer:
 
-1. checks that `mvhenten` can open `/dev/kvm`, and adds the user to group `kvm` when not;
+1. checks that `mvhenten` can open `/dev/kvm`; when not, it adds the user to group `kvm`, restarts the user manager and reruns itself under that group with `sg kvm`;
 2. writes `~/.local/state/tumpel-supervisor/runtime.json` (`SupervisorRuntime`) with defaults when it is missing, and brings an older one to the current schema: it adds missing fields with their defaults and drops fields the schema no longer has;
 3. downloads Firecracker v1.18.0 to `firecrackerPath` and the guest kernel to `imageCacheDir`, each checked against the digest pinned in `crates/tumpel-supervisor/src/install.rs`;
 4. writes the guest filter `/etc/tumpel-guest-filter.nft` and the unit `tumpel-guest-filter.service` that loads it at boot;
 5. makes the TAP pool through systemd-networkd: `boxCapacity` devices, 8 by default. Device `tumpel<k>` is owned by `mvhenten` and has gateway 172.16.<k>.1/30 with IPv4 masquerade out of `enp1s0`, for guest 172.16.<k>.2;
-6. turns on lingering for `mvhenten`, copies itself to `~/.local/bin/tumpel-supervisor` and enables the user unit `tumpel-supervisor.service`, which runs `tumpel-supervisor run`.
+6. turns on lingering for `mvhenten`, copies itself to `~/.local/bin/tumpel-supervisor` and enables the user unit `tumpel-supervisor.service`, which runs `tumpel-supervisor run`;
+7. enrols the host with the token from the file or stdin and starts the unit.
 
-To change the pool size, edit `boxCapacity` in `runtime.json` and run `tumpel-supervisor install` again. After `tumpel-supervisor enrol`, start the supervisor with `systemctl --user start tumpel-supervisor`. The host key is bound to the host id, not to the control plane hostname, so to move an enrolled host to a new endpoint, set `endpoint` in `~/.local/state/tumpel-supervisor/supervisor.json` and run `systemctl --user restart tumpel-supervisor`.
+To change the pool size, edit `boxCapacity` in `runtime.json` and run `tumpel-supervisor install` again; without `--endpoint` and `--token-file` it only sets up the host and restarts an enrolled supervisor. To enrol again, delete `~/.local/state/tumpel-supervisor` and run `tumpel-supervisor enrol --endpoint <url> --token-file <path|->`. The host key is bound to the host id, not to the control plane hostname, so to move an enrolled host to a new endpoint, set `endpoint` in `~/.local/state/tumpel-supervisor/supervisor.json` and run `systemctl --user restart tumpel-supervisor`.
 
 Check: `ip -br addr show` lists `tumpel0` to `tumpel7`, each `/sys/class/net/tumpel<k>/owner` is 1000, `systemctl is-active tumpel-guest-filter` is `active`, and `sysctl net.ipv4.ip_forward` is 1. All four hold after a reboot.
 

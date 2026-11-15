@@ -148,19 +148,18 @@ const hostRuntime = () => JSON.parse(ssh(`cat ${STATE_DIR}/runtime.json`));
 const hostOnline = (hostId) =>
   tumpelJson(["host", "list"]).find((host) => host.hostId === hostId && host.state === "Online");
 
-const restartSupervisor = async (hostId) => {
-  ssh("systemctl --user restart tumpel-supervisor");
-  await waitFor(`host ${hostId} reading Online after a restart`, 60_000, () => hostOnline(hostId));
-};
-
-const enrol = (name, envPrefix) => {
+const mintToken = () => {
   const minted = spawnSync(CLI, ["host", "mint-token", "--expires-in", "600"], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (minted.status !== 0) fail(`tumpel host mint-token: ${minted.stderr.trim().split("\n").at(-1)}`);
+  return minted.stdout.trim();
+};
+
+const enrol = (name, envPrefix) => {
   const tokenFile = `.tumpel-proof-enrol-${randomBytes(4).toString("hex")}`;
-  ssh(`umask 077; cat > ${tokenFile}`, `${minted.stdout.trim()}\n`);
+  ssh(`umask 077; cat > ${tokenFile}`, `${mintToken()}\n`);
   const out = ssh(
     `${envPrefix} ./tumpel-supervisor enrol --endpoint ${ENDPOINT} --token-file ${tokenFile} --name ${name}; s=$?; rm -f ${tokenFile}; exit $s`,
   );
@@ -216,7 +215,6 @@ const steps = [
     run: async () => {
       const copied = spawnSync("scp", ["-q", SUPERVISOR, `${HOST}:tumpel-supervisor`], { encoding: "utf8" });
       if (copied.status !== 0) fail(`scp the supervisor to ${HOST}: ${copied.stderr.trim()}`);
-      ssh("./tumpel-supervisor install");
       const enrolled = ssh(`cat ${STATE_DIR}/supervisor.json 2>/dev/null || true`).trim();
       const current = enrolled ? JSON.parse(enrolled) : null;
       if (current && (current.endpoint !== ENDPOINT || current.tenantId !== state.tenantId)) {
@@ -224,10 +222,12 @@ const steps = [
           `${HOST} is enrolled with ${current.endpoint} for tenant ${current.tenantId}; use a host of stage ${STAGE} (TUMPEL_PROOF_HOST)`,
         );
       }
+      if (current) ssh("./tumpel-supervisor install");
+      else ssh(`./tumpel-supervisor install --endpoint ${ENDPOINT} --token-file -`, `${mintToken()}\n`);
       const t0 = Date.now();
-      state.hostId = current?.hostId ?? enrol(ssh("hostname").trim(), "");
-      await restartSupervisor(state.hostId);
-      return `host ${state.hostId} ${current ? "already enrolled" : "enrolled"}, Online ${Date.now() - t0} ms after start`;
+      state.hostId = current?.hostId ?? JSON.parse(ssh(`cat ${STATE_DIR}/supervisor.json`)).hostId;
+      await waitFor(`host ${state.hostId} reading Online after install`, 60_000, () => hostOnline(state.hostId));
+      return `host ${state.hostId} ${current ? "already enrolled" : "enrolled"}, Online ${Date.now() - t0} ms after install`;
     },
   },
   {
