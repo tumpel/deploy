@@ -38,7 +38,8 @@
     "guest:build": "RUSTFLAGS=\"-C target-feature=+crt-static\" cargo build --release -p tumpel-guest --target ${TUMPEL_TARGET:-x86_64-unknown-linux-gnu}",
     "guest:image": "node npm-scripts/guest-image.mjs",
     "release:publish": "node npm-scripts/release-publish.mjs",
-    "release:secrets": "node npm-scripts/release-secrets.mjs"
+    "release:secrets": "node npm-scripts/release-secrets.mjs",
+    "workflows:publish": "node npm-scripts/workflows-publish.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.0",
