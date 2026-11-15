@@ -121,6 +121,8 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 - **OR-3 Audit.** Every credential handover records the turn, host, box and secret names. (BR-3)
 - **OR-4 Agents prove each stage.** Agents run the proof on a real host against every stage after its deploy. (BR-2)
 - **OR-5 CLI on crates.io.** A `v*` tag publishes the CLI to crates.io. (BR-2)
+- **OR-6 Self-update.** A host dry-runs a new release's supervisor before it adopts it, and swaps only while no box runs. Each phase has a time limit and a named failure on the host page. (BR-1)
+- **OR-7 Rollback.** A new supervisor that misses Online in time gives way to the previous binary. (BR-1)
 
 ## Decisions
 
@@ -381,3 +383,4 @@ model Snapshot {
 | [EDD-005](../EDD/005-mcp-and-cli.md)               | MCP and CLI: hosted MCP, sign-in, parity, config as code                          |
 | [EDD-006](../EDD/006-end-to-end-proof.md)          | Proof: what agents run, where, and what passes                                    |
 | [EDD-007](../EDD/007-guest-layers.md)              | Guest layers: base image, harness layers, guest drive, boot stack                 |
+| [EDD-008](../EDD/008-supervisor-self-update.md)    | Supervisor self-update: dry run, swap between boxes, rollback                     |
