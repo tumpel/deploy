@@ -8,4 +8,6 @@ So the redirect is `http://127.0.0.1:47151/circleci/callback`. `tumpel circleci 
 
 Each tenant registers its own client on its first authorization. CircleCI revokes the earlier token of a client and user pair when the pair authorizes again, so a client per stage would let one tenant's connection revoke another's for the same CircleCI user.
 
-The token lasts 90 days with no refresh token. The connection reads Expiring from 14 days before the expiry, two weekly cycles to act, since authorizing again early costs nothing, and Reconnect from the expiry.
+The token lasts 90 days with no refresh token. The connection reads Expiring from 14 days before the expiry, two weekly cycles to act, since authorizing again early costs nothing, and Expired from the expiry. CircleCI revokes the earlier token at the exchange, so a renewal binds the new token to the connected organization straight away.
+
+The organization comes from `GET /api/v2/me/collaborations`. The CircleCI API v2 OpenAPI document (openapi 3.0.3, info.version v2, read 2026-11-15) has no operation that lists an organization's projects, only `GET /project/{project-slug}`, so the dashboard lists the tenant's bindings instead.
