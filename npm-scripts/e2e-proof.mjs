@@ -4,6 +4,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CompactTranscriptPageSchema, WhoamiWithEndpointSchema } from "@tumpel/api/schemas";
 import { CLONE_SECONDS } from "./guest-image-settings.mjs";
 import { INLINE_CAP, loadCredential, proofTenantApply, proofTenantPlan } from "./proof-tenant.mjs";
 
@@ -246,12 +247,14 @@ const pollConnectorTurn = async (client, sessionId, turnId, t0) => {
   let firstLineMs = null;
   let polls = 0;
   while (true) {
-    const page = await client.call("tumpel_transcript_read", {
-      sessionId,
-      turnId,
-      compact: true,
-      ...(cursor === null ? {} : { after: cursor }),
-    });
+    const page = CompactTranscriptPageSchema.parse(
+      await client.call("tumpel_transcript_read", {
+        sessionId,
+        turnId,
+        compact: true,
+        ...(cursor === null ? {} : { after: cursor }),
+      }),
+    );
     polls += 1;
     cursor = page.cursor;
     const texts = page.turns.flatMap((turn) => turn.lines.map((line) => line.text));
@@ -327,7 +330,7 @@ const steps = [
       });
       if (login.status !== 0) fail(`tumpel login: ${login.stderr.trim().split("\n").at(-1)}`);
       const t0 = Date.now();
-      const who = tumpelJson(["whoami"]);
+      const who = WhoamiWithEndpointSchema.parse(tumpelJson(["whoami"]));
       if (who.tenant.name !== TENANT) fail(`whoami names tenant ${who.tenant.name}, not ${TENANT}`);
       state.tenantId = who.tenant.tenantId;
       return `tenant ${who.tenant.name}, whoami ${Date.now() - t0} ms`;
