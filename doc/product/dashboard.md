@@ -36,11 +36,9 @@ An import reads a `TenantConfig` file such as `doc/personas/tumpel-dev.json` and
 
 ## Sign-in and tenancy
 
-The dashboard signs in through the control plane's OAuth with PKCE, behind the Cloudflare Access consent page (#2). The token belongs to one principal, and a principal belongs to one tenant. `Identity_whoami` names both.
+The dashboard signs in through the control plane's OAuth with PKCE, behind the Cloudflare Access consent page (#2). The token belongs to one principal and acts in one of its tenants. `Identity_whoami` names both.
 
 The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId>`. Filters sit in the query string, so a reload or a shared link opens the same view. The header's tenant switcher lists the tenants of the signed-in email and keeps one token per tenant. Picking a tenant without a token runs the consent for that tenant and returns to the same path under the new tenant id.
-
-Today an email holds a principal in one tenant only, so the switcher needs G1.
 
 ## Screens
 
@@ -121,7 +119,7 @@ Every refusal is a `Problem`. The dashboard shows its `title`, `detail` and `fix
 
 Each signed-in addition also gets an MCP tool and a CLI command.
 
-1. G1 `Identity_listTenants`, and a tenant choice on the consent page. Principals become unique per tenant and email, a central store change.
+1. G1 `Identity_listTenants`, and a tenant choice on the consent page. An email holds one principal, which belongs to tenants through memberships.
 2. G2 `Members_list`, with roles.
 3. G3 `Invitations_create`, `_list` and `_revoke`, and a browser-only `_accept` like `Tenants_signUp`.
 4. G4 `Members_remove`, which signs out the member's devices.
@@ -147,7 +145,7 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 
 1. Does the dashboard register through `OAuth_register` like an MCP client, or ship as a fixed client (#2)?
 2. Where does the model list come from? The catalog names a provider and no models (#5).
-3. Which actions does a Member role lose against an Owner?
+3. Which actions does a Member role lose against an Owner? Starting and deleting connections, and managing members and invitations.
 4. How does Tumpel learn that Namespace Support registered the issuer for a workspace?
 5. Does `https://dev.tumpel.dev`, which does not resolve, redirect to the dashboard at `https://app.dev.tumpel.dev`?
 
