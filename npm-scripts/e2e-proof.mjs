@@ -166,6 +166,96 @@ const enrol = (name, envPrefix) => {
   return JSON.parse(out.slice(0, out.lastIndexOf("}") + 1)).hostId;
 };
 
+const MCP_URL = `${ENDPOINT}/mcp`;
+const rpc = (accessToken, id, method, params = {}, protocolVersion = null) =>
+  fetch(MCP_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      ...(accessToken === "" ? {} : { authorization: `Bearer ${accessToken}` }),
+      ...(protocolVersion === null ? {} : { "mcp-protocol-version": protocolVersion }),
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
+  });
+
+const connectorClient = (accessToken) => {
+  let nextId = 1;
+  let protocolVersion = null;
+  const result = async (method, params) => {
+    const answered = await rpc(accessToken, nextId++, method, params, protocolVersion);
+    if (answered.status !== 200) fail(`${method} over /mcp answered ${answered.status}`);
+    const body = await answered.json();
+    if (body.error) fail(`${method} over /mcp failed: ${body.error.message}`);
+    return body.result;
+  };
+  return {
+    initialize: async () => {
+      const initialized = await result("initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "tumpel-proof", version: "0" },
+      });
+      protocolVersion = initialized.protocolVersion;
+      return initialized;
+    },
+    list: async () => (await result("tools/list", {})).tools.map((tool) => tool.name),
+    call: async (name, args) => {
+      const called = await result("tools/call", { name, arguments: args });
+      if (called.isError) fail(`${name} over /mcp failed: ${called.content?.[0]?.text}`);
+      const text = called.content?.[0]?.text ?? "";
+      return text.startsWith("{") || text.startsWith("[") ? JSON.parse(text) : text;
+    },
+  };
+};
+
+const TOOL_CALL_LINE = /^\[[^\]\s]+\]/;
+
+const pollConnectorTurn = async (client, sessionId, turnId, t0) => {
+  const firstLineLimit = (settings.turnClaimBudgetSeconds + settings.turnFirstLineBudgetSeconds) * 1000;
+  const turnLimit = settings.turnTotalBudgetSeconds * 1000;
+  const lines = [];
+  let cursor = null;
+  let firstLineMs = null;
+  let polls = 0;
+  while (true) {
+    const page = await client.call("tumpel_transcript_read", {
+      sessionId,
+      turnId,
+      compact: true,
+      ...(cursor === null ? {} : { after: cursor }),
+    });
+    polls += 1;
+    cursor = page.cursor;
+    if (page.lines.length > 0) {
+      firstLineMs ??= Date.now() - t0;
+      lines.push(...page.lines.map((line) => line.text));
+    }
+    if (page.finished) break;
+    const elapsed = Date.now() - t0;
+    if (firstLineMs === null && elapsed > firstLineLimit) {
+      fail(`turn ${turnId} wrote no compact line within ${firstLineLimit / 1000} s over /mcp`);
+    }
+    if (elapsed > turnLimit) fail(`turn ${turnId} did not finish within ${turnLimit / 1000} s over /mcp`);
+    await pause(2000);
+  }
+  const turn = await client.call("tumpel_turn_get", { turnId });
+  if (turn.state !== "Completed") {
+    const failure = turn.state === "Failed" ? await client.call("tumpel_turn_failure", { turnId }) : null;
+    fail(
+      `turn ${turnId} reads ${turn.state} over /mcp${failure ? ` (${failure.reason}: ${failure.detail.slice(0, 300)})` : ""}`,
+    );
+  }
+  return {
+    turn,
+    lines,
+    texts: lines.filter((text) => !TOOL_CALL_LINE.test(text)),
+    firstLineMs,
+    turnMs: Date.now() - t0,
+    polls,
+  };
+};
+
 const state = {};
 const credential = loadCredential(die);
 
@@ -458,47 +548,11 @@ const steps = [
   },
   {
     id: 12,
-    name: "Revoke",
-    needs: [2],
-    run: async () => {
-      const prefix = `TUMPEL_SUPERVISOR_DIR=$HOME/${REVOKE_DIR}`;
-      ssh(
-        `rm -rf ${REVOKE_DIR} && mkdir -p ${REVOKE_DIR} && chmod 700 ${REVOKE_DIR} && cp ${STATE_DIR}/runtime.json ${REVOKE_DIR}/`,
-      );
-      const hostId = enrol(`${ssh("hostname").trim()}-revoke`, prefix);
-      const supervisor = collect("ssh", [HOST, `${prefix} timeout 120 ./tumpel-supervisor run`]);
-      try {
-        await waitFor(`revoke host ${hostId} reading Online`, 60_000, () => hostOnline(hostId));
-        const t0 = Date.now();
-        tumpel(["host", "revoke", hostId]);
-        const ended = await supervisor;
-        const exitMs = Date.now() - t0;
-        if (ended.code !== 0 || !ended.err.includes("was revoked")) {
-          fail(`the supervisor exited ${ended.code}: ${ended.err.trim().split("\n").at(-1)}`);
-        }
-        return `supervisor stopped naming the revocation ${exitMs} ms after revoke`;
-      } finally {
-        ssh(`rm -rf ${REVOKE_DIR}`);
-      }
-    },
-  },
-  {
-    id: 13,
     name: "Connector",
     needs: [2],
     run: async () => {
       const t0 = Date.now();
-      const mcpUrl = `${ENDPOINT}/mcp`;
-      const rpc = (accessToken, id, method, params = {}) =>
-        fetch(mcpUrl, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            accept: "application/json, text/event-stream",
-            ...(accessToken === "" ? {} : { authorization: `Bearer ${accessToken}` }),
-          },
-          body: JSON.stringify({ jsonrpc: "2.0", id, method, params }),
-        });
+      const mcpUrl = MCP_URL;
       const getJson = async (url, what) => {
         const response = await fetch(url);
         if (response.status !== 200) fail(`${what} at ${url} answered ${response.status}`);
@@ -527,12 +581,12 @@ const steps = [
       const clientId = (await registered.json()).client_id;
 
       const verifier = randomBytes(32).toString("base64url");
-      const state = randomBytes(8).toString("hex");
+      const oauthState = randomBytes(8).toString("hex");
       const ask = new URLSearchParams({
         response_type: "code",
         client_id: clientId,
         redirect_uri: callback,
-        state,
+        state: oauthState,
         code_challenge: createHash("sha256").update(verifier).digest("base64url"),
         code_challenge_method: "S256",
         resource: mcpUrl,
@@ -571,7 +625,7 @@ const steps = [
       if (consented.status !== 303 || `${back.origin}${back.pathname}` !== callback) {
         fail(`consent answered ${consented.status} towards ${back.origin}${back.pathname}, not 303 to ${callback}`);
       }
-      if (back.searchParams.get("state") !== state) fail("the callback does not carry the state back");
+      if (back.searchParams.get("state") !== oauthState) fail("the callback does not carry the state back");
       if (back.searchParams.get("iss") !== server.issuer) fail("the callback names another issuer");
       const code = back.searchParams.get("code") ?? fail(`the callback carries ${back.searchParams.get("error")}`);
 
@@ -591,27 +645,90 @@ const steps = [
       const grant = await issued.json();
       if (grant.token_type !== "Bearer" || !grant.refresh_token) fail("the token answer lacks a bearer and refresh");
 
-      const result = async (id, method, params) => {
-        const answered = await rpc(grant.access_token, id, method, params);
-        if (answered.status !== 200) fail(`${method} over /mcp answered ${answered.status}`);
-        const body = await answered.json();
-        if (body.error) fail(`${method} over /mcp failed: ${body.error.message}`);
-        return body.result;
-      };
-      const initialized = await result(2, "initialize", {
-        protocolVersion: "2025-06-18",
-        capabilities: {},
-        clientInfo: { name: "tumpel-proof", version: "0" },
-      });
-      const tools = (await result(3, "tools/list", {})).tools.map((tool) => tool.name);
-      if (!tools.includes("tumpel_host_list_usage")) fail("tools/list does not list tumpel_host_list_usage");
-      const usage = await result(4, "tools/call", { name: "tumpel_host_list_usage", arguments: {} });
-      if (usage.isError) fail(`tumpel_host_list_usage failed: ${usage.content?.[0]?.text}`);
-      const hosts = JSON.parse(usage.content[0].text);
+      const client = connectorClient(grant.access_token);
+      const initialized = await client.initialize();
+      const tools = await client.list();
+      const missing = [
+        "tumpel_host_list_usage",
+        "tumpel_session_start",
+        "tumpel_transcript_read",
+        "tumpel_turn_send",
+        "tumpel_turn_get",
+        "tumpel_session_stop",
+        "tumpel_session_get",
+      ].filter((name) => !tools.includes(name));
+      if (missing.length > 0) fail(`tools/list does not list ${missing.join(", ")}`);
+      const hosts = await client.call("tumpel_host_list_usage", {});
       if (!hosts.some((row) => row.hostId === state.hostId)) {
         fail(`tumpel_host_list_usage over /mcp does not list the enrolled host ${state.hostId}`);
       }
+      state.connector = client;
       return `discovered, registered, consented and redeemed; protocol ${initialized.protocolVersion}, ${tools.length} tools, usage of ${hosts.length} hosts including ${state.hostId} in ${Date.now() - t0} ms`;
+    },
+  },
+  {
+    id: 13,
+    name: "Connector session",
+    needs: [3, 12],
+    run: async () => {
+      const client = state.connector;
+      const t0 = Date.now();
+      const started = await client.call("tumpel_session_start", {
+        personaId: state.personaId,
+        repository: REPOSITORY,
+        model: MODEL,
+        prompt: "Without using any tools, reply with only the word ready.",
+      });
+      const idsMs = Date.now() - t0;
+      const sessionId = started.session.sessionId;
+      const first = await pollConnectorTurn(client, sessionId, started.turn.turnId, t0);
+      if (first.texts.length === 0)
+        fail(`the first connector turn wrote no assistant text: ${first.lines.join(" | ")}`);
+      const t1 = Date.now();
+      const sent = await client.call("tumpel_turn_send", {
+        sessionId,
+        prompt: "Without using any tools, reply with only the word again.",
+      });
+      const sendMs = Date.now() - t1;
+      const second = await pollConnectorTurn(client, sessionId, sent.turnId, t1);
+      if (second.texts.length === 0) {
+        fail(`the second connector turn wrote no assistant text: ${second.lines.join(" | ")}`);
+      }
+      const t2 = Date.now();
+      await client.call("tumpel_session_stop", { sessionId });
+      const limit = (settings.snapshotDelaySeconds + 120) * 1000;
+      while ((await client.call("tumpel_session_get", { sessionId })).state !== "Stopped") {
+        if (Date.now() - t2 > limit)
+          fail(`session ${sessionId} did not read Stopped within ${limit / 1000} s over /mcp`);
+        await pause(2000);
+      }
+      return `start ids ${idsMs} ms, first line ${first.firstLineMs} ms, finished ${first.turnMs} ms in ${first.polls} polls; send ${sendMs} ms, first line ${second.firstLineMs} ms, finished ${second.turnMs} ms in ${second.polls} polls; stopped in ${Date.now() - t2} ms`;
+    },
+  },
+  {
+    id: 14,
+    name: "Revoke",
+    needs: [2],
+    run: async () => {
+      const prefix = `TUMPEL_SUPERVISOR_DIR=$HOME/${REVOKE_DIR}`;
+      ssh(
+        `rm -rf ${REVOKE_DIR} && mkdir -p ${REVOKE_DIR} && chmod 700 ${REVOKE_DIR} && cp ${STATE_DIR}/runtime.json ${REVOKE_DIR}/`,
+      );
+      const hostId = enrol(`${ssh("hostname").trim()}-revoke`, prefix);
+      const supervisor = collect("ssh", [HOST, `${prefix} timeout 120 ./tumpel-supervisor run`]);
+      try {
+        await waitFor(`revoke host ${hostId} reading Online`, 60_000, () => hostOnline(hostId));
+        const t0 = Date.now();
+        tumpel(["host", "revoke", hostId]);
+        const ended = await supervisor;
+        const exitMs = Date.now() - t0;
+        if (ended.code !== 0 || !ended.err.includes("was revoked")) {
+          fail(`the supervisor exited ${ended.code}: ${ended.err.trim().split("\n").at(-1)}`);
+        }
+        return `supervisor stopped naming the revocation ${exitMs} ms after revoke`;
+      } finally {
+        ssh(`rm -rf ${REVOKE_DIR}`);
+      }
     },
   },
 ];
