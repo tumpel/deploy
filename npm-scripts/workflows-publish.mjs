@@ -4,9 +4,15 @@ import { copyFileSync, mkdirSync, mkdtempSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const REPOSITORY = "tumpel/workflows";
-const MAJOR_TAG = "v1";
+const MOVING_TAG = "v1";
 const WORKFLOWS = [".github/workflows/prebuild.yml"];
 const RELEASE_TAG = /^v\d+\.\d+\.\d+$/;
+
+const versionOf = (tag) => tag.slice(1).split(".").map(Number);
+const compareTags = (left, right) => {
+  const [a, b] = [versionOf(left), versionOf(right)];
+  return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+};
 
 const die = (message) => {
   console.error(`workflows:publish: ${message}`);
@@ -55,11 +61,21 @@ for (const path of WORKFLOWS) {
 git(checkout, "add", ...WORKFLOWS);
 if (git(checkout, "status", "--porcelain")) git(checkout, "commit", "--quiet", "-m", `release ${releaseTag}`);
 
+const newest = git(checkout, "tag", "--list", "v*.*.*")
+  .split("\n")
+  .filter((tag) => RELEASE_TAG.test(tag))
+  .sort(compareTags)
+  .at(-1);
+if (newest && compareTags(releaseTag, newest) < 0)
+  die(
+    `${REPOSITORY} already holds release ${newest}, newer than ${releaseTag}; moving ${MOVING_TAG} back would hand callers an older workflow, so publish from a tag newer than ${newest}`,
+  );
+
 const head = git(checkout, "rev-parse", "HEAD");
 if (!git(checkout, "tag", "--list", releaseTag)) git(checkout, "tag", releaseTag);
 else if (git(checkout, "rev-parse", `refs/tags/${releaseTag}^{commit}`) !== head)
   die(`${REPOSITORY} already tags ${releaseTag} on another commit; release tags are immutable, so tag a new release`);
-git(checkout, "tag", "--force", MAJOR_TAG);
+git(checkout, "tag", "--force", MOVING_TAG);
 git(checkout, "push", "--quiet", "origin", "HEAD:refs/heads/main", `refs/tags/${releaseTag}`);
-git(checkout, "push", "--quiet", "--force", "origin", `refs/tags/${MAJOR_TAG}`);
-console.log(`published ${REPOSITORY} ${head} as ${releaseTag} and ${MAJOR_TAG}`);
+git(checkout, "push", "--quiet", "--force", "origin", `refs/tags/${MOVING_TAG}`);
+console.log(`published ${REPOSITORY} ${head} as ${releaseTag} and ${MOVING_TAG}`);

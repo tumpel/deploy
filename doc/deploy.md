@@ -36,7 +36,7 @@ The end-to-end proof signs in without a person: `infra/proof.tf` mints the Acces
 
 ## Releases
 
-`.github/workflows/release.yml` runs on a push to `main` that changes the supervisor, the guest or the release code. It runs on the runner that the repository variable `BUILD_RUNNER` names, and on `ubuntu-24.04` when the variable is unset (`doc/test-host.md`). The workflow builds the supervisor, the `tumpel` CLI (`npm run cli:build`) and the guest images for amd64 only. The workflow-level flag `BUILD_ARM64` in `release.yml` gates the arm64 build and stays `false`: nothing claims arm64 host support until a real arm64 host passes the proof (`doc/test-host.md`). `npm run guest:image` and `npm run release:publish` read the same flag from the environment and refuse arm64 while it is off. It publishes them to the R2 bucket `tumpel-releases-<stage>`, which is `dev` unless a manual run names another stage.
+`.github/workflows/release.yml` runs on a push to `main` that changes the supervisor, the guest or the release code, and on every push of a tag `v*`, whatever it changes. A tag run publishes to `dev` like a push to `main`, so it rewrites dev's `current.json` with the tagged build. It runs on the runner that the repository variable `BUILD_RUNNER` names, and on `ubuntu-24.04` when the variable is unset (`doc/test-host.md`). The workflow builds the supervisor, the `tumpel` CLI (`npm run cli:build`) and the guest images for amd64 only. The workflow-level flag `BUILD_ARM64` in `release.yml` gates the arm64 build and stays `false`: nothing claims arm64 host support until a real arm64 host passes the proof (`doc/test-host.md`). `npm run guest:image` and `npm run release:publish` read the same flag from the environment and refuse arm64 while it is off. It publishes them to the R2 bucket `tumpel-releases-<stage>`, which is `dev` unless a manual run names another stage.
 
 Every object in the bucket is stored once under its digest and never changes:
 
@@ -53,7 +53,16 @@ The token `tumpel-releases-upload-<stage>` writes the bucket. `npm run release:s
 
 ## GitHub Actions prebuilds
 
-Caller workflows call `tumpel/workflows/.github/workflows/prebuild.yml@v1` in the public repository [tumpel/workflows](https://github.com/tumpel/workflows), which `release.yml` publishes from this repository on each release tag (`doc/github-actions-prebuild.md`). The publish needs the repository secret `WORKFLOWS_PUBLISH_TOKEN`: a fine-grained personal access token with resource owner `tumpel` and read and write on Contents and Workflows of tumpel/workflows only. The owner creates it once and rotates it before it expires; the `workflows` job fails while it is missing.
+Caller workflows call `tumpel/workflows/.github/workflows/prebuild.yml@v1` in the public repository [tumpel/workflows](https://github.com/tumpel/workflows), which `release.yml` publishes from this repository on each release tag (`doc/github-actions-prebuild.md`). The publish needs the repository secret `WORKFLOWS_PUBLISH_TOKEN`: a fine-grained personal access token with resource owner `tumpel` and read and write on Contents and Workflows of tumpel/workflows only. The release workflow holds no GitHub App credentials, so the publish cannot mint an installation token instead. The owner creates the token once and rotates it before it expires; the `workflows` job fails while it is missing.
+
+The owner protects the release tags once, in https://github.com/organizations/tumpel/settings/rules or in the tumpel/workflows settings under Rules, Rulesets:
+
+1. New ruleset, New tag ruleset. Name it `release tags` and set Enforcement status to Active.
+2. Leave the bypass list empty.
+3. Under Target tags, Add target, Include by pattern, `v*.*.*`.
+4. Under Rules, tick Restrict updates and Restrict deletions, and Create.
+
+`v1` stays outside the pattern, because each release moves it.
 
 A person sets up step 16 of the proof once per stage:
 
