@@ -23,13 +23,13 @@ A new operator signs in through Access at `https://<stage>.tumpel.dev` and finis
 
 When the Access email holds no tenant, the consent page asks for the tenant name that `Tenants_signUp` takes, under the wizard's header and stepper. It then finishes the same sign-in (G22) and opens `/t/<tenantId>/setup`.
 
-The setup wizard has six steps at `/t/<tenantId>/setup/<step>`. `/t/<tenantId>/setup` opens the first step that reads not done. Each step reads its state from the API; a waiting step reads again every 2 to 10 seconds while it is open, and on tab focus. The overview shows Resume setup until the first five read done.
+The setup wizard has six steps at `/t/<tenantId>/setup/<step>`. `/t/<tenantId>/setup` opens the first step that reads not done. Each step reads its state from the API, again on tab focus and on Check now. The overview shows Resume setup until the first five read done.
 
 | Step      | The step                                                                                                                        | Done when                                                                       |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Tenant    | Shows the tenant's name                                                                                                         | `Identity_whoami` answers                                                       |
-| GitHub    | Sends the tab to the `installUrl` of `GitHubConnections_start`, which returns to `/t/<tenantId>/setup/github?from=github` (G10) | `GitHubConnections_list` holds an installation                                  |
-| Host      | Calls `EnrolmentTokens_mint` and shows its `installCommand` fed the `token` on stdin, with the expiry and a copy control        | `Hosts_list` holds an Online host                                               |
+| GitHub    | Sends the tab to the `installUrl` of `GitHubConnections_start`, which returns to `/t/<tenantId>/setup/github?from=github` (G10) | `GitHubConnections_list` holds an Active installation                           |
+| Host      | On request, calls `EnrolmentTokens_mint` and shows its `installCommand` fed the `token` on stdin, with the expiry and a copy control | `Hosts_list` holds a host that is not Revoked                                   |
 | claude.ai | Shows `https://api.<stage>.tumpel.dev/mcp` with a copy control and how to add it in claude.ai as a custom connector             | `OAuthGrants_list` holds a grant from https://claude.ai                         |
 | Persona   | Writes a Claude token, and a GitHub token while the App is not installed, to the Default persona's secret set                   | A persona's secret set holds an unexpired credential for its harness's provider |
 | Done      | Sums up the five steps                                                                                                          |                                                                                 |
