@@ -22,8 +22,9 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
+
+      - name: Install the toolchain rust-toolchain.toml pins
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -65,6 +66,9 @@ jobs:
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install the toolchain rust-toolchain.toml pins
+        run: rustup toolchain install
 
       - uses: Swatinem/rust-cache@v2
         with:
