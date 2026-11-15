@@ -241,11 +241,21 @@ if (mode === "infra") process.exit(0);
 run("npm", ["run", "build", "-w", "@tumpel/dashboard"], {
   env: { VITE_TUMPEL_API_ORIGIN: `https://${output("hostname")}` },
 });
-wrangler(["deploy", "--name", `tumpel-dashboard-${STAGE}`], {
+wrangler(["deploy"], {
   cwd: DASHBOARD,
   baseEnv: Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("WRANGLER_CI_"))),
 });
 wrangler(["d1", "migrations", "apply", "DB", "--remote"]);
+const dashboardRedirects = JSON.stringify([`https://${output("app_hostname")}/auth/callback`]);
+wrangler([
+  "d1",
+  "execute",
+  "DB",
+  "--remote",
+  "--yes",
+  "--command",
+  `INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at, first_party) VALUES ('tumpel-dashboard', 'the tumpel dashboard', '${dashboardRedirects}', ${Date.now()}, 1) ON CONFLICT (client_id) DO UPDATE SET client_name = excluded.client_name, redirect_uris = excluded.redirect_uris, first_party = 1`,
+]);
 const workerSecrets = output("worker_secrets");
 wrangler([
   "deploy",
