@@ -101,6 +101,28 @@ const uploadFile = async (store, key, path) => {
   return { digest, size };
 };
 
+const OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json";
+
+const uploadOci = async (store, prefix, layout) => {
+  const index = JSON.parse(readFileSync(join(layout, "index.json"), "utf8"));
+  const manifests = (index.manifests ?? []).filter((entry) => entry.mediaType === OCI_MANIFEST);
+  if (manifests.length !== 1)
+    die(
+      `${layout}/index.json names ${manifests.length} image manifests, not one; pack the image again with npm run guest:oci`,
+    );
+  const ociDigest = String(manifests[0].digest).replace(/^sha256:/, "");
+  const blobs = join(layout, "blobs", "sha256");
+  const names = readdirSync(blobs);
+  if (!names.includes(ociDigest)) die(`${layout} lacks its manifest blob ${ociDigest}; pack the image again`);
+  for (const name of names) {
+    const path = join(blobs, name);
+    const digest = await sha256(path);
+    if (digest !== name) die(`${path} has digest ${digest}; pack the image again with npm run guest:oci`);
+    await uploadFile(store, `${prefix}/${name}`, path);
+  }
+  return ociDigest;
+};
+
 const upload = async (arch, supervisorPath, imageDir, fragmentPath) => {
   const architecture = ARCHITECTURES[arch];
   if (!architecture) die(`no architecture ${arch}; pass amd64 or arm64`);
@@ -127,6 +149,11 @@ const upload = async (arch, supervisorPath, imageDir, fragmentPath) => {
     );
     const manifestDigest = await sha256(manifestPath);
     await uploadFile(store, `${prefix}/${manifestDigest}`, manifestPath);
+    const ociDigest = await uploadOci(
+      store,
+      `oci/${harness}/${harnessVersion}/${arch}`,
+      join(imageDir, `oci-${manifest.imageDigest}`),
+    );
     if (image.digest !== manifest.imageDigest)
       die(`${name} names image ${manifest.imageDigest}, the file is ${image.digest}`);
     if (kernel.digest !== manifest.kernelDigest)
@@ -138,6 +165,7 @@ const upload = async (arch, supervisorPath, imageDir, fragmentPath) => {
       imageDigest: image.digest,
       kernelDigest: kernel.digest,
       manifestDigest,
+      ociDigest,
     });
   }
   const fragment = FragmentSchema.parse({

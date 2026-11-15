@@ -325,6 +325,17 @@ const buildImage = async (name, pins) => {
     const kernel = await download(pins.kernel);
     copyFileSync(kernel, join(OUT, `${pins.kernel.digest}.vmlinux`));
     renameSync(image, join(OUT, `${imageDigest}.ext4`));
+    run("tar", [
+      "-C",
+      tree,
+      "--sort=name",
+      "--numeric-owner",
+      "--owner=0",
+      "--group=0",
+      "-cf",
+      join(OUT, `${imageDigest}.rootfs.tar`),
+      ".",
+    ]);
     const manifest = GuestImageManifestSchema.parse({
       imageDigest,
       kernelUrl: pins.kernel.url,
