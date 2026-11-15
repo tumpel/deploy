@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { after, test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const SCRIPT = join(ROOT, "npm-scripts", "prebuild.sh");
+const SCRIPT = join(ROOT, "npm-scripts", "prebuild.mjs");
 mkdirSync(join(ROOT, ".tmp"), { recursive: true });
 const DIR = mkdtempSync(join(ROOT, ".tmp", "prebuild-test-"));
 after(() => rmSync(DIR, { recursive: true, force: true }));
@@ -20,40 +21,64 @@ const write = (path, text) => {
 const fixture = (name, devcontainer) => {
   const root = join(DIR, name, "root");
   const workspace = join(root, "root", "workspace");
+  write(
+    join(root, "etc", "tumpel", "guest.json"),
+    JSON.stringify({ environment: { PATH: "/usr/bin:/bin", HOME: join(root, "root"), LANG: "C.UTF-8" } }),
+  );
   write(join(root, "etc", "base.txt"), "base\n");
   write(join(root, "usr", "lib", "keep"), "keep\n");
   write(join(root, "usr", "lib", "gone", "nested", "file"), "gone\n");
+  write(join(root, "usr", "share", "doc", "nested", "file"), "doc\n");
   write(join(root, "tmp", "scratch"), "scratch\n");
   write(join(workspace, "package.json"), "{}\n");
-  write(join(workspace, ".devcontainer", "devcontainer.json"), devcontainer);
+  write(join(workspace, ".devcontainer", "devcontainer.json"), devcontainer(root));
   execFileSync("git", ["init", "-q", workspace]);
+  execFileSync("git", [
+    "-C",
+    workspace,
+    "remote",
+    "add",
+    "origin",
+    "https://x-access-token:s3cret@github.com/acme/app.git",
+  ]);
+  execFileSync("git", ["-C", workspace, "config", "includeIf.gitdir:/github/workspace/.git.path", "/runner/creds"]);
   return { root, out: join(DIR, name, "out") };
 };
 
-const prebuild = (root, out) =>
-  spawnSync(SCRIPT, ["build", out], { env: { ...process.env, TUMPEL_PREBUILD_ROOT: root }, encoding: "utf8" });
+const RUNNER_ENV = { ...process.env, ACTIONS_ID_TOKEN_REQUEST_TOKEN: "runner-secret" };
+
+const prebuild = (root, out, env = {}) =>
+  spawnSync(process.execPath, [SCRIPT, "build", out], {
+    env: { ...RUNNER_ENV, TUMPEL_PREBUILD_ROOT: root, ...env },
+    encoding: "utf8",
+    timeout: 20000,
+  });
 
 test("the layer holds the workspace, the changed base paths and a whiteout for each removed path", () => {
   const { root, out } = fixture(
     "build",
-    `{
+    (root) => `{
   // comments and trailing commas are JSON with comments
   "name": "fixture",
-  "onCreateCommand": "mkdir -p node_modules/a && echo on-create >> order",
+  "containerEnv": { "FIXTURE": "${root}", "PATH": "\${containerEnv:PATH}:/extra", },
+  "onCreateCommand": "mkdir -p node_modules/a && echo 'on-create, ]' >> order && env > env.txt",
   "updateContentCommand": ["sh", "-c", "echo update-content >> order"],
   "postCreateCommand": {
-    "tool": "mkdir -p ${"$"}TUMPEL_PREBUILD_ROOT/usr/local/bin && echo tool > ${"$"}TUMPEL_PREBUILD_ROOT/usr/local/bin/tool",
-    "prune": ["sh", "-c", "rm -r ${"$"}TUMPEL_PREBUILD_ROOT/usr/lib/gone ${"$"}TUMPEL_PREBUILD_ROOT/tmp/scratch && echo post-create >> order"],
+    "tool": "mkdir -p $FIXTURE/usr/local/bin && echo tool > $FIXTURE/usr/local/bin/tool",
+    "prune": ["sh", "-c", "rm -r $FIXTURE/usr/lib/gone $FIXTURE/tmp/scratch && echo post-create >> order"],
+    "replace": "rm -r $FIXTURE/usr/share/doc && echo doc > $FIXTURE/usr/share/doc",
   },
 }
 `,
   );
   const result = prebuild(root, out);
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(
-    readFileSync(join(root, "root", "workspace", "order"), "utf8"),
-    "on-create\nupdate-content\npost-create\n",
-  );
+  const workspace = join(root, "root", "workspace");
+  assert.equal(readFileSync(join(workspace, "order"), "utf8"), "on-create, ]\nupdate-content\npost-create\n");
+  const env = readFileSync(join(workspace, "env.txt"), "utf8").split("\n");
+  assert.ok(env.includes("PATH=/usr/bin:/bin:/extra"), env.join(", "));
+  assert.ok(env.includes(`FIXTURE=${root}`), env.join(", "));
+  assert.ok(!env.some((line) => line.startsWith("ACTIONS_ID_TOKEN_REQUEST_TOKEN=")), "the runner's token leaked");
   const layer = join(out, "layer.tar");
   const entries = execFileSync("tar", ["-tf", layer], { encoding: "utf8" })
     .split("\n")
@@ -68,10 +93,21 @@ test("the layer holds the workspace, the changed base paths and a whiteout for e
     "root/workspace/order",
     "usr/local/bin/tool",
     "usr/lib/.wh.gone",
+    "usr/share/doc",
   ])
     assert.ok(entries.includes(path), `${path} is missing from ${entries.join(", ")}`);
-  for (const path of ["etc/base.txt", "usr/lib/keep", "usr/lib/gone/nested/.wh.file", "tmp/.wh.scratch"])
+  for (const path of [
+    "etc/base.txt",
+    "usr/lib/keep",
+    "usr/lib/gone/nested/.wh.file",
+    "tmp/.wh.scratch",
+    "usr/share/doc/.wh.nested",
+    "usr/share/.wh.doc",
+  ])
     assert.ok(!entries.includes(path), `${path} is in the layer`);
+  const config = execFileSync("tar", ["-xOf", layer, "root/workspace/.git/config"], { encoding: "utf8" });
+  assert.match(config, /url = https:\/\/github\.com\/acme\/app\.git/);
+  assert.doesNotMatch(config, /s3cret|includeIf|creds/);
   const bytes = readFileSync(layer);
   assert.deepEqual(JSON.parse(readFileSync(join(out, "layer.json"), "utf8")), {
     mediaType: "application/vnd.oci.image.layer.v1.tar",
@@ -81,8 +117,92 @@ test("the layer holds the workspace, the changed base paths and a whiteout for e
 });
 
 test("features are refused with a named failure", () => {
-  const { root, out } = fixture("features", '{ "features": { "ghcr.io/devcontainers/features/node:1": {} } }\n');
+  const { root, out } = fixture("features", () => '{ "features": { "ghcr.io/devcontainers/features/node:1": {} } }\n');
   const result = prebuild(root, out);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /PrebuildFeaturesUnsupported/);
+});
+
+test("a symlinked workspace is refused as no checkout", () => {
+  const { root, out } = fixture("symlink", () => '{ "onCreateCommand": "true" }\n');
+  const workspace = join(root, "root", "workspace");
+  const elsewhere = join(DIR, "symlink", "elsewhere");
+  execFileSync("mv", [workspace, elsewhere]);
+  symlinkSync(elsewhere, workspace);
+  const result = prebuild(root, out);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /NoCheckout/);
+});
+
+test("a command past the budget is killed with every process it started", () => {
+  const { root, out } = fixture("budget", () => '{ "onCreateCommand": "sleep 60 & sleep 60" }\n');
+  const result = prebuild(root, out, { TUMPEL_PREBUILD_SECONDS: "1" });
+  assert.equal(result.error, undefined, "the background sleep held the output open");
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /build budget/);
+});
+
+test("the upload exchanges the job token, puts the layer and completes the prebuild", async () => {
+  const out = join(DIR, "upload");
+  const layer = Buffer.from("layer bytes");
+  const digest = createHash("sha256").update(layer).digest("hex");
+  write(join(out, "layer.tar"), layer);
+  write(join(out, "layer.json"), JSON.stringify({ sha256: digest, sizeBytes: layer.length }));
+  const seen = [];
+  const server = createServer((request, response) => {
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("end", () => {
+      const body = Buffer.concat(chunks);
+      const url = new URL(request.url, origin);
+      seen.push(`${request.method} ${url.pathname}`);
+      if (url.pathname === "/token") {
+        assert.equal(request.headers.authorization, "bearer runner-secret");
+        assert.equal(url.searchParams.get("audience"), origin);
+        return response.end(JSON.stringify({ value: "job-token" }));
+      }
+      if (url.pathname === "/put") {
+        assert.equal(request.headers["x-amz-checksum-sha256"], Buffer.from(digest, "hex").toString("base64"));
+        assert.equal(request.headers["content-length"], String(layer.length));
+        assert.deepEqual(body, layer);
+        return response.end();
+      }
+      assert.equal(request.headers.authorization, "Bearer job-token");
+      if (url.pathname === "/v1/prebuilds/p1/uploads") {
+        assert.deepEqual(JSON.parse(body), { tenantId: "t1", layerDigest: digest, layerSizeBytes: layer.length });
+        const expires = new Date(Date.now() + 60000).toISOString();
+        return response.end(
+          JSON.stringify({
+            prebuildId: "p1",
+            tenantId: "t1",
+            sha256: digest,
+            url: `${origin}/put`,
+            uploadExpiresAt: expires,
+          }),
+        );
+      }
+      assert.deepEqual(JSON.parse(body), { tenantId: "t1" });
+      response.end("{}");
+    });
+  });
+  await new Promise((listening) => server.listen(0, "127.0.0.1", listening));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const child = spawn(process.execPath, [SCRIPT, "upload", out, origin, "t1", "p1"], {
+    env: { ...RUNNER_ENV, ACTIONS_ID_TOKEN_REQUEST_URL: `${origin}/token?api-version=2.0` },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  const code = await new Promise((exited) => child.on("exit", exited));
+  server.close();
+  assert.equal(code, 0, stderr);
+  assert.deepEqual(seen, [
+    "GET /token",
+    "POST /v1/prebuilds/p1/uploads",
+    "PUT /put",
+    "GET /token",
+    "POST /v1/prebuilds/p1/uploads/complete",
+  ]);
 });

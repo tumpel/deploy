@@ -87,6 +87,12 @@ const pinsFor = (arch) => {
   };
 };
 const WORKING_DIRECTORY = "/root/workspace";
+const ENVIRONMENT = {
+  PATH: "/opt/tumpel/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  HOME: "/root",
+  LANG: "C.UTF-8",
+};
+const OCI_TAG = "rootfs";
 const CLAUDE_FLAGS = [
   "-p",
   "--input-format",
@@ -145,7 +151,7 @@ const tool = (name) => {
   const found = [...(process.env.PATH ?? "").split(":"), "/usr/sbin", "/sbin"]
     .map((dir) => join(dir, name))
     .find((path) => existsSync(path));
-  if (!found) die(`${name} is not installed; install e2fsprogs, squashfs-tools and dpkg on the build machine`);
+  if (!found) die(`${name} is not installed; install e2fsprogs, squashfs-tools, dpkg and umoci on the build machine`);
   return found;
 };
 
@@ -196,6 +202,7 @@ const recipeFor = (name, pins) => {
         command: ["/bin/sh", "-s"],
         workingDirectory: WORKING_DIRECTORY,
         cloneSeconds: CLONE_SECONDS,
+        environment: ENVIRONMENT,
       }),
       install: async () => [],
     };
@@ -218,6 +225,7 @@ const recipeFor = (name, pins) => {
       command: ["/opt/tumpel/node/bin/node", `/opt/tumpel/harness/node_modules/${name_}/cli.js`, ...CLAUDE_FLAGS],
       workingDirectory: WORKING_DIRECTORY,
       cloneSeconds: CLONE_SECONDS,
+      environment: ENVIRONMENT,
     }),
     install: async (tree) => {
       const node = join(tree, "opt", "tumpel", "node");
@@ -290,6 +298,37 @@ const treeBytes = (tree) =>
       .split("\t")[0],
   );
 
+const packOci = (rootfs, layout, harness, arch) => {
+  const umoci = tool("umoci");
+  const image = `${layout}:${OCI_TAG}`;
+  rmSync(layout, { recursive: true, force: true });
+  run(umoci, ["init", "--layout", layout]);
+  run(umoci, ["new", "--image", image]);
+  run(umoci, [
+    "config",
+    "--image",
+    image,
+    "--no-history",
+    "--os",
+    "linux",
+    "--architecture",
+    arch,
+    "--config.workingdir",
+    harness.workingDirectory,
+    ...Object.entries(harness.environment).flatMap(([name, value]) => ["--config.env", `${name}=${value}`]),
+  ]);
+  run(umoci, [
+    "raw",
+    "add-layer",
+    "--image",
+    image,
+    "--history.created_by",
+    `tumpel guest:image ${harness.harness} ${harness.harnessVersion}`,
+    rootfs,
+  ]);
+  run(umoci, ["gc", "--layout", layout]);
+};
+
 const buildImage = async (name, pins) => {
   const recipe = recipeFor(name, pins);
   const [unsquashfs, mkfs, e2fsck] = [tool("unsquashfs"), tool("mkfs.ext4"), tool("e2fsck")];
@@ -312,6 +351,9 @@ const buildImage = async (name, pins) => {
       join(tree, "etc/systemd/system/multi-user.target.wants/tumpel-guest.service"),
     );
     writeFileSync(join(tree, "etc/tumpel/guest.json"), `${JSON.stringify(recipe.harness, null, 2)}\n`);
+    mkdirSync(join(tree, "opt/tumpel"), { recursive: true });
+    copyFileSync(join(ROOT, "npm-scripts/prebuild.mjs"), join(tree, "opt/tumpel/prebuild.mjs"));
+    chmodSync(join(tree, "opt/tumpel/prebuild.mjs"), 0o755);
     rmSync(join(tree, "etc/resolv.conf"), { force: true });
     writeFileSync(join(tree, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 9.9.9.9\n");
     const components = [...(await installGit(tree, pins)), ...(await recipe.install(tree))];
@@ -325,17 +367,9 @@ const buildImage = async (name, pins) => {
     const kernel = await download(pins.kernel);
     copyFileSync(kernel, join(OUT, `${pins.kernel.digest}.vmlinux`));
     renameSync(image, join(OUT, `${imageDigest}.ext4`));
-    run("tar", [
-      "-C",
-      tree,
-      "--sort=name",
-      "--numeric-owner",
-      "--owner=0",
-      "--group=0",
-      "-cf",
-      join(OUT, `${imageDigest}.rootfs.tar`),
-      ".",
-    ]);
+    const rootfs = join(OUT, `${imageDigest}.rootfs.tar`);
+    run("tar", ["-C", tree, "--sort=name", "--numeric-owner", "--owner=0", "--group=0", "-cf", rootfs, "."]);
+    packOci(rootfs, join(OUT, `oci-${imageDigest}`), recipe.harness, pins.arch);
     const manifest = GuestImageManifestSchema.parse({
       imageDigest,
       kernelUrl: pins.kernel.url,

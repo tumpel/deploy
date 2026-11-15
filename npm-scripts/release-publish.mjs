@@ -109,7 +109,7 @@ const uploadOci = async (store, prefix, layout) => {
   const manifests = (index.manifests ?? []).filter((entry) => entry.mediaType === OCI_MANIFEST);
   if (manifests.length !== 1)
     die(
-      `${layout}/index.json names ${manifests.length} image manifests, not one; pack the image again with npm run guest:oci`,
+      `${layout}/index.json names ${manifests.length} image manifests, not one; pack the image again with npm run guest:image`,
     );
   const ociDigest = String(manifests[0].digest).replace(/^sha256:/, "");
   const blobs = join(layout, "blobs", "sha256");
@@ -118,10 +118,15 @@ const uploadOci = async (store, prefix, layout) => {
   for (const name of names) {
     const path = join(blobs, name);
     const digest = await sha256(path);
-    if (digest !== name) die(`${path} has digest ${digest}; pack the image again with npm run guest:oci`);
+    if (digest !== name) die(`${path} has digest ${digest}; pack the image again with npm run guest:image`);
     await uploadFile(store, `${prefix}/${name}`, path);
   }
-  return ociDigest;
+  const manifest = JSON.parse(readFileSync(join(blobs, ociDigest), "utf8"));
+  const config = JSON.parse(readFileSync(join(blobs, String(manifest.config.digest).replace(/^sha256:/, "")), "utf8"));
+  const diffIds = (config.rootfs?.diff_ids ?? []).map((id) => String(id).replace(/^sha256:/, ""));
+  if (diffIds.length !== 1)
+    die(`${layout} names ${diffIds.length} layers, not one; pack the image again with npm run guest:image`);
+  return { ociDigest, rootfsDigest: diffIds[0] };
 };
 
 const upload = async (arch, supervisorPath, cliPath, imageDir, fragmentPath) => {
@@ -152,11 +157,18 @@ const upload = async (arch, supervisorPath, cliPath, imageDir, fragmentPath) => 
     );
     const manifestDigest = await sha256(manifestPath);
     await uploadFile(store, `${prefix}/${manifestDigest}`, manifestPath);
-    const ociDigest = await uploadOci(
+    const { ociDigest, rootfsDigest } = await uploadOci(
       store,
       `oci/${harness}/${harnessVersion}/${arch}`,
       join(imageDir, `oci-${manifest.imageDigest}`),
     );
+    const rootfsTar = join(imageDir, `${manifest.imageDigest}.rootfs.tar`);
+    const rootfsActual = await sha256(rootfsTar);
+    if (rootfsActual !== rootfsDigest)
+      die(
+        `the OCI image of ${name} names layer ${rootfsDigest}, ${rootfsTar} is ${rootfsActual}; build the image again`,
+      );
+    await uploadFile(store, `${prefix}/rootfs/${rootfsDigest}`, rootfsTar);
     if (image.digest !== manifest.imageDigest)
       die(`${name} names image ${manifest.imageDigest}, the file is ${image.digest}`);
     if (kernel.digest !== manifest.kernelDigest)

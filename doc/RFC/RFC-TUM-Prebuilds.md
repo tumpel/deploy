@@ -173,7 +173,7 @@ A GitHub Actions prebuild uploads its layer through `POST /v1/prebuilds/{prebuil
 - The token binds `repository` to the prebuild's repository, `workflow_ref` to `<repository>/<caller workflow>@<ref>`, `ref` to `refs/heads/<default branch>` as the dispatch recorded it, and `event_name` to `workflow_dispatch`. S7 adds `run_id` once the dispatch records it.
 - The token is checked before anything about the tenant is read. A missing tenant, a missing prebuild and another repository answer the same 404.
 - Only a Building prebuild takes an upload. S7 moves a prebuild from Dispatched to Building on `workflow_run` `in_progress`.
-- `start` takes `{tenantId, layerDigest, layerSizeBytes}`, records them, and answers `{sha256, url, uploadExpiresAt}`: one PUT to `<tenantId>/prebuilds/<prebuildId>/layers/<digest>`, signed with `content-length` and `x-amz-checksum-sha256`. `prebuild.sh upload` reads that answer as its upload spec. `complete` takes `{tenantId}`, finds the recorded key in the bucket and moves the prebuild to Converting.
+- `start` takes `{tenantId, layerDigest, layerSizeBytes}`, records them, and answers `{sha256, url, uploadExpiresAt}`: one PUT to `<tenantId>/prebuilds/<prebuildId>/layers/<digest>`, signed with `content-length` and `x-amz-checksum-sha256`. `/opt/tumpel/prebuild.mjs upload` in the guest image asks for it and makes the PUT. `complete` takes `{tenantId}`, finds the recorded key in the bucket and moves the prebuild to Converting.
 - The caller workflow runs two jobs. The build job runs the repository's code and holds no `id-token` permission. A separate upload job holds `id-token: write`, runs no repository code, and uploads the build job's `layer.tar` (NFR-2).
 
 ### Connections

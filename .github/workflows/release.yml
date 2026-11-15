@@ -8,7 +8,7 @@ on:
       - "crates/**"
       - "Cargo.lock"
       - "npm-scripts/guest-image.mjs"
-      - "npm-scripts/guest-oci.mjs"
+      - "npm-scripts/prebuild.mjs"
       - "npm-scripts/release-publish.mjs"
       - "packages/api/release.tsp"
       - "packages/control-plane/src/harness-catalog.ts"
@@ -101,9 +101,6 @@ jobs:
 
       - name: Build the guest images
         run: npm run guest:image -- all ${{ matrix.arch }} 2>&1 | tee "$LOG_DIR/guest-image.log"
-
-      - name: Pack the guest images as OCI images
-        run: npm run guest:oci -- "$TUMPEL_IMAGE_DIR" ${{ matrix.arch }} 2>&1 | tee "$LOG_DIR/guest-oci.log"
 
       - name: Upload the supervisor, CLI, images and kernels
         env:
