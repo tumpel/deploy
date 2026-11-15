@@ -132,7 +132,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 ### Domain and stages
 
-**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. Each stage has its own hostnames. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record. Once tenants pin the issuer hostname, it never moves ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#the-oidc-issuer)). On 2026-11-15 the ruling read:
+**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. Each stage has its own hostnames. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record. Once tenants pin the issuer hostname, it never moves ([the OIDC issuer](RFC-TUM-Prebuilds.md#the-oidc-issuer)). On 2026-11-15 the ruling read:
 
 > tumpel.dev for everything
 
@@ -144,7 +144,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Each secret set member has a kind.** The kind is variable, API key or subscription token, and a subscription token carries its expiry. The harness catalog lists the credential kinds each harness takes and the variable it reads for each, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
 
-**The central store holds accounts, hosts and the GitHub App.** It holds tenants, principals, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant. It also holds the stage's GitHub App and each tenant's installation. GitHub's uninstall webhook names only the installation.
+**The central store holds accounts, hosts and the GitHub App.** It holds tenants, principals, memberships, invitations, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant. A membership is a principal's role in one tenant, and sign-in binds each token to one of them (EDD-005). It also holds the stage's GitHub App and each tenant's installation. GitHub's uninstall webhook names only the installation.
 
 ### Snapshot storage
 
@@ -194,7 +194,7 @@ A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Run
 
 **Does my host need a public IP?** No. The supervisor dials out.
 
-**Is there a web dashboard?** Not yet. The management app follows the CLI and the MCP server.
+**Is there a web dashboard?** Yes, on `<stage>.tumpel.dev` (`doc/product/dashboard.md`).
 
 **Can the control plane move off Cloudflare?** Yes. A second backend implements the same interfaces.
 
@@ -229,6 +229,9 @@ model Session {
   harnessVersion: HarnessVersion;
   `model`: ModelName;
   state: SessionState;
+  lastTurnId: EntityId;
+  lastTurnState: TurnState;
+  lastTurnAt: offsetDateTime;
   createdAt: int64;
   updatedAt: int64;
 }

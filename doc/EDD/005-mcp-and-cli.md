@@ -12,6 +12,14 @@ The MCP server runs on the control plane's Worker, on a path of the control plan
 
 A 401 or 403 from the control plane reaches the caller as a signed-out error that says to run `tumpel login`. It never reaches the caller as an empty list.
 
+## Members
+
+Each email has one principal, which can belong to more than one tenant. Each membership row in the central store names the tenant, the principal, the role `Owner` or `Member` and when it was created. A device token, an access token and a refresh token each resolve to exactly one membership, and the control plane reads its role live. When an email has more than one membership, the device confirm page and the consent page let the person pick the tenant. Sign-up always creates a new tenant with the caller as its Owner.
+
+Only an Owner manages members and invitations and starts or deletes a connection. Anyone else gets 403 `OwnerRequired`. Removing a member deletes that member's devices and device approvals in the tenant. It also deletes the member's enrolment tokens, OAuth codes and OAuth tokens there. The last Owner stays (409 `LastOwner`).
+
+An invitation is a single-use link, valid for 7 days and bound to one email and role. The Owner copies it from the create response and sends it on. The central table `invitations` keeps only the sha256 of its token. An invitation for an email that is already a member is refused with 409. The accept page sits behind Access. It accepts when the lowercased Access email matches the invitation exactly, and it creates the principal when the email has none. It refuses an expired invitation with 410 `InvitationExpired`, an unknown or spent one with 404 and another email with 403.
+
 ## Connecting a client
 
 An MCP client connects to `<origin>/mcp`, where `<origin>` is the stage's origin. The issuer and metadata take the origin from the request.
@@ -31,7 +39,7 @@ An MCP client connects to `<origin>/mcp`, where `<origin>` is the stage's origin
 | Access token       | 1 h                                                        |
 | Refresh token      | 30 d, single use, replaced by a new one on each refresh    |
 
-Reusing a spent code or refresh token revokes every token of that client and principal. Each bearer token resolves to a principal and that principal's tenant.
+Reusing a spent code or refresh token revokes every token of that client and principal. Each bearer token resolves to one membership (tenant and principal).
 
 ## Parity
 
@@ -68,7 +76,7 @@ A persona carries files, each a row in the tenant's database with its path, size
 
 ## Tickets
 
-`npm run ticket -- <issue url> --persona <name>` works one GitHub issue into a draft pull request. It reads the issue with gh, starts a session on the issue's repository and streams the turn. The prompt asks the harness for a branch named after the issue and a draft pull request from it. The script then finds the pull request by that branch and prints its URL. A failed turn exits non-zero with its reason. It applies no tenant config. When the tenant has no persona of that name, the script exits with the advice to apply the tenant config first.
+`npm run ticket -- <issue url> --persona <name>` works one GitHub issue into a draft pull request. It calls `tumpel session start-from-issue` and streams the turn. The control plane writes the first prompt from the issue (EDD-003). That prompt asks the harness for the branch `ticket/<n>-<slug>` and a draft pull request from it. The script then finds the pull request by that branch with gh and prints its URL. A failed turn exits non-zero with its reason. It applies no tenant config. When the tenant has no persona of that name, the script exits with the advice to apply the tenant config first.
 
 ## FAQ
 

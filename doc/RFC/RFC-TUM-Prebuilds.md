@@ -174,7 +174,19 @@ A GitHub Actions prebuild uploads its layer through `POST /v1/prebuilds/{prebuil
 - The token is checked before anything about the tenant is read. A missing tenant, a missing prebuild and another repository answer the same 404.
 - Only a Building prebuild takes an upload. S7 moves a prebuild from Dispatched to Building on `workflow_run` `in_progress`.
 - `start` takes `{tenantId, layerDigest, layerSizeBytes}`, records them, and answers `{sha256, url, uploadExpiresAt}`: one PUT to `<tenantId>/prebuilds/<prebuildId>/layers/<digest>`, signed with `content-length` and `x-amz-checksum-sha256`. `/opt/tumpel/prebuild.mjs upload` in the guest image asks for it and makes the PUT. `complete` takes `{tenantId}`, finds the recorded key in the bucket and moves the prebuild to Converting.
-- The caller workflow runs two jobs. The build job runs the repository's code and holds no `id-token` permission. A separate upload job holds `id-token: write`, runs no repository code, and uploads the build job's `layer.tar` (NFR-2).
+- S7 must split the caller workflow into two jobs. The build job runs the repository's code and holds no `id-token` permission. A separate upload job holds `id-token: write`, runs no repository code, and uploads the build job's `layer.tar` (NFR-2).
+
+### Build script
+
+Each guest image carries the build script at `/opt/tumpel/prebuild.mjs`, so the image digest pins it.
+
+`prebuild.mjs build <out dir>` runs with a git checkout of the repository at `/root/workspace`, which must be a real directory. Before the lifecycle commands run, it replaces `.git/config` with the core settings and an origin URL without user info. Right before the commands run, it scans the image's files as a baseline. It runs `onCreateCommand`, `updateContentCommand` and `postCreateCommand` with exactly the environment that `guest.json` names, plus `containerEnv`. On timeout it kills the whole process group. It writes `layer.tar` and `layer.json` to the out directory, and a layer over 5 GiB fails `LayerTooLarge`.
+
+`prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>` asks `ACTIONS_ID_TOKEN_REQUEST_URL` for the job's OIDC token with the API origin as `aud`. It exchanges the token, PUTs the layer and calls `complete`.
+
+### Release
+
+The release stores each image's root filesystem tar in the private releases bucket, under `images/<harness>/<version>/<arch>/rootfs/<sha256>`. That sha256 is `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`, so prod's `current.json` must be published again before the control plane deploys to prod.
 
 ### Connections
 

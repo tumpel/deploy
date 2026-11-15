@@ -50,6 +50,14 @@ For a linked tenant, the control plane signs an RS256 JWT as the App while it pr
 
 Each handover records `repositoryCredentialSource` as `GitHubApp`, `SecretSet` or `None`. The source is `SecretSet` when the tenant has no installation. A repository outside the installation also takes the secret set's `GITHUB_TOKEN` when the set holds one. Without one, the turn fails `RepositoryTokenRefused`. A GitHub timeout or any other GitHub error fails the turn the same way. The detail quotes GitHub, and it says to add the repository to the installation only after a 404 or 422. Tenant migration 0012 backfills `None`, and `SecretSet` for an older row that carried `GITHUB_TOKEN`. The control plane checks GitHub's own payloads with zod schemas, outside the TypeSpec contract.
 
+## Issues
+
+Both listings read GitHub with an installation token. The repository listing, `GitHubConnections_listRepositories`, reads every page. For issues, `GitHubConnections_listIssues` reads one page: the 100 open issues updated last, without pull requests. A listing refuses with 409 `GitHubNotConnected` while no installation links the tenant, and with 409 `RepositoryUnreadable` when GitHub refuses it.
+
+`Sessions_startFromIssue` takes `owner`, `name`, `issueNumber`, `personaId` and `model`. It reads the issue with the installation token, or else with the persona's `GITHUB_TOKEN`. From the issue, the control plane writes the first prompt and starts the session as a plain start does. It answers `{session, turn, issue}`. A `SessionIssue` holds `sessionId`, `issueNumber`, `title`, `htmlUrl` and `branch`, which is `ticket/<n>-<slug>`. A missing issue is refused with 404 `NotFound`, a closed issue or a pull request with 409 `IssueNotOpen`, and an issue neither token reads with 409 `RepositoryUnreadable`.
+
+Sessions and prebuilds name a repository in one form: `https://github.com/<owner>/<name>` in lower case, without `.git`. One normaliser writes it for both.
+
 ## Audit
 
 Each grant leaves one row in an append-only audit table of the tenant's database. `tumpel session handovers <sessionId>` lists a session's rows, oldest first. A row names the grant, the turn, the host, the variable names and the time. Database triggers refuse an update or a delete of a row.
