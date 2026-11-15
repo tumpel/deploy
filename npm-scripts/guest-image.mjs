@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 import { GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/api/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
 import { CLONE_SECONDS } from "./guest-image-settings.mjs";
+import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = process.env.TUMPEL_IMAGE_DIR ?? join(homedir(), "development", ".tmp", "tumpel-images");
@@ -395,6 +396,7 @@ const main = async () => {
       `pass a harness and optionally an architecture: npm run guest:image -- <${buildable().join("|")}|all> [amd64|arm64]`,
     );
   if (!PINS[arch]) die(`no pins for architecture ${arch}; pass amd64 or arm64`);
+  if (!RELEASE_ARCHITECTURES.includes(arch)) die(disabledReason(arch));
   const pins = pinsFor(arch);
   if (!existsSync(pins.guestBin))
     die(`${pins.guestBin} is missing; build it with TUMPEL_TARGET=${PINS[arch].target} npm run guest:build`);

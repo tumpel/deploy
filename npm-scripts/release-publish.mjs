@@ -6,8 +6,10 @@ import { request } from "node:https";
 import { basename, dirname, join } from "node:path";
 import { ChannelProtocol, GuestImageManifestSchema, ReleaseManifestSchema } from "@tumpel/api/schemas";
 import { CHECKSUM_HEADER, checksumOf, presignUrl } from "../packages/control-plane/src/presign.ts";
+import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
+const ENABLED = new Set(RELEASE_ARCHITECTURES.map((arch) => ARCHITECTURES[arch]));
 const REQUEST_SECONDS = 900;
 const SIGNED_SECONDS = 3600;
 
@@ -132,6 +134,7 @@ const uploadOci = async (store, prefix, layout) => {
 const upload = async (arch, supervisorPath, cliPath, imageDir, fragmentPath) => {
   const architecture = ARCHITECTURES[arch];
   if (!architecture) die(`no architecture ${arch}; pass amd64 or arm64`);
+  if (!ENABLED.has(architecture)) die(disabledReason(arch));
   const store = storage();
   const supervisorDigest = await sha256(supervisorPath);
   const supervisor = await uploadFile(store, `supervisor/${arch}/${supervisorDigest}`, supervisorPath);
@@ -208,6 +211,8 @@ const publish = async (fragmentDir) => {
   const fragments = files.map((name) =>
     FragmentSchema.parse(JSON.parse(readFileSync(join(fragmentDir, String(name)), "utf8"))),
   );
+  const disabled = fragments.find((fragment) => !ENABLED.has(fragment.supervisor.architecture));
+  if (disabled) die(disabledReason(disabled.supervisor.architecture.toLowerCase()));
   const commit = headCommit();
   const releaseVersion =
     process.env.GITHUB_REF_TYPE === "tag" ? required("GITHUB_REF_NAME") : `0.0.0-${commit.slice(0, 12)}`;

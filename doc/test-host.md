@@ -2,6 +2,8 @@
 
 `tumpel-host` is a libvirt domain on the hypervisor `box` with nested KVM, for running the MicroVM runtime. Reach it from `sandbox` with `ssh tumpel-host` (192.168.122.188, user `mvhenten`, network `default`).
 
+Test hosts are amd64, and releases build amd64 only: the flag `BUILD_ARM64` in `.github/workflows/release.yml` stays `false`. Nothing claims arm64 host support until a real arm64 host passes the proof.
+
 - 4 vCPU, 8 GiB, q35, `<cpu mode='host-passthrough'>`, so `/dev/kvm` exists in the guest.
 - Disk `/mnt/nvme/vms/tumpel-host.qcow2`, 40 G, standalone qcow2 converted from `~/vm-staging/noble-server-cloudimg-amd64-20261017.img` (Ubuntu 24.04, sha256 `04e8f246...5b6c94`, checked against Ubuntu's SHA256SUMS).
 - Cloud-init NoCloud seed `tumpel-host-seed.iso` in the same directory, built from `~/vm-staging/tumpel-host-seed/{meta-data,user-data}`: passwordless sudo, the group `kvm`, sandbox's key, no password login, `qemu-guest-agent`, 2 G swapfile.

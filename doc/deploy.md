@@ -36,7 +36,7 @@ The end-to-end proof signs in without a person: `infra/proof.tf` mints the Acces
 
 ## Releases
 
-`.github/workflows/release.yml` runs on a push to `main` that changes the supervisor, the guest or the release code. It runs on the runner that the repository variable `BUILD_RUNNER` names, and on `ubuntu-24.04` when the variable is unset (`doc/test-host.md`). The workflow builds the supervisor, the `tumpel` CLI (`npm run cli:build`) and the guest images for amd64 and arm64. It publishes them to the R2 bucket `tumpel-releases-<stage>`, which is `dev` unless a manual run names another stage.
+`.github/workflows/release.yml` runs on a push to `main` that changes the supervisor, the guest or the release code. It runs on the runner that the repository variable `BUILD_RUNNER` names, and on `ubuntu-24.04` when the variable is unset (`doc/test-host.md`). The workflow builds the supervisor, the `tumpel` CLI (`npm run cli:build`) and the guest images for amd64 only. The workflow-level flag `BUILD_ARM64` in `release.yml` gates the arm64 build and stays `false`: nothing claims arm64 host support until a real arm64 host passes the proof (`doc/test-host.md`). `npm run guest:image` and `npm run release:publish` read the same flag from the environment and refuse arm64 while it is off. It publishes them to the R2 bucket `tumpel-releases-<stage>`, which is `dev` unless a manual run names another stage.
 
 Every object in the bucket is stored once under its digest and never changes:
 
