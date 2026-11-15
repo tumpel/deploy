@@ -1,0 +1,155 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "crates/**"
+      - "Cargo.lock"
+      - "npm-scripts/guest-image.mjs"
+      - "npm-scripts/release-publish.mjs"
+      - "packages/control-plane/src/harness-catalog.ts"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Stage whose releases bucket receives the build
+        default: dev
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.stage || 'dev' }}
+  cancel-in-progress: false
+
+env:
+  TUMPEL_STAGE: ${{ inputs.stage || 'dev' }}
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 90
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            target: x86_64-unknown-linux-gnu
+            packages: squashfs-tools e2fsprogs dpkg
+            experimental: false
+          - arch: arm64
+            target: aarch64-unknown-linux-gnu
+            packages: squashfs-tools e2fsprogs dpkg gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+            experimental: false
+    env:
+      TUMPEL_TARGET: ${{ matrix.target }}
+      TUMPEL_IMAGE_DIR: ${{ github.workspace }}/.tmp/images-${{ matrix.arch }}
+      LOG_DIR: ${{ github.workspace }}/.tmp/logs-${{ matrix.arch }}
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+      AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            target
+          key: cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: cargo-${{ runner.os }}-${{ matrix.target }}-
+
+      - name: Install image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
+
+      - name: Install npm workspaces
+        run: npm ci --no-audit --no-fund
+
+      - name: Build the supervisor
+        run: |
+          mkdir -p "$LOG_DIR"
+          npm run supervisor:build 2>&1 | tee "$LOG_DIR/supervisor-build.log"
+
+      - name: Build the guest
+        run: npm run guest:build 2>&1 | tee "$LOG_DIR/guest-build.log"
+
+      - name: Build the guest images
+        run: npm run guest:image -- all ${{ matrix.arch }} 2>&1 | tee "$LOG_DIR/guest-image.log"
+
+      - name: Upload the supervisor, images and kernels
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+        run: >-
+          npm run release:publish -- upload ${{ matrix.arch }}
+          "target/${{ matrix.target }}/release/tumpel-supervisor"
+          "$TUMPEL_IMAGE_DIR"
+          ".tmp/fragments/${{ matrix.arch }}.json"
+          2>&1 | tee "$LOG_DIR/upload.log"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: fragment-${{ matrix.arch }}
+          path: .tmp/fragments/${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ matrix.arch }}
+          path: ${{ env.LOG_DIR }}
+          if-no-files-found: ignore
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install npm workspaces
+        run: npm ci --no-audit --no-fund
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: fragment-*
+          path: .tmp/fragments
+
+      - name: Write current.json
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+        run: npm run release:publish -- manifest .tmp/fragments

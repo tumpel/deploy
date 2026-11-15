@@ -1,6 +1,6 @@
 # Guest image
 
-`npm run guest:build` builds `tumpel-guest` as a static x86_64 binary. `npm run guest:image -- <harness>` then builds a read-only ext4 rootfs without root, for `ClaudeCode` from the harness catalog or `Shell` for tests. It writes `<digest>.ext4`, `<digest>.json` (`GuestImageManifest`) and `<kernelDigest>.vmlinux` to `$TUMPEL_IMAGE_DIR`, by default `~/development/.tmp/tumpel-images`.
+`npm run guest:build` builds `tumpel-guest` as a static binary for `TUMPEL_TARGET`, by default `x86_64-unknown-linux-gnu`. `npm run guest:image -- <harness> [amd64|arm64]` then builds a read-only ext4 rootfs without root, for `ClaudeCode` from the harness catalog, `Shell` for tests, or `all` for both, for the given architecture, by default the build machine's. It writes `<digest>.ext4`, `<digest>.json` (`GuestImageManifest`) and `<kernelDigest>.vmlinux` to `$TUMPEL_IMAGE_DIR`, by default `~/development/.tmp/tumpel-images`.
 
 The build:
 
