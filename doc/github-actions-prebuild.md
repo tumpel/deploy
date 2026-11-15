@@ -1,6 +1,6 @@
 # GitHub Actions prebuilds
 
-A tenant connects GitHub Actions with `tumpel github-actions start --account-label <label> --caller-workflow .github/workflows/tumpel-prebuild.yml`. Each repository it prebuilds then holds that caller workflow on its default branch. `tumpel github-actions get` answers the same text as `callerWorkflowExample`, and the reusable workflow it calls as `reusableWorkflow`.
+A tenant connects GitHub Actions with `tumpel github-actions start --account-label <label> --caller-workflow .github/workflows/tumpel-prebuild.yml`. Each prebuild start commits that caller workflow to the repository's default branch through the GitHub App when it is missing or differs from the example below, so no one commits it by hand. `tumpel github-actions get` answers the same text as `callerWorkflowExample`, and the reusable workflow it calls as `reusableWorkflow`.
 
 ```yaml
 name: tumpel prebuild
@@ -44,7 +44,7 @@ jobs:
       imageDigest: ${{ inputs.imageDigest }}
 ```
 
-A prebuild start reads its inputs from the head commit of the default branch. It then dispatches the caller workflow on that branch with the App installation token, with these inputs:
+A prebuild start reads its inputs from the head commit of the default branch. It reads the caller workflow there and, when it is missing or differs, commits the example on top of that head with the App installation token. GitHub dispatches only a workflow on the default branch, so the commit lands before the dispatch, and the prebuild records the new commit as its head. A branch that moved between the read and the commit refuses the start `CallerWorkflowRefused`. It then dispatches the caller workflow on that branch, with these inputs:
 
 | Input         | Value                                                                                              |
 | ------------- | -------------------------------------------------------------------------------------------------- |
@@ -54,7 +54,7 @@ A prebuild start reads its inputs from the head commit of the default branch. It
 | `rootfsUrl`   | A presigned GET of the guest image's root filesystem tar, valid for the dispatch and build budgets |
 | `imageDigest` | The digest of the guest image the layer is built on                                                |
 
-The dispatch needs the GitHub App's `actions: write` permission. A changed App manifest does not update an existing App: the App owner adds the permission in the App's settings, and each installation accepts it.
+The dispatch needs the GitHub App's Actions write permission, and the commit needs Contents and Workflows write. The installation token names what the installation granted; a start that lacks one is refused `GitHubAppPermissionMissing` before anything is committed, naming each missing permission. A changed App manifest does not update an existing App: the App owner adds the permission in the App's settings, and each installation accepts it.
 
 `rootfsUrl` reads `images/<harness>/<version>/amd64/rootfs/<diff_id>` from the releases bucket.
 
