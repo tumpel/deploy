@@ -223,6 +223,7 @@ const firstDeploys = [
   [config.name, "-exclude=cloudflare_workers_custom_domain.api"],
   [config.name, "-exclude=cloudflare_workers_custom_domain.issuer"],
   ["tumpel-dashboard", "-exclude=cloudflare_workers_custom_domain.app"],
+  ["tumpel-dashboard", "-exclude=cloudflare_workers_custom_domain.dashboard"],
 ];
 const excluded = [];
 for (const [name, exclusion] of firstDeploys) if (!(await workerExists(name))) excluded.push(exclusion);
@@ -246,7 +247,7 @@ wrangler(["deploy"], {
   baseEnv: Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("WRANGLER_CI_"))),
 });
 wrangler(["d1", "migrations", "apply", "DB", "--remote"]);
-const dashboardRedirects = JSON.stringify([`https://${output("app_hostname")}/auth/callback`]);
+const dashboardRedirects = JSON.stringify([`https://${output("dashboard_hostname")}/auth/callback`]);
 wrangler([
   "d1",
   "execute",
@@ -268,8 +269,8 @@ wrangler([
   "--var",
   `ISSUER_HOSTNAME:${output("issuer_hostname")}`,
   "--var",
-  `DASHBOARD_ORIGIN:https://${output("app_hostname")}`,
+  `DASHBOARD_ORIGIN:https://${output("dashboard_hostname")}`,
 ]);
 wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
 if (excluded.length > 0) apply([]);
-console.log(`deploy: https://${output("hostname")} and https://${output("app_hostname")}`);
+console.log(`deploy: https://${output("hostname")} and https://${output("dashboard_hostname")}`);

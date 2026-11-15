@@ -132,7 +132,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 ### Domain and stages
 
-**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. Each stage has its own hostnames. `api.<stage>.tumpel.dev` serves the control plane. The stage reserves `app.<stage>.tumpel.dev` for the dashboard. The OIDC issuer gets `id.<stage>.tumpel.dev`, also reserved for now. Stage `prod` drops the stage label: `api.tumpel.dev`, `app.tumpel.dev` and `id.tumpel.dev`. OpenTofu manages every record. Once tenants pin the issuer hostname, it never moves ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#the-oidc-issuer)). On 2026-11-15 the ruling read:
+**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. Each stage has its own hostnames. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record. Once tenants pin the issuer hostname, it never moves ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#the-oidc-issuer)). On 2026-11-15 the ruling read:
 
 > tumpel.dev for everything
 
