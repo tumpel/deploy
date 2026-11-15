@@ -17,6 +17,8 @@ const TENANT = process.env.TUMPEL_PROOF_TENANT ?? "Tumpel proof";
 const REPOSITORY = process.env.TUMPEL_PROOF_REPOSITORY ?? "https://github.com/mvhenten/drawio-headless.git";
 const MODEL = process.env.TUMPEL_PROOF_MODEL ?? "claude-haiku-4-5";
 const PROBE_MODEL = process.env.TUMPEL_PROOF_PROBE_MODEL ?? "claude-sonnet-4-5";
+const PREBUILD_REPOSITORY = process.env.TUMPEL_PROOF_PREBUILD_REPO;
+const CALLER_WORKFLOW = ".github/workflows/tumpel-prebuild.yml";
 const CLI = process.env.TUMPEL_PROOF_CLI;
 const SUPERVISOR = process.env.TUMPEL_PROOF_SUPERVISOR;
 const STATE_DIR = ".local/state/tumpel-supervisor";
@@ -790,6 +792,42 @@ const steps = [
   },
   {
     id: 16,
+    name: "Prebuild GitHub Actions",
+    needs: [3],
+    skip: () =>
+      PREBUILD_REPOSITORY
+        ? undefined
+        : `TUMPEL_PROOF_PREBUILD_REPO is unset; name a repository of the App installation's account that holds ${CALLER_WORKFLOW} calling the reusable prebuild workflow`,
+    run: async () => {
+      tumpel(["github-actions", "start", "--account-label", "proof", "--caller-workflow", CALLER_WORKFLOW]);
+      try {
+        const start = ["prebuild", "start", "--repository", PREBUILD_REPOSITORY, "--persona-id", state.personaId];
+        const t0 = Date.now();
+        const started = tumpelJson([...start, "--provider", "GitHubActions", "--rebuild"]);
+        if (started.status.state !== "Dispatched") fail(`the start answered ${started.status.state}, not Dispatched`);
+        const limitMs = (settings.prebuildDispatchBudgetSeconds + settings.prebuildBuildBudgetSeconds) * 1000;
+        const settled = await waitFor(`prebuild ${started.prebuildId} leaving Dispatched and Building`, limitMs, () => {
+          const read = tumpelJson(["prebuild", "get", started.prebuildId]);
+          return ["Dispatched", "Building"].includes(read.status.state) ? undefined : read;
+        });
+        if (settled.status.state === "Failed") {
+          const failure = tumpelJson(["prebuild", "failure", started.prebuildId]);
+          fail(`prebuild ${started.prebuildId} failed in ${failure.phase}: ${failure.detail}`);
+        }
+        if (settled.status.state !== "Converting") fail(`prebuild ${started.prebuildId} reads ${settled.status.state}`);
+        const convertingMs = Date.now() - t0;
+        const again = tumpelJson([...start, "--provider", "GitHubActions"]);
+        if (again.prebuildId !== started.prebuildId) {
+          fail(`a second start answered prebuild ${again.prebuildId}, not ${started.prebuildId}`);
+        }
+        return `prebuild ${started.prebuildId} Converting ${convertingMs} ms after the start, layer ${settled.status.layerSizeBytes} bytes, run ${settled.logUrl}; a second start answered the same prebuild`;
+      } finally {
+        tumpel(["github-actions", "delete"]);
+      }
+    },
+  },
+  {
+    id: 17,
     name: "Revoke",
     needs: [2],
     run: async () => {
@@ -820,6 +858,12 @@ const outcomes = new Map();
 let failed = false;
 for (const step of steps) {
   const blocked = (step.needs ?? []).filter((need) => outcomes.get(need) !== "pass");
+  const skipped = step.skip?.();
+  if (skipped) {
+    outcomes.set(step.id, "skip");
+    console.log(`${step.id}. ${step.name}: skipped, ${skipped}`);
+    continue;
+  }
   if (blocked.length > 0) {
     outcomes.set(step.id, "skip");
     console.log(`${step.id}. ${step.name}: skipped, needs step ${blocked.join(", ")}`);
