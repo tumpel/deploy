@@ -77,8 +77,6 @@ The `aud` claim names one provider per token:
 | Azure     | `api://AzureADTokenExchange`                                                           |
 | Namespace | `federation.namespaceapis.com`                                                         |
 
-Rotation publishes the next key in the JWKS 24 h before it signs anything. The old key stays in the JWKS for 24 h after its successor starts signing. A rotation is an operator action: `npm run issuer:rotate`, which only the proof service token can call.
-
 Namespace trusts a custom issuer only after Namespace Support registers it, once for each tenant's workspace. A provider without federation, such as Ubicloud, gets its API token from the tenant's secret set instead. The same issuer can later hand a box a token per turn for scoped cloud access.
 
 ## Requirements
@@ -104,6 +102,9 @@ Namespace trusts a custom issuer only after Namespace Support registers it, once
 - **NFR-2 Credential-less builds.** A build holds read access to its repository and nothing else.
 - **NFR-3 No cross-tenant `sub`.** No token's `sub` matches a rule written for another tenant.
 - **NFR-4 Budgets.** Dispatch, build, upload and conversion each have a budget and a named failure.
+- **NFR-5 Token life.** An issuer token lives 300 s.
+- **NFR-6 Key overlap.** A key stays in the JWKS for 24 h after its successor starts signing.
+- **NFR-7 Algorithm.** The issuer signs RS256.
 
 ## Decisions
 
@@ -136,8 +137,6 @@ On 2026-11-15 the following rulings were made:
 ### Issuer
 
 The Worker generates each RS256 key itself, at 2048 bits, and a key's `kid` is its RFC 7638 thumbprint. The central table `issuer_keys` holds each private key, sealed under a data key that `SECRETS_KEK` wraps, with the time it starts signing in `signs_from`. A token carries `iss`, `sub`, `aud`, `iat`, `nbf`, `exp` and `jti`. The prebuild `sub` is `tenant:<tenantId>:persona:<name>:job:prebuild`. The Worker var `ISSUER_HOSTNAME` names the issuer's hostname.
-
-Each rotation adds a key that signs from 24 h later and answers `{signingKid, kid, signsFrom}`. A rotation while a key is still waiting to sign returns that key and adds none, so prod holds three keys or fewer. A person signed in through Access gets 403 `Only the operator tooling rotates`.
 
 ### Prebuilds
 

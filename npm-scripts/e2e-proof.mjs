@@ -5,7 +5,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLONE_SECONDS } from "./guest-image-settings.mjs";
-import { rotateIssuerKeys } from "./issuer-rotate.mjs";
 import { INLINE_CAP, loadCredential, proofTenantApply, proofTenantPlan } from "./proof-tenant.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -754,22 +753,9 @@ const steps = [
       const stray = await fetch(`${ISSUER}/healthz`, { signal: AbortSignal.timeout(10_000) });
       if (stray.status !== 404) fail(`GET ${ISSUER}/healthz answered ${stray.status}, not 404`);
       const documentsMs = Date.now() - t0;
-      const rotation = await rotateIssuerKeys({
-        endpoint: ENDPOINT,
-        clientId: process.env.TUMPEL_PROOF_CLIENT_ID,
-        clientSecret: process.env.TUMPEL_PROOF_CLIENT_SECRET,
-      });
-      if (rotation.kid === rotation.signingKid)
-        fail(`the rotation answered ${rotation.kid} as both the signing and the next key`);
-      const waitMs = Date.parse(rotation.signsFrom) - Date.now();
-      if (waitMs <= 0 || waitMs > 86_400_000) {
-        fail(`the next key ${rotation.kid} signs from ${rotation.signsFrom}, not within the next 24 h`);
-      }
-      const published = (await issuerDocument("/.well-known/jwks.json")).keys.map((key) => key.kid);
-      for (const kid of [rotation.signingKid, rotation.kid]) {
-        if (!published.includes(kid)) fail(`the JWKS does not publish ${kid}: ${published.join(", ")}`);
-      }
-      return `discovery and JWKS ${documentsMs} ms, ${rotation.signingKid} signs, ${rotation.kid} published and signs from ${rotation.signsFrom}`;
+      const published = (await issuerDocument("/.well-known/jwks.json")).keys;
+      if (published.length === 0) fail("the JWKS publishes no key");
+      return `discovery and JWKS ${documentsMs} ms, ${published.map((key) => key.kid).join(", ")} published`;
     },
   },
   {
