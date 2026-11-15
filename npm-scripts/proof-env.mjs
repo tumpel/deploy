@@ -75,6 +75,7 @@ const child = spawnSync(command, args, {
     TUMPEL_PROOF_CLIENT_ID: value("proof_client_id"),
     TUMPEL_PROOF_CLIENT_SECRET: value("proof_client_secret"),
     TUMPEL_PROOF_ENDPOINT: `https://${value("hostname")}`,
+    TUMPEL_PROOF_ISSUER: `https://${value("issuer_hostname")}`,
   },
 });
 if (child.error) die(`${command}: ${child.error.message}`);

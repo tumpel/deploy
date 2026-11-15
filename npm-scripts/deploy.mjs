@@ -209,7 +209,7 @@ tofu([
   `-backend-config=endpoints={s3="https://${accountId}.r2.cloudflarestorage.com"}`,
 ]);
 const planPath = join(WORK, `tumpel-${STAGE}.tfplan`);
-const RETIRED = ["cloudflare_dns_record.app", "cloudflare_workers_route.app"];
+const RETIRED = ["cloudflare_dns_record.app", "cloudflare_workers_route.app", "cloudflare_dns_record.issuer"];
 const apply = (extra) => {
   tofu(["plan", "-input=false", `-out=${planPath}`, ...extra]);
   const plan = JSON.parse(tofu(["show", "-json", planPath], { capture: true }));
@@ -221,6 +221,7 @@ const apply = (extra) => {
 };
 const firstDeploys = [
   [config.name, "-exclude=cloudflare_workers_custom_domain.api"],
+  [config.name, "-exclude=cloudflare_workers_custom_domain.issuer"],
   ["tumpel-dashboard", "-exclude=cloudflare_workers_custom_domain.app"],
 ];
 const excluded = [];
