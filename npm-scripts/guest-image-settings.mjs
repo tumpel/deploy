@@ -37,9 +37,9 @@ export const HARNESS_RUNS = {
     },
   },
   OpenCode: {
-    protocol: "ClaudeStreamJson",
+    protocol: "PromptOnStdin",
     binary: "opencode",
-    flags: ["run", "--format", "json"],
+    flags: ["run", "--format", "json", "--auto"],
     archive: {
       version: OPENCODE_VERSION,
       url: (arch) =>
