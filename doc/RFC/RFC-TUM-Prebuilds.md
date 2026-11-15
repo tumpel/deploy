@@ -142,13 +142,32 @@ On 2026-11-15 the following rulings were made:
 
 The Worker generates each RS256 key itself, at 2048 bits, and a key's `kid` is its RFC 7638 thumbprint. The central table `issuer_keys` holds each private key, sealed under a data key that `SECRETS_KEK` wraps, with the time it starts signing in `signs_from`. A token carries `iss`, `sub`, `aud`, `iat`, `nbf`, `exp` and `jti`. The prebuild `sub` is `tenant:<tenantId>:persona:<name>:job:prebuild`. The Worker var `ISSUER_HOSTNAME` names the issuer's hostname.
 
+Each rotation adds a key that signs from 24 h later and answers `{signingKid, kid, signsFrom}`. A rotation while a key is still waiting to sign returns that key and adds none, so prod holds three keys or fewer. A person signed in through Access gets 403 `Only the operator tooling rotates`.
+
 ### Prebuilds
 
-The input digest covers every file under `.devcontainer/`, `.devcontainer.json` and the root lockfiles that `packages/control-plane/src/prebuild-inputs.ts` lists, as they stand on the default branch. Each file gives one line, `<path>\0<git blob sha>\n`. The lines are sorted by path, and the digest is the sha256 over them. The key names the repository by owner and name. A start whose key matches a prebuild that is not Failed returns the newest such prebuild.
+The input digest covers every file under `.devcontainer/`, `.devcontainer.json` and the root lockfiles that `packages/control-plane/src/prebuild-inputs.ts` lists, as they stand on the default branch. Each file gives one line, `<path>\0<git blob sha>\n`. The lines are sorted by path, and the digest is the sha256 over them. The key stores the repository as `https://github.com/<owner>/<name>` in lower case. Its image digest is the current release's Amd64 image of the persona's pinned or default harness version. Prebuilds build on Amd64 until Arm64 images exist.
 
-The control plane reads the files with the GitHub App's installation token, or else with the persona's `GITHUB_TOKEN`. Each start names its provider and is refused NoBuildProvider when that provider is not connected. A repository that holds none of the files refuses the start NoPrebuildInputs. When neither token can read the repository, the start is refused RepositoryUnreadable. A Namespace connection is refused IssuerMissing while the stage has no issuer. No adapter dispatches a build until the GitHub Actions adapter lands.
+The control plane reads the files with the GitHub App's installation token, or else with the persona's `GITHUB_TOKEN`.
 
-Each tenant holds one connection per provider. The GitHub Actions connection names the caller workflow, which the job token must name. The Namespace connection holds the issuer, the `sub` and the audience that the tenant registers at Namespace.
+### Prebuild start
+
+Each start names its provider. The first check that fails refuses the start, in this order:
+
+1. InvalidRequest: the repository is not a GitHub URL.
+2. NotFound: the persona does not exist.
+3. NoBuildProvider: the named provider is not connected.
+4. HarnessNotInCatalog: the catalog lists no version of the persona's harness that the tenant can run.
+5. NoRelease: the stage has published no release.
+6. ImageNotReleased: the current release has no Amd64 image of that harness version.
+7. RepositoryUnreadable: neither token can read the repository.
+8. NoPrebuildInputs: the repository holds none of the files.
+
+A start whose key matches a prebuild that is not Failed then returns the newest such prebuild. Any other start is refused BuildProviderUnavailable, naming the provider. Nothing dispatches and nothing is stored until the GitHub Actions adapter lands. A Namespace connection is refused IssuerMissing while the stage has no issuer.
+
+### Connections
+
+`ConnectionKind` is GitHub, GitHubActions or Namespace. GitHub Actions connects on the path `/v1/github-actions-connection` or with `tumpel github-actions`. Namespace connects on `/v1/namespace-connection` or with `tumpel namespace`. Each tenant holds one connection per provider. The GitHub Actions connection names the caller workflow, which the job token must name. The Namespace connection holds the issuer, the `sub` and the audience that the tenant registers at Namespace.
 
 ## FAQ
 

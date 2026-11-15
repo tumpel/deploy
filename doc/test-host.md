@@ -1,10 +1,10 @@
-# MicroVM test host
+# Test hosts
 
 `tumpel-host` is a libvirt domain on the hypervisor `box` with nested KVM, for running the MicroVM runtime. Reach it from `sandbox` with `ssh tumpel-host` (192.168.122.188, user `mvhenten`, network `default`).
 
 - 4 vCPU, 8 GiB, q35, `<cpu mode='host-passthrough'>`, so `/dev/kvm` exists in the guest.
 - Disk `/mnt/nvme/vms/tumpel-host.qcow2`, 40 G, standalone qcow2 converted from `~/vm-staging/noble-server-cloudimg-amd64-20261017.img` (Ubuntu 24.04, sha256 `04e8f246...5b6c94`, checked against Ubuntu's SHA256SUMS).
-- Cloud-init NoCloud seed `/mnt/nvme/vms/tumpel-host-seed.iso`, built from `~/vm-staging/tumpel-host-seed/{meta-data,user-data}`: passwordless sudo, sandbox's key, no password login, `qemu-guest-agent`, 2 G swapfile.
+- Cloud-init NoCloud seed `tumpel-host-seed.iso` in the same directory, built from `~/vm-staging/tumpel-host-seed/{meta-data,user-data}`: passwordless sudo, sandbox's key, no password login, `qemu-guest-agent`, 2 G swapfile.
 - Domain XML: `~/vm-config/tumpel-host.xml` on box. Autostart is off.
 
 Rebuild, on box as `mvhenten` (no sudo needed):
@@ -20,9 +20,9 @@ $V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V start tumpel-host 
 
 ## Second host
 
-`tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. Reach it from `sandbox` with `ssh tumpel-host-2` (192.168.122.217, user `mvhenten`, network `default`).
+`tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. `ssh tumpel-host-2` from `sandbox` reaches it (192.168.122.217, user `mvhenten`, network `default`).
 
-It was made with the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `/mnt/nvme/vms/tumpel-host-2.qcow2` from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `~/vm-staging/tumpel-host-2-seed/tumpel-host-2.xml` and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
+It was made with the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `tumpel-host-2.qcow2` beside the first one, from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `tumpel-host-2.xml` in that seed directory and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
 
 It runs the same `tumpel-supervisor install` as the first host and fetches its guest images from the release.
 
@@ -38,7 +38,7 @@ On 2026-11-15 `box` has 16 threads and 58.7 GiB. `sandbox` takes 8 vCPU and 16 G
 
 ## Host setup
 
-`tumpel-supervisor install --endpoint <url> --token-file <path|->` turns the host into an enrolled, running Tumpel host in one run. Run it as `mvhenten`, never as root. It asks for admin rights only for its one-time setup, and a second run changes nothing that is already in place. The running supervisor never escalates.
+`tumpel-supervisor install --endpoint <url> --token-file <path|->` turns the host into an enrolled, running Tumpel host in one run. Run it as `mvhenten`, never as root. It asks for admin rights only for its one-time setup. A second run on a set-up host repeats the setup steps and leaves their results as they are. The running supervisor never escalates.
 
 ```sh
 ssh tumpel-host 'curl -fL -o tumpel-supervisor <url>/v1/releases/supervisor/Amd64 && chmod +x tumpel-supervisor'
@@ -48,14 +48,14 @@ tumpel host mint-token --expires-in 600 | ssh tumpel-host ./tumpel-supervisor in
 The installer:
 
 1. checks that `mvhenten` can open `/dev/kvm`; when not, it adds the user to group `kvm`, restarts the user manager so the supervisor runs with that group, and checks the access once with `sg kvm`;
-2. writes `~/.local/state/tumpel-supervisor/runtime.json` (`SupervisorRuntime`) with defaults when it is missing, and brings an older one to the current schema: it adds missing fields with their defaults and drops fields the schema no longer has;
+2. writes `~/.local/state/tumpel-supervisor/runtime.json` (`SupervisorRuntime`) with defaults when the file is missing, and brings an older one to the current schema: it adds missing fields with their defaults and drops fields the schema no longer has;
 3. downloads Firecracker v1.18.0 to `firecrackerPath`, checked against the digest pinned in `crates/tumpel-supervisor/src/install.rs`;
 4. writes the guest filter `/etc/tumpel-guest-filter.nft` and the unit `tumpel-guest-filter.service` that loads it at boot;
 5. makes the TAP pool through systemd-networkd: `boxCapacity` devices, 8 by default. Device `tumpel<k>` is owned by `mvhenten` and has gateway 172.16.<k>.1/30 with IPv4 masquerade out of `enp1s0`, for guest 172.16.<k>.2;
 6. turns on lingering for `mvhenten`, copies itself to `~/.local/bin/tumpel-supervisor` and enables the user unit `tumpel-supervisor.service`, which runs `tumpel-supervisor run`;
 7. enrols the host with the token from the file or stdin and starts the unit.
 
-To change the pool size, edit `boxCapacity` in `runtime.json` and run `tumpel-supervisor install` again; without `--endpoint` and `--token-file` it only sets up the host and restarts an enrolled supervisor. To enrol again, delete `~/.local/state/tumpel-supervisor` and run `tumpel-supervisor install --endpoint <url> --token-file <path|->`. The host key is bound to the host id, not to the control plane hostname, so to move an enrolled host to a new endpoint, set `endpoint` in `~/.local/state/tumpel-supervisor/supervisor.json` and run `systemctl --user restart tumpel-supervisor`.
+To change the pool size, edit `boxCapacity` in `runtime.json` and run `tumpel-supervisor install` again; without `--endpoint` and `--token-file` it only sets up the host and restarts an enrolled supervisor. To enrol again, delete `~/.local/state/tumpel-supervisor` and repeat the install command above with `--endpoint` and `--token-file`. The host key is bound to the host id, not to the control plane hostname, so to move an enrolled host to a new endpoint, set `endpoint` in `~/.local/state/tumpel-supervisor/supervisor.json` and run `systemctl --user restart tumpel-supervisor`.
 
 Check: `ip -br addr show` lists `tumpel0` to `tumpel7`, each `/sys/class/net/tumpel<k>/owner` is 1000, `systemctl is-active tumpel-guest-filter` is `active`, and `sysctl net.ipv4.ip_forward` is 1. All four hold after a reboot.
 
@@ -65,9 +65,9 @@ A guest reaches the internet but never the internal network. The nftables table 
 
 `tumpel-guest-filter.service` loads the table before `network-pre.target`, so the filter is in place before networkd brings up the pool. `nftables.service` stays disabled, because its `/etc/nftables.conf` flushes the whole ruleset.
 
-The guest image writes `/etc/resolv.conf` with the public resolvers 1.1.1.1 and 9.9.9.9. The host serves DNS only on 127.0.0.53 and the libvirt resolver 192.168.122.1 is blocked, so a guest cannot use either.
+The guest image writes `/etc/resolv.conf` with the public resolvers 1.1.1.1 and 9.9.9.9. A guest can use neither the host's DNS, served only on 127.0.0.53, nor the libvirt resolver 192.168.122.1, which the filter blocks.
 
-To test with real traffic, swap `tumpel3` for a veth with its peer in a namespace, ping from the guest side, then put the TAP back. networkd configures the veth as it would the TAP. No box may hold `tumpel3`.
+To test with real traffic, swap `tumpel3` for a veth with its peer in a namespace, ping from the guest side, then put the TAP back. networkd configures the veth the same way as the TAP. Run the test while no box holds `tumpel3`.
 
 ```sh
 sudo ip link del tumpel3
@@ -87,4 +87,4 @@ sudo networkctl reload
 ip -d link show tumpel3
 ```
 
-Expected: 1.1.1.1 reached, the other four blocked. The private-range forward drop counts 1 packet and the input drop counts 3. Deleting the namespace removes the veth, and the last command shows `tun type tap ... user mvhenten` again.
+Expected: 1.1.1.1 reached, the other four blocked. The drop of forwarded private-range traffic counts 1 packet and the input drop counts 3. Deleting the namespace removes the veth, and the last command shows `tun type tap ... user mvhenten` again.

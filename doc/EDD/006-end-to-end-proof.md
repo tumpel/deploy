@@ -38,8 +38,8 @@ Step 13 makes every call as a JSON-RPC `tools/call` on `/mcp`, with the bearer t
 13. Connector session. `tumpel_session_start` names the persona, repository, model and prompt. The run polls a compact `tumpel_transcript_read` by cursor every 2 s. A turn fails with no line in 180 s (60 s claim, 120 s first line) or past 3,600 s. `tumpel_turn_get` must read Completed, or `tumpel_turn_failure` names the reason. Each turn needs an assistant text line, one that does not open with a tool call like `[Bash] ...`. `tumpel_turn_send` repeats this with a second prompt. After `tumpel_session_stop`, `tumpel_session_get` must read Stopped. It times each turn to ids, first line and finish, counts the polls and times the stop.
 ## Issuer and prebuild steps
 
-14. Issuer. Discovery and the JWKS answer on `id.<stage>.tumpel.dev` and name the stage's issuer, its JWKS URL and RS256. Any other path there answers 404. After a rotation, the JWKS lists both the old and the new key.
-15. Prebuild refused. `tumpel connection list` reads every build provider row NotConnected. A prebuild start on the proof repository is refused NoBuildProvider, and the repository then has no prebuild.
+14. Issuer. Discovery and the JWKS answer on `id.<stage>.tumpel.dev` and name the stage's issuer, its JWKS URL and RS256. Any other path there answers 404. The run then rotates the key and mints no token. The rotation's `signsFrom` must fall within the next 24 h, and the JWKS must publish both the signing key and the next key.
+15. Prebuild refused. `tumpel connection list` reads the GitHubActions and Namespace rows, and neither is Connected. A prebuild start on the proof repository names each provider in turn. Each start is refused `Build provider not connected` (NoBuildProvider) with that provider's name, and the repository then has no prebuild.
 16. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
 
 ## Passing
