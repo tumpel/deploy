@@ -13,7 +13,7 @@ GitHub installs an App on one account per visit. The list turns those visits int
 | Installed   | The tenant holds the installation on this account                      | None    |
 | Install     | No installation, and the operator is the account or an org owner       | Install |
 | Request     | No installation, and the operator is an org member                     | Request |
-| Requested   | GitHub returned `setup_action=request` for this org                    | None    |
+| Requested   | GitHub returned `setup_action=request` for this org in the last 7 days | None    |
 | Unavailable | An installation exists that this tenant cannot link; the row names why | None    |
 
 Each row shows the login, Personal account or Organization with the role, and the covered repository count once installed. An Installed row that GitHub suspended reads Suspended, as on Connections today. A Tumpel Member sees Install and Request as Ask an Owner, which opens Members.
@@ -33,7 +33,7 @@ GitHub hands the control plane a user code on every return (`request_oauth_on_in
 
 GitHub lists all three among the endpoints a GitHub App user token can call, and none of them sits under an App permission. The manifest needs no change. `Members: read` stays for `GET /user/memberships/orgs/{org}`, the owner check on link. `GET /user/orgs` does not fit: GitHub answers it with an empty list for a fine-grained token. Implementation must prove that `GET /user/memberships/orgs` lists orgs without this App installed.
 
-An org with no installation becomes an Install or Request row. The control plane stores the merged list per tenant (logins, roles, installation ids, row states) and drops the user token. The dashboard reads that stored list.
+An org with no installation becomes an Install or Request row. The control plane stores what GitHub answered per tenant (logins, roles, installation ids) and drops the user token. Reading the list derives each row's state against the installations at that moment, and lists every installation the tenant holds as Installed.
 
 Install sends the browser to `GitHubConnections_start` for that account. Its `installUrl` carries the account's `target_id`, so GitHub opens on that account. Refresh from GitHub sends the browser to GitHub's OAuth consent page with the App's client id. GitHub returns at once when the operator approved the App before.
 
