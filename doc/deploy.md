@@ -45,7 +45,7 @@ Every object in the bucket is stored once under its digest and never changes:
 - `images/<harness>/<version>/<arch>/<digest>` holds an ext4 image or its manifest.
 - `kernels/<arch>/<sha256>` holds a kernel.
 
-The one object that changes is `current.json`, the current release as a `ReleaseManifest` (`packages/api/release.tsp`). It holds `releaseVersion`, `commit`, `channelProtocolVersion`, `supervisors` and `clis` (each `architecture`, `sha256`, `sizeBytes`) and `images` (`harness`, `harnessVersion`, `architecture`, `imageDigest`, `kernelDigest`, `manifestDigest`, `ociDigest`). The control plane refuses a manifest whose `channelProtocolVersion` differs from the channel protocol.
+The one object that changes is `current.json`, the current release as a `ReleaseManifest` (`packages/api/release.tsp`). It holds `releaseVersion`, `commit`, `channelProtocolVersion`, `supervisors` and `clis` (each `architecture`, `sha256`, `sizeBytes`) and `images` (`harness`, `harnessVersion`, `architecture`, `imageDigest`, `kernelDigest`, `manifestDigest`, `ociDigest`, `rootfsDigest`). The control plane refuses a manifest whose `channelProtocolVersion` differs from the channel protocol.
 
 The control plane serves `GET /v1/releases/current` without sign-in. `GET /v1/releases/supervisor/{architecture}` and `GET /v1/releases/cli/{architecture}` answer 302 to a presigned URL that lives 5 minutes, so a fresh host needs only `curl -fL <origin>/v1/releases/supervisor/Amd64`. Hosts on `dev` boot only images that a published release carries. A turn whose release lacks the session's image fails ImageNotReleased. `tumpel harness pin` refuses a version that the release carries for none of the tenant's host architectures.
 

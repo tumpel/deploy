@@ -186,7 +186,7 @@ Each guest image carries the build script at `/opt/tumpel/prebuild.mjs`, so the 
 
 ### Release
 
-The release stores each image's root filesystem tar in the private releases bucket, under `images/<harness>/<version>/<arch>/rootfs/<sha256>`. That sha256 is `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`, so prod's `current.json` must be published again before the control plane deploys to prod.
+The release stores each image's root filesystem tar in the private releases bucket, under `images/<harness>/<version>/<arch>/rootfs/<sha256>`. That sha256 is the image's `rootfsDigest`, `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`, so prod's `current.json` must be published again before the control plane deploys to prod.
 
 ### Connections
 
