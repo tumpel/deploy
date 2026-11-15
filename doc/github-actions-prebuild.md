@@ -1,12 +1,14 @@
 # GitHub Actions prebuilds
 
-A tenant connects GitHub Actions with `tumpel github-actions start --account-label <label> --caller-workflow .github/workflows/tumpel-prebuild.yml`. Each prebuild start commits that caller workflow to the repository's default branch through the GitHub App when it is missing or differs from the example below, so no one commits it by hand. `tumpel github-actions get` answers the same text as `callerWorkflowExample`, and the reusable workflow it calls as `reusableWorkflow`. The example names the connection's path and the API origin of the stage:
+A tenant connects GitHub Actions with `tumpel github-actions start --account-label <label> --caller-workflow .github/workflows/tumpel-prebuild.yml`. Each prebuild start commits that caller workflow to the repository's default branch through the GitHub App when it is missing or differs from the example below, so no one commits it by hand. `tumpel github-actions get` answers the same text as `callerWorkflowExample`, and the reusable workflow it calls as `reusableWorkflow`. The example names the repository's default branch, the connection's path and the API origin of the stage, set at deploy as `API_ORIGIN`. The connection shows it with `main` as the branch:
 
 ```yaml
 name: tumpel prebuild
 
 on:
   push:
+    branches:
+      - main
     paths:
       - .github/workflows/tumpel-prebuild.yml
   workflow_dispatch:
@@ -24,12 +26,12 @@ jobs:
 
 ## Start
 
-A prebuild start mints the App installation token, reads the default branch, then reads the caller workflow there:
+A prebuild start mints the App installation token, reads the default branch, then reads the caller workflow and the inputs at the branch's head:
 
-- When it is missing or stale, the start commits the example on the branch. The push of that commit starts the run, because the workflow triggers on a push to its own path. The start reads the inputs at the new commit and records a new prebuild against it.
-- When it is current, the start reads the inputs at the branch's head. A prebuild with the same key that is not Failed answers the start, unless it asks for a rebuild. Otherwise the start dispatches the caller workflow on the branch with no inputs and records the prebuild against the head it read.
+- When the caller workflow is missing or stale, the start commits the example on the branch. The push of that commit starts the run, because the workflow triggers on a push to its own path. The commit changes no input, so the start records a new prebuild against the new commit with the inputs it read.
+- When it is current, a prebuild with the same key that is not Failed answers the start, unless it asks for a rebuild. Otherwise the start dispatches the caller workflow on the branch with no inputs and records the prebuild against the head it read.
 
-The start holds the tenant while it commits or dispatches and records, so a run that asks for its inputs early waits for the record. The prebuild's log points at the workflow's runs until a run takes it.
+The start holds the tenant only while it commits or dispatches and records, so a run that asks for its inputs early waits for the record. The prebuild's log points at the workflow's runs until a run takes it.
 
 The commit needs the GitHub App's Contents and Workflows write permission, and the dispatch needs Actions write. The installation token names what the installation granted; a start that lacks one is refused `GitHubAppPermissionMissing` before anything is committed, naming each missing permission. A changed App manifest does not update an existing App: the App owner adds the permission in the App's settings, and each installation accepts it.
 

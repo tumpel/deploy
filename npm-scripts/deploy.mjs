@@ -270,6 +270,8 @@ wrangler([
   `ISSUER_HOSTNAME:${output("issuer_hostname")}`,
   "--var",
   `DASHBOARD_ORIGIN:https://${output("dashboard_hostname")}`,
+  "--var",
+  `API_ORIGIN:https://${output("hostname")}`,
 ]);
 wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
 if (excluded.length > 0) apply([]);
