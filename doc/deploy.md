@@ -65,6 +65,8 @@ A person sets up step 16 of the proof once per stage:
 2. Grant the dev App write on actions, and accept the new permission on the proof tenant's installation, which must cover the fixture repository.
 3. Set `TUMPEL_PROOF_PREBUILD_REPO` to the fixture's URL, such as `https://github.com/<owner>/<name>`.
 
+The dev stage's fixture is `https://github.com/tumpel/prebuild-fixture`, so run its proof with `TUMPEL_PROOF_PREBUILD_REPO=https://github.com/tumpel/prebuild-fixture npm run proof:e2e`.
+
 ## Issuer
 
 The issuer is the control plane Worker on `id.<stage>.tumpel.dev`, which the Worker var `ISSUER_HOSTNAME` names. There it serves `/.well-known/openid-configuration` and `/.well-known/jwks.json`, and it answers 404 to every other path. The Worker generates each RS256 key itself, at 2048 bits. A key's `kid` is its RFC 7638 thumbprint. The central table `issuer_keys` holds each private key, sealed under a data key that `SECRETS_KEK` wraps, and its `signs_from` time. A token lives 300 s and carries `iss`, `sub`, `aud`, `iat`, `nbf`, `exp` and `jti`. Its `sub` is `tenant:<tenantId>:persona:<name>:job:prebuild`.
