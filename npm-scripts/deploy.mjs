@@ -86,10 +86,10 @@ if (missing.length > 0) die(`the deploy settings do not set ${missing.join(", ")
 const token = settings.CLOUDFLARE_API_TOKEN;
 const accountId = settings.CLOUDFLARE_ACCOUNT_ID;
 
-const run = (command, args, { cwd = ROOT, env = {}, capture = false, input } = {}) => {
+const run = (command, args, { cwd = ROOT, env = {}, baseEnv = process.env, capture = false, input } = {}) => {
   const result = spawnSync(command, args, {
     cwd,
-    env: { ...process.env, ...env },
+    env: { ...baseEnv, ...env },
     encoding: "utf8",
     input,
     stdio: [input === undefined ? "ignore" : "pipe", capture ? "pipe" : "inherit", "inherit"],
@@ -209,16 +209,19 @@ tofu([
   `-backend-config=endpoints={s3="https://${accountId}.r2.cloudflarestorage.com"}`,
 ]);
 const planPath = join(WORK, `tumpel-${STAGE}.tfplan`);
+const RETIRED = ["cloudflare_dns_record.app", "cloudflare_workers_route.app"];
 const apply = (extra) => {
   tofu(["plan", "-input=false", `-out=${planPath}`, ...extra]);
   const plan = JSON.parse(tofu(["show", "-json", planPath], { capture: true }));
-  const destroyed = (plan.resource_changes ?? []).filter((change) => change.change.actions.includes("delete"));
+  const destroyed = (plan.resource_changes ?? []).filter(
+    (change) => change.change.actions.includes("delete") && !RETIRED.includes(change.address),
+  );
   if (destroyed.length > 0) die(`the plan destroys ${destroyed.map((change) => change.address).join(", ")}; refusing`);
   tofu(["apply", "-input=false", planPath]);
 };
 const firstDeploys = [
   [config.name, "-exclude=cloudflare_workers_custom_domain.api"],
-  ["tumpel-dashboard", "-exclude=cloudflare_workers_route.app"],
+  ["tumpel-dashboard", "-exclude=cloudflare_workers_custom_domain.app"],
 ];
 const excluded = [];
 for (const [name, exclusion] of firstDeploys) if (!(await workerExists(name))) excluded.push(exclusion);
@@ -234,6 +237,13 @@ if (stageConfig.d1_databases[0].database_id !== databaseId) {
 }
 if (mode === "infra") process.exit(0);
 
+run("npm", ["run", "build", "-w", "@tumpel/dashboard"], {
+  env: { VITE_TUMPEL_API_ORIGIN: `https://${output("hostname")}` },
+});
+wrangler(["deploy", "--name", `tumpel-dashboard-${STAGE}`], {
+  cwd: DASHBOARD,
+  baseEnv: Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("WRANGLER_CI_"))),
+});
 wrangler(["d1", "migrations", "apply", "DB", "--remote"]);
 const workerSecrets = output("worker_secrets");
 wrangler([
@@ -246,9 +256,5 @@ wrangler([
   `ACCESS_PROOF_COMMON_NAME:${output("proof_common_name")}`,
 ]);
 wrangler(["secret", "bulk"], { input: JSON.stringify(workerSecrets) });
-run("npm", ["run", "build", "-w", "@tumpel/dashboard"], {
-  env: { VITE_TUMPEL_API_ORIGIN: `https://${output("hostname")}` },
-});
-wrangler(["deploy"], { cwd: DASHBOARD });
 if (excluded.length > 0) apply([]);
 console.log(`deploy: https://${output("hostname")} and https://${output("app_hostname")}`);
