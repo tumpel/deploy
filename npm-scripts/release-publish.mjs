@@ -4,48 +4,15 @@ import { createHash } from "node:crypto";
 import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { basename, dirname, join } from "node:path";
-import { ChannelProtocol, GuestImageManifestSchema, HostArchitectureSchema } from "@tumpel/api/schemas";
-import { z } from "zod";
+import { ChannelProtocol, GuestImageManifestSchema, ReleaseManifestSchema } from "@tumpel/api/schemas";
 import { CHECKSUM_HEADER, checksumOf, presignUrl } from "../packages/control-plane/src/presign.ts";
 
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
 const REQUEST_SECONDS = 900;
 const SIGNED_SECONDS = 3600;
 
-const Sha256Schema = z.string().regex(/^[0-9a-f]{64}$/);
-
-const InterimReleaseManifestSchema = z.object({
-  version: z.string().min(1),
-  commit: z.string().regex(/^[0-9a-f]{40}$/),
-  channelProtocolVersion: z.int().min(1),
-  supervisors: z
-    .array(
-      z.object({
-        architecture: HostArchitectureSchema,
-        url: z.url(),
-        sha256: Sha256Schema,
-        size: z.int().min(1),
-      }),
-    )
-    .min(1),
-  images: z
-    .array(
-      z.object({
-        harness: z.string().min(1),
-        harnessVersion: z.string().min(1),
-        architecture: HostArchitectureSchema,
-        imageUrl: z.url(),
-        imageDigest: Sha256Schema,
-        kernelUrl: z.url(),
-        kernelDigest: Sha256Schema,
-        manifestDigest: Sha256Schema,
-      }),
-    )
-    .min(1),
-});
-
-const FragmentSchema = InterimReleaseManifestSchema.pick({ images: true }).extend({
-  supervisor: InterimReleaseManifestSchema.shape.supervisors.element,
+const FragmentSchema = ReleaseManifestSchema.pick({ images: true }).extend({
+  supervisor: ReleaseManifestSchema.shape.supervisors.element,
 });
 
 const die = (message) => {
@@ -61,8 +28,8 @@ const required = (name) => {
 
 const stage = process.env.TUMPEL_STAGE || "dev";
 const bucket = `tumpel-releases-${stage}`;
-const baseUrl =
-  process.env.RELEASES_BASE_URL || `https://tumpel-control-plane-${stage}.matthijs-f49.workers.dev/v1/releases`;
+const stageOrigin = `https://api.${stage === "prod" ? "" : `${stage}.`}tumpel.dev`;
+const baseUrl = process.env.RELEASES_BASE_URL || `${stageOrigin}/v1/releases`;
 
 const storage = () => ({
   origin: `https://${required("CLOUDFLARE_ACCOUNT_ID")}.r2.cloudflarestorage.com`,
@@ -178,7 +145,7 @@ const upload = async (arch, supervisorPath, imageDir, fragmentPath) => {
     });
   }
   const fragment = FragmentSchema.parse({
-    supervisor: { architecture, url: supervisor.url, sha256: supervisor.digest, size: supervisor.size },
+    supervisor: { architecture, url: supervisor.url, sha256: supervisor.digest, sizeBytes: supervisor.size },
     images,
   });
   mkdirSync(dirname(fragmentPath), { recursive: true });
@@ -201,9 +168,10 @@ const publish = async (fragmentDir) => {
     FragmentSchema.parse(JSON.parse(readFileSync(join(fragmentDir, String(name)), "utf8"))),
   );
   const commit = headCommit();
-  const version = process.env.GITHUB_REF_TYPE === "tag" ? required("GITHUB_REF_NAME") : `0.0.0-${commit.slice(0, 12)}`;
-  const manifest = InterimReleaseManifestSchema.parse({
-    version,
+  const releaseVersion =
+    process.env.GITHUB_REF_TYPE === "tag" ? required("GITHUB_REF_NAME") : `0.0.0-${commit.slice(0, 12)}`;
+  const manifest = ReleaseManifestSchema.parse({
+    releaseVersion,
     commit,
     channelProtocolVersion: ChannelProtocol.Version,
     supervisors: fragments.map((fragment) => fragment.supervisor),
@@ -219,7 +187,7 @@ const publish = async (fragmentDir) => {
     body,
     Buffer.byteLength(body),
   );
-  console.log(`published ${bucket}/current.json for ${version} with ${manifest.images.length} images`);
+  console.log(`published ${bucket}/current.json for ${releaseVersion} with ${manifest.images.length} images`);
 };
 
 const [command, ...args] = process.argv.slice(2);
