@@ -8,7 +8,7 @@ Each host keeps one persistent two-way connection to the control plane, and the 
 
 ## Handshake
 
-The control plane sends a Challenge with a nonce. The host answers with a Hello. Its Ed25519 host key signs `tumpel-channel-hello-v1`, a zero byte, the nonce, a zero byte and the host id. The control plane checks the signature against the key it stored at enrolment and answers Welcome. Hello and Welcome carry `protocolVersion`, now 2. The control plane closes a Hello on any other version with UnsupportedVersion, and the reason tells the host to update the supervisor. Challenge, Hello, Welcome and Heartbeat travel outside the numbered frames.
+The control plane sends a Challenge with a nonce. The host answers with a Hello. Its Ed25519 host key signs `tumpel-channel-hello-v1`, a zero byte, the nonce, a zero byte and the host id. The control plane checks the signature against the key it stored at enrolment and answers Welcome. Hello and Welcome carry `protocolVersion`, now 5. The control plane checks `protocolVersion` before the rest of the Hello. It closes a Hello on any other version with UnsupportedVersion, and the reason tells the host to update the supervisor. Hello also carries the host's `boxCapacity` and its usage: warm boxes, the one-minute load average and available memory in MiB. The tenant writes both to its `host_usage` table before the control plane reads the host Online. Challenge, Hello, Welcome and Heartbeat travel outside the numbered frames.
 
 | Close code | Meaning                        |
 | ---------- | ------------------------------ |
@@ -27,7 +27,7 @@ The control plane sends TurnOffer, TurnWithdrawn, SnapshotRequest and BoxTeardow
 
 Every frame carries `seq` and `ack`. Both counters survive a supervisor restart. A supervisor that lost them exits with `ChannelStateLost`. After Welcome, each side resends every frame the other has not acknowledged, and the receiver drops a `seq` it already holds. The control plane mints a fresh credential grant for every send and resend. For a turn the host already claimed or that already ended, it sends TurnWithdrawn in place of the offer.
 
-A side sends a Heartbeat after 10 s of silence. After 30 s of silence, it closes with 4408. The supervisor reconnects with a backoff from 1 s to 30 s.
+The host sends a Heartbeat with its usage every 10 s after Welcome, and the tenant updates its `host_usage` row. After 10 s of silence, the control plane sends its own Heartbeat. After 30 s of silence, a side closes with 4408. The supervisor reconnects with a backoff from 1 s to 30 s.
 
 ## Budgets and named failures
 

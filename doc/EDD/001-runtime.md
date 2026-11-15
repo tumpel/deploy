@@ -26,6 +26,16 @@ Turns for different sessions run in parallel. When a turn ends, the supervisor p
 
 The warm state is the paused process in host memory. The supervisor writes no memory file to disk.
 
+## Placement
+
+The supervisor reads its usage from /proc: warm boxes, the one-minute load average and `MemAvailable` in MiB. When it cannot, it stops with `UsageUnreadable`, exit code 7. It sends that usage and its `boxCapacity` over the channel (EDD-002). The tenant's Durable Object keeps the latest per host in its `host_usage` table and places one request at a time.
+
+A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns reach its `boxCapacity`. The tenant picks an Online host whose architecture has an image and that is not Full. It ranks those by free slots, then by available memory. Images exist for amd64 only. With every host Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A tenant with no host gets `NoHostAvailable`. `tumpel host list-usage` lists the slots, load and memory of each host that has connected. Placement ignores the load.
+
+Warm boxes never make a host Full. A host whose slots are all warm still takes a session, and its supervisor evicts a warm box as Networking describes.
+
+A placed session keeps its host. When its host is not Online, the next turn moves to another host chosen the same way and boots a fresh box there, provided a snapshot holds the last completed turn. Otherwise the tenant refuses the send `HostOffline` and names the host and the missing turns. It refuses a stop `HostOffline` while the host is offline.
+
 ## Host setup
 
 `tumpel-supervisor install` runs once and uses sudo for that run only. It:
@@ -36,7 +46,7 @@ The warm state is the paused process in host memory. The supervisor writes no me
 4. installs the guest filter as a unit that loads before the host network comes up;
 5. installs the supervisor binary and a lingering user unit that runs `tumpel-supervisor run`.
 
-`boxCapacity` sits in the runtime config, between 1 and 256, 8 by default. The host then enrols with `tumpel-supervisor enrol`, which reads the token from a file and keeps an existing runtime config. Firecracker runs without its jailer, because the jailer needs root. The installer and the binaries are built for x86_64 only for now.
+`boxCapacity` sits in the runtime config, `runtime.json`, between 1 and 256, 8 by default. A small host gets a lower `boxCapacity` at install, and placement counts its slots from that number. The host then enrols with `tumpel-supervisor enrol`, which reads the token from a file and keeps an existing runtime config. Firecracker runs without its jailer, because the jailer needs root. The installer and the binaries are built for x86_64 only for now.
 
 ## Networking and isolation
 

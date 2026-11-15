@@ -148,10 +148,6 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Channel ordering and reconnect.** Every message carries a sequence number and an acknowledgement. After a reconnect, each side resends what the other has not acknowledged, and the receiver drops duplicates.
 
-**Placement after a host loss.** When a session's host is offline, its next turn boots on another of the tenant's online hosts, provided the snapshots cover the last completed turn. Otherwise the refusal names the host and the missing turns.
-
-**Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. Its size, the host's `boxCapacity`, is 8 by default.
-
 **Repository access is a GitHub App installation token.** Each stage has one GitHub App, and each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN`. When no installation covers the repository, the box uses the secret set's `GITHUB_TOKEN` (EDD-003).
 
 **MCP and CLI parity is a build check.** Every signed-in operation is one MCP tool and one CLI command on the same handler. The build fails on a gap.
@@ -161,6 +157,18 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 **The Shell harness exists for tests only.** The catalog leaves it out.
 
 **The proof signs in with an Access service token.** The test run approves its own device code with a Cloudflare Access service token tied to a test tenant.
+
+### Placement
+
+**Placement after a host loss.** When a session's host is offline, its next turn boots on another of the tenant's online hosts, provided the snapshots cover the last completed turn. Otherwise the refusal names the host and the missing turns.
+
+**Placement on capacity.** Each host reports its `boxCapacity` and its usage over the channel, and the tenant places each new session by them (EDD-001).
+
+> we're going to hook up different sized boxes, right? a Raspberry Pi, an older Pentium, whatever
+
+A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns fill its `boxCapacity`. A start goes to an Online host that is not Full and has an image for its architecture. The tenant ranks those hosts by free slots, then by available memory. When every host is Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A placed session keeps its host.
+
+**Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. Its size, the host's `boxCapacity`, is 8 by default.
 
 ## FAQ
 
