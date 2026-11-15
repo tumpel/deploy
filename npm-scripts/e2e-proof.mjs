@@ -4,6 +4,7 @@ import { createHash, createPublicKey, randomBytes, verify } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CLONE_SECONDS } from "./guest-image-settings.mjs";
 import { rotateIssuerKeys } from "./issuer-rotate.mjs";
 import { INLINE_CAP, loadCredential, PROOF_TENANT_FILE, proofTenantApply } from "./proof-tenant.mjs";
 
@@ -215,7 +216,12 @@ const connectorClient = (accessToken) => {
 const TOOL_CALL_LINE = /^\[[^\]\s]+\]/;
 
 const pollConnectorTurn = async (client, sessionId, turnId, t0) => {
-  const firstLineLimit = (settings.turnClaimBudgetSeconds + settings.turnFirstLineBudgetSeconds) * 1000;
+  const firstLineLimit =
+    (settings.turnImageFetchBudgetSeconds +
+      settings.turnClaimBudgetSeconds +
+      CLONE_SECONDS +
+      settings.turnFirstLineBudgetSeconds) *
+    1000;
   const turnLimit = settings.turnTotalBudgetSeconds * 1000;
   const lines = [];
   let cursor = null;

@@ -17,6 +17,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/api/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
+import { CLONE_SECONDS } from "./guest-image-settings.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = process.env.TUMPEL_IMAGE_DIR ?? join(homedir(), "development", ".tmp", "tumpel-images");
@@ -86,7 +87,6 @@ const pinsFor = (arch) => {
   };
 };
 const WORKING_DIRECTORY = "/root/workspace";
-const CLONE_SECONDS = 120;
 const CLAUDE_FLAGS = [
   "-p",
   "--input-format",
