@@ -26,6 +26,16 @@ It was made with the rebuild steps above, with every `tumpel-host` name replaced
 
 It is set up like the first host, with `tumpel-supervisor install` and the guest images in `~/development/.tmp/tumpel-images`.
 
+## Release builds
+
+GitHub Actions runs `.github/workflows/release.yml` on the runner that the repository variable `BUILD_RUNNER` names, now the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools.
+
+The self-hosted runner is a second runner instance on the VM `github-actions-runner` on `box`. It lives in `/home/runner/actions-runner-tumpel` as a service, registered to `mvhenten/tumpel` as `github-actions-runner-tumpel`. Leave the other project's runners there alone. The VM does not autostart. When it spins a vCPU, run `virsh destroy`, then `virsh start`. Never reboot it.
+
+`runner@` accepts only devbox's key. From `sandbox`: `ssh -J box,homelab devbox`, then `ssh -J box runner@192.168.122.50`.
+
+On 2026-11-15 `box` has 16 threads and 58.7 GiB. `sandbox` takes 8 vCPU and 16 GiB, each test host 4 and 8, `github-actions-runner` 12 and 24, and `lab` 4 and 16 (off by default). A third 8 GiB host does not fit while the runner runs.
+
 ## Host setup
 
 `tumpel-supervisor install --endpoint <url> --token-file <path|->` turns the host into an enrolled, running Tumpel host in one run. Run it as `mvhenten`, never as root. It asks for admin rights only for its one-time setup, and a second run changes nothing that is already in place. The running supervisor never escalates.
