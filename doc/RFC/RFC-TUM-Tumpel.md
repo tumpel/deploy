@@ -18,7 +18,7 @@ Tumpel runs coding agent harnesses on machines a tenant owns, including desktops
 - **TypeSpec first.** Radical shift left on the API: everything is modelled in TypeSpec first. Generate SDKs, types and anything else we can.
 - **Every input has a schema.** Config, options and CLI arguments each have a versioned schema. A tenant keeps its config file in a git repo.
 - **All primitives get wrapped.** The channel from the supervisor to the backend works the same on any compute: a Cloudflare Worker or a Lambda with WebSockets. Define the general protocol first, then plug in one backend.
-- **Workers in TypeScript.** Cloudflare Workers in TypeScript: fastest, simplest, lowest maintenance. Only what sign-in and routing need before the tenant is known is stored centrally; everything else per tenant, in its own SQLite database.
+- **Workers in TypeScript.** Cloudflare Workers in TypeScript. Only what sign-in and routing need before the tenant is known is stored centrally; everything else per tenant, in its own SQLite database.
 - **No standing secrets.** No shared secrets anywhere, and no standing credential on a host.
 - **Events drive the lifecycle.** Nothing sweeps and nothing polls.
 - **Every phase has a time limit and a named failure.** Fail fast, with no retries and no fallbacks.
@@ -33,9 +33,7 @@ Coding agent harnesses such as Claude Code or Codex run in a terminal on the mac
 
 ### Cloud agents
 
-Tumpel is cloud agents: the infrastructure that runs harnesses. That means hosts, boxes, sessions, turns, personas, secret sets and credentials. A super harness is the management, communication and memory layer across harnesses. Tumpel builds no super harness. A tenant brings its own.
-
-Tumpel has three parts. The supervisor runs on hosts the tenant brings: Linux machines with KVM. Cloudflare Workers run the control plane, which holds tenants, sessions and turns.
+Tumpel is cloud agents: the infrastructure that runs harnesses. Tumpel builds no super harness. A tenant brings its own.
 
 ```mermaid
 flowchart LR
@@ -48,19 +46,15 @@ flowchart LR
 
 ### Hosts and boxes
 
-A host enrols with a one-time token and keeps one outbound WebSocket to the control plane. A box is one Firecracker microVM on a host, running one harness for one session. When a turn ends, the supervisor pauses the box and keeps it warm for the next one. Once that window ends, the box goes, and the next turn boots a fresh box from the session's snapshots.
+Once the warm window ends, the box goes, and the next turn boots a fresh box from the session's snapshots.
 
 ### Sessions and turns
 
-Each session belongs to a tenant and runs one harness on one host. The harness's output comes back as numbered lines that a caller reads with a cursor.
+The harness's output comes back as numbered lines that a caller reads with a cursor.
 
 ### Credentials
 
-A persona names one harness and carries that harness's own config files. It names one secret set. Besides the GitHub App token for the session's repository, that set is the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel to the box.
-
-### Snapshots
-
-When a turn completes, the supervisor stores the box's files in object storage as chunks that every session of the tenant shares. A fresh box restores the session from its latest snapshot.
+Besides the GitHub App token for the session's repository, a persona's secret set is the only source of secrets for its sessions.
 
 ### Proof
 
@@ -142,7 +136,7 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 ### Domain and stages
 
-**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. Each stage has its own hostnames. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record. On 2026-11-15 the ruling read:
+**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record. On 2026-11-15 the ruling read:
 
 > tumpel.dev for everything
 
@@ -152,13 +146,13 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 > I would follow industry.
 
-**Each secret set member has a kind.** The kind is variable, API key or subscription token, and a subscription token carries its expiry. The harness catalog lists the credential kinds each harness takes and the variable it reads for each, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
+**Each secret set member has a kind.** The kind is variable, API key or subscription token. The harness catalog lists the credential kinds each harness takes and the variable it reads for each, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
 
-**The central store holds accounts, hosts and the GitHub App.** It holds tenants, principals, memberships, invitations, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant. A membership is a principal's role in one tenant, and sign-in binds each token to one of them (EDD-005). It also holds the stage's GitHub App, each tenant's installation, and the GitHub account that installed each one. GitHub's uninstall webhook names only the installation.
+**The central store holds accounts, hosts and the GitHub App.** It holds tenants, principals, memberships, invitations, devices, hosts and enrolment tokens. It also holds the stage's GitHub App, each tenant's installation, and the GitHub account that installed each one. GitHub's uninstall webhook names only the installation.
 
 ### Snapshot storage
 
-**Snapshot bytes move on presigned URLs.** The control plane signs an upload URL for each pack and for each snapshot's root, and download URLs for a restore, so a host holds no storage key. Memory state never leaves the host.
+**Snapshot bytes move on presigned URLs.** The control plane signs an upload URL for each pack and for each snapshot's root, and download URLs for a restore. Memory state never leaves the host.
 
 **Snapshots are chunked and packed.** Only the chunks the tenant lacks leave the host. The host cuts each changed file into content-defined chunks and concatenates the new ones into packs of about 8 MiB. An archive deletes the packs that hold no remaining chunk and never repacks (EDD-004). The cost is a host chunk cache with no eviction, and packs that a failed snapshot leaves in storage.
 
@@ -170,17 +164,19 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 **Channel ordering and reconnect.** Every message carries a sequence number and an acknowledgement. After a reconnect, each side resends what the other has not acknowledged, and the receiver drops duplicates.
 
-**Repository access is a GitHub App installation token.** Every self-hosted control plane registers its own GitHub App, one per stage, at its own `/github/app/setup` page (ruling of 2026-11-15). Each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN` (EDD-003).
+**Repository access is a GitHub App installation token.** Every self-hosted control plane registers one GitHub App per stage at its `/github/app/setup` page (ruling of 2026-11-15). Each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN` (EDD-003).
 
-**MCP and CLI parity is a build check.** Every tenant operation is one MCP tool and one CLI command on the same handler, and the build fails on a gap. On 2026-11-15 the ruling put every tenant operation on MCP: only the OAuth, browser-only, host channel and release endpoints stay off it, and secret values still never pass through MCP.
+**MCP and CLI parity is a build check.** Every tenant operation is one MCP tool and one CLI command on the same handler, and the build fails on a gap. Only the OAuth, browser-only, host channel and release endpoints stay off MCP, and secret values never pass through it. On 2026-11-15 the ruling read:
 
 > the mcp should allow it all
 
 **A transcript read is the live poll.** A caller reads the transcript page by page until a page reads `finished`. A compact read of a Claude Code turn keeps the assistant's text and one line per tool call.
 
+### Tests
+
 **The Shell harness exists for tests only.** The catalog leaves it out.
 
-**The proof signs in with an Access service token.** The test run approves its own device code with a Cloudflare Access service token tied to a test tenant.
+**The proof approves its own device code with a Cloudflare Access service token** tied to a test tenant.
 
 ### Guest layers
 
