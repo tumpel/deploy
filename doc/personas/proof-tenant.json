@@ -36,6 +36,11 @@
           "provider": "Anthropic",
           "expiresAt": { "env": "PROOF_CLAUDE_CODE_OAUTH_TOKEN_EXPIRES_AT" },
           "valueFrom": { "env": "PROOF_CLAUDE_CODE_OAUTH_TOKEN" }
+        },
+        {
+          "kind": "Variable",
+          "name": "GITHUB_TOKEN",
+          "valueFrom": { "env": "PROOF_GITHUB_TOKEN" }
         }
       ]
     },
@@ -47,6 +52,11 @@
           "name": "ANTHROPIC_API_KEY",
           "provider": "Anthropic",
           "valueFrom": { "env": "PROOF_REFUSED_KEY" }
+        },
+        {
+          "kind": "Variable",
+          "name": "GITHUB_TOKEN",
+          "valueFrom": { "env": "PROOF_GITHUB_TOKEN" }
         }
       ]
     },
