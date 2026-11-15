@@ -1,6 +1,6 @@
 # GitHub Actions prebuilds
 
-A tenant connects GitHub Actions with `tumpel github-actions start --account-label <label> --caller-workflow .github/workflows/tumpel-prebuild.yml`. Each repository it prebuilds then holds that caller workflow on its default branch.
+A tenant connects GitHub Actions with `tumpel github-actions start --account-label <label> --caller-workflow .github/workflows/tumpel-prebuild.yml`. Each repository it prebuilds then holds that caller workflow on its default branch. `tumpel github-actions get` answers the same text as `callerWorkflowExample`, and the reusable workflow it calls as `reusableWorkflow`.
 
 ```yaml
 name: tumpel prebuild
@@ -35,7 +35,7 @@ permissions:
 
 jobs:
   prebuild:
-    uses: mvhenten/tumpel/.github/workflows/prebuild.yml@main
+    uses: tumpel/workflows/.github/workflows/prebuild.yml@v1
     with:
       prebuildId: ${{ inputs.prebuildId }}
       tenantId: ${{ inputs.tenantId }}
@@ -82,4 +82,10 @@ The reusable workflow `.github/workflows/prebuild.yml` runs two jobs:
 - `build` holds `contents: read` and no `id-token`. It imports the root filesystem tar as a local `linux/amd64` image, checks the repository out without credentials, bind-mounts it at `/root/workspace`, runs `/opt/tumpel/prebuild.mjs build /out` in the container and keeps `/out` as a job artifact.
 - `upload` holds `id-token: write` and runs no repository code. It extracts `/opt/tumpel/prebuild.mjs` and the image's Node.js from the same root filesystem tar, never from the artifact, and runs `prebuild.mjs upload` with the artifact.
 
-The reusable workflow lives in this repository until D6 of issue #16 is ruled. The repository is private, so only repositories of its owner's account can call it, once its Actions settings allow access from repositories owned by the user ([deploy](deploy.md#github-actions-prebuilds)).
+The upload job's token must carry a `job_workflow_ref` of `tumpel/workflows/.github/workflows/prebuild.yml` at tag `v1` or at a release tag `vX.Y.Z`; the upload start refuses any other with `JobTokenMismatch` on `job_workflow_ref`.
+
+## Publishing
+
+Callers reference the copy in the public repository [tumpel/workflows](https://github.com/tumpel/workflows). `.github/workflows/prebuild.yml` in this repository is its only source: never edit the copy in tumpel/workflows. On a release tag `vX.Y.Z`, the `workflows` job of `release.yml` runs `npm run workflows:publish`, which commits the file to tumpel/workflows when it changed, tags that commit `vX.Y.Z` and moves `v1` to it. A release tag already on another commit fails the job, as does a missing `WORKFLOWS_PUBLISH_TOKEN` ([deploy](deploy.md#github-actions-prebuilds)).
+
+`v1` names the five inputs above. A change that breaks a caller needs a new major tag in `workflows-publish.mjs` and in `REUSABLE_WORKFLOW_TAG`.

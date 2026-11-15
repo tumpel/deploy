@@ -53,12 +53,13 @@ The token `tumpel-releases-upload-<stage>` writes the bucket. `npm run release:s
 
 ## GitHub Actions prebuilds
 
-The reusable workflow `.github/workflows/prebuild.yml` lives in this repository until D6 of issue #16 is ruled. While the repository is private, only repositories of its owner's account can call it. A person sets up step 16 of the proof once per stage:
+Caller workflows call `tumpel/workflows/.github/workflows/prebuild.yml@v1` in the public repository [tumpel/workflows](https://github.com/tumpel/workflows), which `release.yml` publishes from this repository on each release tag (`doc/github-actions-prebuild.md`). The publish needs the repository secret `WORKFLOWS_PUBLISH_TOKEN`: a fine-grained personal access token with resource owner `tumpel` and read and write on Contents and Workflows of tumpel/workflows only. The owner creates it once and rotates it before it expires; the `workflows` job fails while it is missing.
 
-1. In this repository's Actions settings, enable "Accessible from repositories owned by the user".
-2. Create the fixture repository in the same account. Its default branch holds the caller workflow of `doc/github-actions-prebuild.md` at `.github/workflows/tumpel-prebuild.yml`, and a `.devcontainer/devcontainer.json` or a root lockfile.
-3. Grant the dev App write on actions, and accept the new permission on the proof tenant's installation, which must cover the fixture repository.
-4. Set `TUMPEL_PROOF_PREBUILD_REPO` to the fixture's URL, such as `https://github.com/<owner>/<name>`.
+A person sets up step 16 of the proof once per stage:
+
+1. Create the fixture repository. Its default branch holds the caller workflow of `doc/github-actions-prebuild.md` at `.github/workflows/tumpel-prebuild.yml`, and a `.devcontainer/devcontainer.json` or a root lockfile.
+2. Grant the dev App write on actions, and accept the new permission on the proof tenant's installation, which must cover the fixture repository.
+3. Set `TUMPEL_PROOF_PREBUILD_REPO` to the fixture's URL, such as `https://github.com/<owner>/<name>`.
 
 ## Issuer
 
