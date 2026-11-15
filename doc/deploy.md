@@ -34,6 +34,100 @@ Connect claude.ai in Settings, Connectors, Add custom connector. Enter the stage
 
 The end-to-end proof signs in without a person: `infra/proof.tf` mints the Access service token `tumpel-proof-<stage>` with the `bootstrap` alias and lets it through the Access application with a `non_identity` policy. `npm run deploy` sets its client id as the Worker var `ACCESS_PROOF_COMMON_NAME`. The Worker accepts that service token on `/v1/device/approve`, `/oauth/consent` and `/v1/device/deny` only, as the owner of the tenant `Tumpel proof`. That tenant's id and principal id derive from the client id, and the Worker creates both on first use. `npm run proof -- tumpel login --endpoint <stage url>` approves its own code with it.
 
+## GitHub App permissions
+
+The manifest in `packages/control-plane/src/github.ts` asks for every permission an agent needs to run a repository: code, CI, settings, issues and releases. A turn's token covers only the turn's repository. Organization-wide powers and the installer's own account stay out.
+
+| Permission (manifest key)                          | Level | Reason                                                              |
+| -------------------------------------------------- | ----- | ------------------------------------------------------------------- |
+| Actions (`actions`)                                | write | Dispatch prebuilds, rerun and cancel workflow runs.                 |
+| Administration (`administration`)                  | write | Branch protection, rulesets, repository settings and collaborators. |
+| Artifact metadata (`artifact_metadata`)            | write | Record build artifact metadata from CI.                             |
+| Attestations (`attestations`)                      | write | Create and read build provenance attestations.                      |
+| Checks (`checks`)                                  | write | Report and rerun check runs.                                        |
+| Code quality (`code_quality`)                      | read  | Read code quality findings to fix them.                             |
+| Code scanning alerts (`security_events`)           | write | Upload SARIF and triage code scanning alerts.                       |
+| Commit statuses (`statuses`)                       | write | Set commit statuses.                                                |
+| Contents (`contents`)                              | write | Clone, push, branches, tags and releases.                           |
+| Custom properties (`repository_custom_properties`) | write | Set the repository's custom property values.                        |
+| Dependabot alerts (`vulnerability_alerts`)         | write | Triage and dismiss Dependabot alerts.                               |
+| Dependabot secrets (`dependabot_secrets`)          | write | Set the secrets Dependabot updates use.                             |
+| Deployments (`deployments`)                        | write | Create deployments and their statuses.                              |
+| Discussions (`discussions`)                        | write | Read and answer discussions.                                        |
+| Environments (`environments`)                      | write | Configure deployment environments, their secrets and variables.     |
+| Issues (`issues`)                                  | write | Work, label, comment on and close issues.                           |
+| Merge queues (`merge_queues`)                      | write | Manage the merge queue.                                             |
+| Metadata (`metadata`)                              | read  | Required by GitHub for every App.                                   |
+| Packages (`packages`)                              | write | Publish and read the repository's packages.                         |
+| Pages (`pages`)                                    | write | Configure and build GitHub Pages.                                   |
+| Projects (`repository_projects`)                   | write | Manage the repository's projects.                                   |
+| Pull requests (`pull_requests`)                    | write | Open, review, comment on and merge pull requests.                   |
+| Secret scanning alerts (`secret_scanning_alerts`)  | write | Triage and resolve secret scanning alerts.                          |
+| Secrets (`secrets`)                                | write | Set Actions secrets for CI; values are never readable.              |
+| Variables (`actions_variables`)                    | write | Set Actions variables for CI.                                       |
+| Webhooks (`repository_hooks`)                      | write | Configure the repository's webhooks for integrations.               |
+| Workflows (`workflows`)                            | write | Push changes to `.github/workflows`.                                |
+| Organization: Members (`members`)                  | read  | Read teams and members to request team reviews and assign issues.   |
+| Organization: Projects (`organization_projects`)   | write | Move issues and pull requests on organization project boards.       |
+
+Left out:
+
+- Organization administration, secrets, variables, Dependabot secrets, private registries, webhooks, self-hosted runners, hosted runner images and network configurations: organization-wide control beyond the installed repositories.
+- Organization personal access tokens and their requests, blocking users, custom roles, custom properties, external custom properties, issue fields and issue types, campaigns, events and API insights: governance of the organization and its people.
+- GitHub Copilot Business, Copilot metrics, Copilot agent settings, Copilot Spaces, Copilot content exclusion and the organization codespaces permissions: billing and seats.
+- Repository creation and GitHub App installation repository access: they create repositories or widen the installation beyond what the installer chose.
+- Codespaces, Codespaces lifecycle admin, metadata and secrets: billed to the owner, and the box replaces them.
+- Repository security advisories: publishing an advisory is a disclosure decision for a maintainer.
+- Agent secrets, agent variables and Copilot agent settings on the repository: they configure GitHub's own agents.
+- Single file: Contents covers it.
+- Every account permission: the App acts on repositories, never on the installer's own account.
+- Every enterprise permission.
+
+Administration write also lets a token delete, archive, transfer or change the visibility of its repository; GitHub offers no narrower permission for branch protection and rulesets. Each token covers one repository, and an organization owner restores a deleted repository within 90 days.
+
+The App subscribes to `workflow_run`, which completes a GitHub Actions prebuild, and receives `installation` without subscribing; no other event has a handler.
+
+### Updating the dev App
+
+A changed manifest does not update an App that exists. For tumpel-dev, open https://github.com/organizations/tumpel/settings/apps/tumpel-dev/permissions and set, top to bottom:
+
+Repository permissions:
+
+1. Actions: Read and write
+2. Administration: Read and write
+3. Artifact metadata: Read and write
+4. Attestations: Read and write
+5. Checks: Read and write
+6. Code quality: Read-only
+7. Code scanning alerts: Read and write
+8. Commit statuses: Read and write
+9. Contents: Read and write
+10. Custom properties: Read and write
+11. Dependabot alerts: Read and write
+12. Dependabot secrets: Read and write
+13. Deployments: Read and write
+14. Discussions: Read and write
+15. Environments: Read and write
+16. Issues: Read and write
+17. Merge queues: Read and write
+18. Metadata: Read-only
+19. Packages: Read and write
+20. Pages: Read and write
+21. Projects: Read and write
+22. Pull requests: Read and write
+23. Secret scanning alerts: Read and write
+24. Secrets: Read and write
+25. Variables: Read and write
+26. Webhooks: Read and write
+27. Workflows: Read and write
+
+Organization permissions:
+
+28. Members: Read-only
+29. Projects: Read and write
+
+Leave every other permission at No access, and leave the events as they are. Choose Save changes. An owner of each installation then accepts once: on `https://github.com/organizations/<org>/settings/installations/<installationId>` for an organization, or `https://github.com/settings/installations/<installationId>` for a personal account, choose Review request, then Accept new permissions.
+
 ## Releases
 
 Two workflows publish to the R2 bucket `tumpel-releases-<stage>`, which is `dev` unless a manual run names another stage. Both build amd64 only. The workflow-level flag `BUILD_ARM64` gates the arm64 build and stays `false`: nothing claims arm64 host support until a real arm64 host passes the proof (`doc/test-host.md`). `npm run guest:image` and `npm run release:publish` read the same flag from the environment and refuse arm64 while it is off. The image build runs on the runner that the repository variable `BUILD_RUNNER` names, and on `ubuntu-24.04` when the variable is unset (`doc/test-host.md`); everything else runs on `ubuntu-24.04`. `checks.yml` runs `npm run check`, the npm tests in three shards (`TEST_SHARD`) and `cargo test` on `ubuntu-24.04`, in parallel with the build, and gates every publish.
