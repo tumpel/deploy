@@ -66,13 +66,13 @@ The picker names the text and what the list holds. The Connect row is active and
 
 ![Not configured](repository-picker-not-configured.svg)
 
-The stage has no GitHub App. A card under the disabled field says so, with Open Connections, where the NotConfigured card links the setup page. Build now stays off.
+The stage has no GitHub App. A card under the field says so, with Open Connections, where the NotConfigured card links the setup page. Where the operation takes any repository, the field still opens with an empty list, so a typed `owner/name` gets the Use row for the persona's `GITHUB_TOKEN` (EDD-003). On From an issue the field is disabled.
 
 ### Not connected
 
 ![Not connected](repository-picker-not-connected.svg)
 
-The tenant holds no installation. The card reads Connect GitHub to pick a repository, with Connect GitHub to Connections.
+The tenant holds no installation. The card reads Connect GitHub to pick a repository, with Connect GitHub to Connections. Where the operation takes any repository, the field still opens with an empty list and the Use row, as in Not configured.
 
 ### Selected
 
@@ -84,22 +84,22 @@ The field shows `owner/name`. Its hint names the default branch and marks a priv
 
 ![Listing refused](repository-picker-error.svg)
 
-The picker shows the Problem's title, detail and fix, with Retry, Open Connections and Report an issue. The report link opens a prefilled issue with the title, detail, path and time. After close, the field shows the title as its error. That tells the reader why the main button stays off.
+The picker shows the Problem's title, detail and fix above the search field, with Retry, Open Connections and Report an issue. The list reads as empty, so the Use row still takes a typed `owner/name`. The report link opens a prefilled issue with the title, detail, path and time. After close, the field shows the title as its error. That tells the reader why the main button stays off.
 
 ## Interaction spec
 
 The four overlay states (Loading, Results, Filtering, No match) and Listing refused close as the Keyboard section states. Focus then returns to the trigger.
 
-| State           | Enters                                      | Leaves                                                       | Focus on entry                         | URL                                      | Story                    |
-| --------------- | ------------------------------------------- | ------------------------------------------------------------ | -------------------------------------- | ---------------------------------------- | ------------------------ |
-| Loading         | Opening while `useRepositories` is pending  | Any state below once the read settles                        | Search field                           | Nothing                                  | `Loading`                |
-| Results         | A read with one repository or more          | Filtering on typing, Selected on a pick, Connections         | Search field, first row active         | Nothing                                  | `Results`, `ResultsWide` |
-| Filtering       | Text that matches a row                     | No match, Selected; closing drops the text                   | Stays in the search field              | Nothing                                  | `Filtering`              |
-| No match        | Text that matches no row, or an empty read  | Filtering on edit, Connections, Selected through the Use row | Search field, Connect row active       | Nothing; Connections returns here (S2.3) | `NoMatch`                |
-| Not configured  | `GitHubAppMissing`                          | Connections, or Loading when tab focus reads the list again  | Unchanged; field described by the card | Nothing                                  | `NotConfigured`          |
-| Not connected   | `GitHubNotConnected`                        | Connect GitHub; the install returns here and the list loads  | Unchanged; field described by the card | Nothing                                  | `NotConnected`           |
-| Selected        | A pick                                      | Results when the field opens again, with an empty search     | The following field of the form        | `?repo=<owner>/<name>` on start-session  | `Selected`               |
-| Listing refused | `RepositoryUnreadable`, a 403, or no answer | Loading on Retry, Connections                                | Retry                                  | Nothing                                  | `ListingRefused`         |
+| State           | Enters                                      | Leaves                                                                                    | Focus on entry                         | URL                                      | Story                    |
+| --------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------------- | ------------------------ |
+| Loading         | Opening while `useRepositories` is pending  | Any state below once the read settles                                                     | Search field                           | Nothing                                  | `Loading`                |
+| Results         | A read with one repository or more          | Filtering on typing, Selected on a pick, Connections                                      | Search field, first row active         | Nothing                                  | `Results`, `ResultsWide` |
+| Filtering       | Text that matches a row                     | No match, Selected; closing drops the text                                                | Stays in the search field              | Nothing                                  | `Filtering`              |
+| No match        | Text that matches no row, or an empty read  | Filtering on edit, Connections, Selected through the Use row                              | Search field, Connect row active       | Nothing; Connections returns here (S2.3) | `NoMatch`                |
+| Not configured  | `GitHubAppMissing`                          | Connections, Selected through the Use row, or Loading when tab focus reads the list again | Unchanged; field described by the card | Nothing                                  | `NotConfigured`          |
+| Not connected   | `GitHubNotConnected`                        | Connect GitHub, Selected through the Use row; the install returns here and the list loads | Unchanged; field described by the card | Nothing                                  | `NotConnected`           |
+| Selected        | A pick                                      | Results when the field opens again, with an empty search                                  | The following field of the form        | `?repo=<owner>/<name>` on start-session  | `Selected`               |
+| Listing refused | `RepositoryUnreadable`, a 403, or no answer | Loading on Retry, Connections, Selected through the Use row                               | Retry                                  | Nothing                                  | `ListingRefused`         |
 
 An empty read shows No match with the copy "Your GitHub connections cover no repository".
 
