@@ -58,6 +58,24 @@ Both listings read GitHub with an installation token. The repository listing, `G
 
 Sessions and prebuilds name a repository in one form: `https://github.com/<owner>/<name>` in lower case, without `.git`. One normaliser writes it for both.
 
+## Claude setup
+
+A person who has no Claude Code installed gets a subscription token from a short-lived box. `tumpel claude-setup start <secretSetId>` (`ClaudeSetups_start`) places a box on an Online host as a session start does. The box runs `claude setup-token` from the tenant's pinned Claude Code on a pseudo-terminal. It gets no secret set member, no GitHub token, no repository and no persona files. A start is refused `NoHostOnline` when no Online host has a free slot and the guest image for its architecture. It is refused `Conflict` when the set holds an Anthropic credential under a name other than `CLAUDE_CODE_OAUTH_TOKEN`.
+
+1. The setup reads `Starting` until the box prints its sign-in URL. The guest sends GuestClaudeSetupUrl, the host relays ClaudeSetupBoxUrl, and the setup reads `AwaitingCode` with `signInUrl` and `codeDueAt`. Clients poll `ClaudeSetups_get` as they poll a transcript.
+2. The person signs in and submits the code the page shows, once (`ClaudeSetups_submitCode`). The control plane seals the code under the tenant's data key and sends ClaudeSetupBoxCode, which carries the code only when it is sent. The guest types it into the command. The setup reads `Minting`.
+3. Claude Code prints the token. The guest POSTs it with its expiry to `/v1/claude-setups/{id}/token` (`ClaudeSetupBoxes_writeToken`). The guest's bearer token is an HMAC of the tenant and setup under a key the key-store port derives, and it works while the setup is `Minting`, once. The write seals the value as every member is, through the same table rows. It adds or replaces only the `SubscriptionToken` member `CLAUDE_CODE_OAUTH_TOKEN` for Anthropic and keeps every other member. The setup reads `Completed` with the member and its `expiresAt`, and the host stops the box and deletes its drive.
+
+The token reaches neither the host nor any response, log, transcript or Problem detail. Ledger frames hold the offer and the code without their secrets: the control plane adds the box token, the image URLs and the code when it sends them. A detail that quotes Claude Code's output replaces any `sk-ant-` string with `[token]`. Claude Code's documentation gives the token one year and does not say that `setup-token` prints an expiry, so the guest sets `expiresAt` one year after the token was printed.
+
+| Budget (ControlPlaneSettings)  | Default | Failure         |
+| ------------------------------ | ------- | --------------- |
+| `claudeSetupUrlBudgetSeconds`  | 300 s   | SetupUrlMissing |
+| `claudeSetupCodeBudgetSeconds` | 600 s   | SetupTimedOut   |
+| `claudeSetupMintBudgetSeconds` | 120 s   | SetupTimedOut   |
+
+The URL budget covers the image fetch and the boot. Claude Code refusing the code, or exiting without a token, fails the setup `CodeRejected`. A token the control plane does not store fails it `TokenNotStored`, and the box discards the token. Each failure stops the box, which also stops at the sum of the three budgets. The code is a secret value, so EDD-005's rule keeps it off MCP: `tumpel_claude_setup_start` and `tumpel_claude_setup_get` exist, and the code goes through the dashboard or `tumpel claude-setup submit-code --stdin`.
+
 ## Audit
 
 Each grant leaves one row in an append-only audit table of the tenant's database. `tumpel session handovers <sessionId>` lists a session's rows, oldest first. A row names the grant, the turn, the host, the variable names and the time. Database triggers refuse an update or a delete of a row.
