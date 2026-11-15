@@ -144,7 +144,7 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 **Each secret set member has a kind.** The kind is variable, API key or subscription token, and a subscription token carries its expiry. The harness catalog lists the credential kinds each harness takes and the variable it reads for each, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
 
-**The central store holds accounts, hosts and the GitHub App.** It holds tenants, principals, memberships, invitations, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant. A membership is a principal's role in one tenant, and sign-in binds each token to one of them (EDD-005). It also holds the stage's GitHub App and each tenant's installation. GitHub's uninstall webhook names only the installation.
+**The central store holds accounts, hosts and the GitHub App.** It holds tenants, principals, memberships, invitations, devices, hosts and enrolment tokens. Sign-in and channel routing read them before they know the tenant. A membership is a principal's role in one tenant, and sign-in binds each token to one of them (EDD-005). It also holds the stage's GitHub App, each tenant's installation, and the GitHub account that installed each one. GitHub's uninstall webhook names only the installation.
 
 ### Snapshot storage
 
