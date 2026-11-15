@@ -40,7 +40,7 @@ Step 13 makes every call as a JSON-RPC `tools/call` on `/mcp`, with the bearer t
 ## Issuer and prebuild steps
 
 14. Issuer. Discovery and the JWKS answer on `id.<stage>.tumpel.dev` and name the stage's issuer, its JWKS URL and RS256. Any other path there answers 404. The run then rotates the key and mints no token. The rotation's `signsFrom` must fall within the next 24 h, and the JWKS must publish both the signing key and the next key.
-15. Prebuild refused. `tumpel connection list` reads the GitHubActions and Namespace rows, and neither is Connected. A prebuild start on the proof repository names each provider in turn. Each start is refused `Build provider not connected` (NoBuildProvider) with that provider's name, and the repository then has no prebuild.
+15. Prebuild refused. `tumpel connection list` reads the GitHubActions, CircleCI and Namespace rows, and none is Connected. A prebuild start on the proof repository names each provider in turn. Each start is refused `Build provider not connected` (NoBuildProvider) with that provider's name, and the repository then has no prebuild.
 16. Prebuild GitHub Actions. The step is skipped until `TUMPEL_PROOF_PREBUILD_REPO` names a fixture repository of the App installation's account. That repository holds the caller workflow `.github/workflows/tumpel-prebuild.yml` on its default branch. The run connects GitHub Actions with that caller workflow and starts a rebuild on the fixture. Within the dispatch and build budgets the prebuild must read Converting. A second start must answer the same prebuild. The run then deletes the GitHub Actions connection.
 17. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
 

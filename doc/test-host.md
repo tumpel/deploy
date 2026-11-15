@@ -26,7 +26,7 @@ On a fresh host, drop the old host key on `sandbox` with `ssh-keygen -R <address
 
 ## Second host
 
-`tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. `ssh tumpel-host-2` from `sandbox` reaches it (192.168.122.217, user `mvhenten`, network `default`).
+`tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. `ssh tumpel-host-2` from `sandbox` reaches it (192.168.122.218, user `mvhenten`, network `default`).
 
 It was made with the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `tumpel-host-2.qcow2` beside the first one, from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `tumpel-host-2.xml` in that seed directory and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
 
@@ -47,12 +47,14 @@ Desktops and servers are both host targets. A desktop runs NetworkManager withou
 packages: [ubuntu-desktop-minimal, network-manager, nftables]
 runcmd:
   - systemctl disable --now systemd-networkd.service systemd-networkd.socket
-  - printf "network:\n  version: 2\n  renderer: NetworkManager\n" > /etc/netplan/01-network-manager.yaml
+  - 'printf "network:\n  version: 2\n  renderer: NetworkManager\n" > /etc/netplan/01-network-manager.yaml'
   - rm -f /etc/netplan/50-cloud-init.yaml
   - netplan apply
 ```
 
-After `cloud-init status --wait`, reboot it once, then check that `systemctl is-active systemd-networkd` is `inactive` and `nmcli general status` answers. Then install as Host setup below shows.
+Keep the `printf` line in single quotes: unquoted, its `: ` makes cloud-init reject the file with "Nested mappings are not allowed".
+
+After `cloud-init status --wait`, reboot it once, then check that `systemctl is-active systemd-networkd` is `inactive` and `nmcli general status` answers. NetworkManager asks for a new DHCP lease, which can hand out another address: `tumpel-host-2` moved from 192.168.122.217 to 192.168.122.218. Read the address again with `$V domifaddr tumpel-host-2` on box, point `ssh tumpel-host-2` on `sandbox` at it and drop its old host key with `ssh-keygen -R <address>`. Then install as Host setup below shows.
 
 ## Release builds
 

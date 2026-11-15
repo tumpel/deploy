@@ -22,3 +22,13 @@ export const proofTenantApply = (credential, die) => {
     },
   };
 };
+
+export const proofTenantPlan = (credential) => ({
+  args: ["config", "plan", PROOF_TENANT_FILE],
+  env: {
+    PROOF_CLAUDE_CODE_OAUTH_TOKEN: "",
+    PROOF_CLAUDE_CODE_OAUTH_TOKEN_EXPIRES_AT: credential.expiresAt,
+    PROOF_REFUSED_KEY: "",
+    PROOF_GITHUB_TOKEN: "",
+  },
+});

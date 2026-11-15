@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CLONE_SECONDS } from "./guest-image-settings.mjs";
 import { rotateIssuerKeys } from "./issuer-rotate.mjs";
-import { INLINE_CAP, loadCredential, PROOF_TENANT_FILE, proofTenantApply } from "./proof-tenant.mjs";
+import { INLINE_CAP, loadCredential, proofTenantApply, proofTenantPlan } from "./proof-tenant.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const STAGE = process.env.TUMPEL_STAGE ?? "dev";
@@ -24,6 +24,9 @@ const SUPERVISOR = process.env.TUMPEL_PROOF_SUPERVISOR;
 const STATE_DIR = ".local/state/tumpel-supervisor";
 const REVOKE_DIR = "development/.tmp/tumpel-proof-revoke";
 const MARKER = `tumpel-proof-${randomBytes(4).toString("hex")}`;
+const MARKER_FILE = "/root/proof-marker.txt";
+const TMPFS_MARKER_FILE = "/dev/shm/proof-marker.txt";
+const BUILD_PROVIDERS = ["GitHubActions", "CircleCI", "Namespace"];
 
 const die = (message) => {
   console.error(`proof:e2e: ${message}`);
@@ -144,6 +147,20 @@ const runTurn = async ({ sessionId, personaId, prompt, model = MODEL }) => {
     followError: read.err.trim(),
   };
 };
+
+const toolResults = (lines) =>
+  lines
+    .flatMap((line) => {
+      try {
+        const message = JSON.parse(line);
+        return (message.message?.content ?? [])
+          .filter((part) => part.type === "tool_result")
+          .map((part) => (typeof part.content === "string" ? part.content : JSON.stringify(part.content)));
+      } catch {
+        return [];
+      }
+    })
+    .join("\n");
 
 const completed = (run, what) => {
   if (run.turn.state === "Completed") return;
@@ -353,8 +370,8 @@ const steps = [
       if (!proof || !refused) fail("apply left no persona proof or refused");
       const large = proof.files.find((entry) => entry.path === ".claude/CLAUDE.md");
       if (!large || large.sizeBytes <= INLINE_CAP) fail(".claude/CLAUDE.md did not land above the inline cap");
-      if (!tumpel(["config", "plan", PROOF_TENANT_FILE], apply.env).includes("no changes"))
-        fail("plan after apply still lists changes");
+      const plan = proofTenantPlan(credential);
+      if (!tumpel(plan.args, plan.env).includes("no changes")) fail("plan after apply still lists changes");
       state.personaId = proof.personaId;
       state.refusedPersonaId = refused.personaId;
       return `SubscriptionToken credential, CLAUDE.md ${large.sizeBytes} B uploaded, apply ${applyMs} ms`;
@@ -367,10 +384,12 @@ const steps = [
     run: async () => {
       const run = await runTurn({
         personaId: state.personaId,
-        prompt: `Write the text ${MARKER} into a new file named /root/proof-marker.txt, then reply with only the word written.`,
+        prompt: `Use the Bash tool to run: printf '%s\\n' ${MARKER} | tee ${MARKER_FILE} ${TMPFS_MARKER_FILE}. Then reply with only the word written.`,
       });
       completed(run, "the first turn");
       if (run.firstLineMs === null || run.idsMs >= run.firstLineMs) fail("ids did not arrive before the first line");
+      if (!toolResults(run.lines).includes(MARKER))
+        fail(`the first turn did not write ${MARKER_FILE} and ${TMPFS_MARKER_FILE}`);
       state.first = run;
       return `ids ${run.idsMs} ms, first line ${run.firstLineMs} ms cold, ${run.lines.length} lines`;
     },
@@ -382,7 +401,8 @@ const steps = [
     run: async () => {
       const run = await runTurn({
         sessionId: state.first.sessionId,
-        prompt: "Without using any tools, reply with only the exact text you wrote into the file in the previous turn.",
+        prompt:
+          "Without using any tools, reply with only the exact text you wrote into the files in the previous turn.",
       });
       completed(run, "the warm turn");
       if (run.turn.boxId !== state.first.turn.boxId)
@@ -434,13 +454,15 @@ const steps = [
       }
       const run = await runTurn({
         sessionId,
-        prompt: "Use the Bash tool to run: cat /root/proof-marker.txt. Reply with only its output, or MISSING.",
+        prompt: `Use the Bash tool to run: cat ${MARKER_FILE}; test -e ${TMPFS_MARKER_FILE} && echo TMPFS-HELD || echo TMPFS-GONE. Reply with only its output.`,
       });
       completed(run, "the turn after the stop");
-      if (!run.lines.join("\n").includes(MARKER)) fail("the box booted after the stop lacks /root/proof-marker.txt");
-      if (run.harnessSession === state.warm.harnessSession)
-        fail("the send after the stop reached the old harness process");
-      return `stopped in ${stopMs} ms, fresh box restored the file, first line ${run.firstLineMs} ms`;
+      const output = toolResults(run.lines);
+      if (!output.includes(MARKER)) fail(`the box booted after the stop lacks ${MARKER_FILE}`);
+      if (!output.includes("TMPFS-GONE")) {
+        fail(`the send after the stop still sees ${TMPFS_MARKER_FILE}, so it reached the old box and harness process`);
+      }
+      return `stopped in ${stopMs} ms, fresh box restored ${MARKER_FILE} and lost ${TMPFS_MARKER_FILE}, first line ${run.firstLineMs} ms`;
     },
   },
   {
@@ -481,18 +503,7 @@ const steps = [
       });
       await peer;
       completed(probe, "the probe turn");
-      const results = probe.lines
-        .flatMap((line) => {
-          try {
-            const message = JSON.parse(line);
-            return (message.message?.content ?? [])
-              .filter((part) => part.type === "tool_result")
-              .map((part) => (typeof part.content === "string" ? part.content : JSON.stringify(part.content)));
-          } catch {
-            return [];
-          }
-        })
-        .join("\n")
+      const results = toolResults(probe.lines)
         .split("\n")
         .filter((line) => line.startsWith("PROBE "));
       if (results.length === 0) fail("the harness ran no probe; its reply was not the command output");
@@ -769,10 +780,10 @@ const steps = [
       const rows = tumpelJson(["connection", "list"]);
       const builders = rows.filter((row) => row.kind !== "GitHub");
       const kinds = builders.map((row) => row.kind).join(",");
-      if (kinds !== "GitHubActions,Namespace" || builders.some((row) => row.state === "Connected")) {
-        fail(`the build provider rows are not GitHubActions and Namespace, neither Connected: ${JSON.stringify(rows)}`);
+      if (kinds !== BUILD_PROVIDERS.join(",") || builders.some((row) => row.state === "Connected")) {
+        fail(`the build provider rows are not ${BUILD_PROVIDERS.join(", ")}, none Connected: ${JSON.stringify(rows)}`);
       }
-      for (const provider of ["GitHubActions", "Namespace"]) {
+      for (const provider of BUILD_PROVIDERS) {
         const result = spawnSync(
           CLI,
           ["prebuild", "start", "--repository", REPOSITORY, "--persona-id", state.personaId, "--provider", provider],
@@ -787,7 +798,7 @@ const steps = [
       }
       const listed = tumpelJson(["prebuild", "list", "--repository", REPOSITORY]);
       if (listed.length !== 0) fail(`the refused starts left ${listed.length} prebuilds of ${REPOSITORY}`);
-      return `build provider rows ${builders.map((row) => `${row.kind} ${row.state}`).join(", ")}; both starts refused NoBuildProvider, 0 prebuilds of ${REPOSITORY}`;
+      return `build provider rows ${builders.map((row) => `${row.kind} ${row.state}`).join(", ")}; every start refused NoBuildProvider, 0 prebuilds of ${REPOSITORY}`;
     },
   },
   {
