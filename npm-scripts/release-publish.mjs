@@ -181,6 +181,7 @@ const upload = async (arch, supervisorPath, cliPath, imageDir, fragmentPath) => 
       kernelDigest: kernel.digest,
       manifestDigest,
       ociDigest,
+      rootfsDigest,
     });
   }
   const fragment = FragmentSchema.parse({
