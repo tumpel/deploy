@@ -89,7 +89,7 @@ A build provider is a connection kind that runs prebuilds on the tenant's own ac
 
 The Prebuilds screen lists each repository the tenant has prebuilt with its latest prebuild (G18). A row shows the state (Dispatched, Building, Converting, Done or Failed), the provider, the input digest, start and finish times, the layer size and a link to the provider's log. Rebuild starts a job even when a prebuild with the same key is stored (G21).
 
-A Failed prebuild stays on its repository row until a later one succeeds. It names the phase that failed (dispatch, build, upload or conversion), the detail with its fix, and the log link.
+A row shows only the latest prebuild, so a Failed one leaves the row once a newer one starts. The repository's side panel keeps the failure until a later prebuild succeeds. It names the phase that failed (dispatch, build, upload or conversion), the detail with its fix, and the log link.
 
 ## Fleet overview
 
