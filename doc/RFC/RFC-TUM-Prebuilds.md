@@ -9,7 +9,7 @@
 
 ## Summary
 
-A prebuild installs a repository's dependencies once, ahead of any session, and stores the result. A box then starts with that work done. Tumpel runs no build on its own machines. It asks a build provider that the tenant already uses, such as GitHub Actions or Namespace, and the provider bills the tenant. Every provider hands back the same thing: a container image layer, uploaded to Tumpel's object storage on presigned URLs. Tumpel stores that layer in the same chunk and pack store as snapshots, so a box reads one format whatever built it. Tumpel also becomes an OpenID Connect issuer. A tenant's cloud account and build provider can then trust short-lived tokens that Tumpel signs, and no tenant stores a cloud key in Tumpel. This RFC adds to RFC: Tumpel and replaces none of it.
+A prebuild installs a repository's dependencies once, ahead of any session, and stores the result. A box then starts with that work done. Tumpel runs no build on its own machines. It asks a build provider that the tenant already uses, such as GitHub Actions or CircleCI, and the provider bills the tenant. Every provider hands back the same thing: a container image layer, uploaded to Tumpel's object storage on presigned URLs. Tumpel stores that layer in the same chunk and pack store as snapshots, so a box reads one format whatever built it. Tumpel also becomes an OpenID Connect issuer. A tenant's cloud account and build provider can then trust short-lived tokens that Tumpel signs, and no tenant stores a cloud key in Tumpel. This RFC adds to RFC: Tumpel and replaces none of it.
 
 ## Tenets
 
@@ -35,8 +35,8 @@ Every provider uploads an OCI image layer to presigned object storage URLs that 
 
 BuildProvider is a port with one operation: start a prebuild for a key, with upload URLs and a deadline. Each adapter reports Done or a named failure. Adapters come in three shapes:
 
-1. CI dispatch. Tumpel triggers a pipeline in the tenant's CI, and the pipeline runs the build. GitHub Actions comes first; CircleCI, GitLab CI and Bitbucket Pipelines follow.
-2. Remote BuildKit. Tumpel sends the build recipe with the request to a hosted BuildKit service. Namespace comes first; Docker Build Cloud is a later candidate.
+1. CI dispatch. Tumpel triggers a pipeline in the tenant's CI, and the pipeline runs the build. GitHub Actions comes first and CircleCI second; GitLab CI and Bitbucket Pipelines follow.
+2. Remote BuildKit. Tumpel sends the build recipe with the request to a hosted BuildKit service. Namespace comes first and is parked; Docker Build Cloud is a later candidate.
 3. Ephemeral VM by API. A machine runs the build and is thrown away. A tenant host with the builder capability is the first candidate, and it runs the build without a box. Fly Machines, Ubicloud and Hetzner are later candidates.
 
 A prebuild needs no microVM. It runs the repository's own scripts with read access to the repository and nothing else. It never receives a provider key, a model key or a secret set value.
@@ -47,22 +47,13 @@ Each provider joins the dashboard's Connections screen as one connection, with t
 
 ## Phases
 
-Phase 1 builds two adapters: GitHub Actions dispatch and Namespace. The pair differs on every axis. One runs a dispatched pipeline, the other remote BuildKit. GitHub authenticates through the existing App, while Namespace trusts Tumpel's OIDC tokens. A file in the repository holds the recipe for GitHub, and Namespace takes the recipe in the request. When the port serves both, a later adapter adds plumbing and no new concept. Phase 1 also builds the issuer, which Namespace needs, and publishes the reusable workflow.
+Phase 1 builds two adapters: GitHub Actions and CircleCI. Both start a CI pipeline on the tenant's account, and both jobs upload through one exchange, with the job's own OIDC token. GitHub dispatches through the existing App, and CircleCI through the tenant's API token. A GitHub token proves one run on one commit. A CircleCI token proves one pipeline, and every job in it holds one. CircleCI registers nothing at the provider side, so a tenant connects it in one step. Its free plan gives 30,000 credits a month. Phase 1 also builds the issuer and publishes both opt-in packages.
+
+Namespace is parked. Its support team takes about a week to register a custom issuer, and the owner has not yet signed up with Namespace. Its code, its connection kind and its documents stay as they are. Nothing extends them until the registration is done.
 
 ## Follow-ups
 
-The follow-ups come in this order. Each is one spec with its own adapter, connection and proof. Every provider fact below was checked against the provider's own documentation on 2026-11-15.
-
-| Order | Provider            | Shape                      | Starts a build with                                                              | Job identity                                                 | Free allowance                                                                          |
-| ----- | ------------------- | -------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| 1     | GitHub Actions      | CI dispatch                | `workflow_dispatch` through the App installation token                           | GitHub's OIDC token                                          | Not checked                                                                             |
-| 1     | Namespace           | Remote BuildKit            | The recipe in the request                                                        | Tumpel's OIDC token, audience `federation.namespaceapis.com` | No included minutes; Docker builds at USD 0.05 each on the Developer plan; 30-day trial |
-| 2     | CircleCI            | CI dispatch                | The recommended pipeline run API, with a personal or project API token           | `CIRCLE_OIDC_TOKEN_V2`, custom audience supported            | 30,000 credits a month, up to 6,000 build minutes                                       |
-| 3     | GitLab CI           | CI dispatch                | The pipeline trigger API; the connection is a GitLab OAuth application           | `id_tokens` with a per-token `aud`, on the Free tier         | 400 compute minutes a month                                                             |
-| 4     | Bitbucket Pipelines | CI dispatch                | An on-demand pipeline, with the YAML in the request body, scope `pipeline:write` | `BITBUCKET_STEP_OIDC_TOKEN`                                  | 50 build minutes; the pricing page does not say per month                               |
-| 5     | Ubicloud            | Runner for GitHub dispatch | The reusable workflow's runner label                                             | GitHub's OIDC token                                          | USD 2.50 a month, 1,250 runner minutes                                                  |
-
-Ubicloud's API takes personal access tokens only, so any later direct use goes through the secret-set fallback. Depot is out for now: it has no free plan, only a 7-day trial. Ona is out: it competes with Tumpel, and its acquisition by OpenAI closed on 2026-08-10.
+The follow-ups come in the order of the appendix of providers. Each is one spec with its own adapter, connection and proof.
 
 ## The OIDC issuer
 
@@ -103,7 +94,7 @@ Namespace trusts a custom issuer only after Namespace Support registers it, once
 - **FR-1 Start a prebuild.** A tenant member starts a prebuild for a repository and a ref through one MCP tool and one CLI command. The answer names the prebuild, its key and its provider. (BR-1)
 - **FR-2 Reuse.** A prebuild with a key the tenant already holds answers with the stored prebuild and starts no job. (BR-1)
 - **FR-3 Use at start.** A session's first turn names the matching prebuild, and the session keeps it. With no match, the box starts without a prebuild layer. (BR-1)
-- **FR-4 Connect a provider.** A tenant connects GitHub Actions or Namespace through the Connections model, and later each follow-up provider. (BR-2)
+- **FR-4 Connect a provider.** A tenant connects GitHub Actions or CircleCI through the Connections model, and later each follow-up provider. (BR-2)
 - **FR-5 Named failures.** A prebuild ends Done or Failed. Each failure names its phase: dispatch, build, upload or conversion. (BR-1)
 - **FR-6 Federate.** A tenant's AWS, GCP or Azure account trusts the stage's issuer and assumes a role with a Tumpel token. (BR-3)
 
@@ -126,7 +117,11 @@ On 2026-11-15 the following rulings were made:
 
 ### Rulings
 
-**Tenants opt in through a reusable workflow.** Tumpel publishes the prebuild workflow in a public repository. A tenant adds a short caller workflow that triggers on `workflow_dispatch` and calls Tumpel's workflow at a pinned tag or commit. The GitHub App never commits a file into a tenant repository. The App's manifest adds write on actions, which the dispatch call requires.
+**Tenants opt in through a reusable workflow.** Tumpel publishes the prebuild workflow in the public repository `tumpel/workflows`. A tenant commits a short caller workflow that triggers on `workflow_dispatch` and calls `tumpel/workflows/.github/workflows/prebuild.yml@v1`. The App's manifest adds write on actions, which the dispatch call requires.
+
+**This repository stays private and holds the workflow's source.** The release copies the workflow one way into `tumpel/workflows`, where nobody edits it. Each release tags an immutable `vX.Y.Z` and moves the major tag `v1`. Ruled on D6.
+
+**CircleCI is the second adapter, and tenants import the orb `tumpel/prebuild@1` in their own config.** Tumpel commits no file into a tenant repository. Ruled 2026-11-15.
 
 **Tumpel is open source under Apache-2.0.** The repository stays private for now. Anyone can fetch the reusable workflow, the installer and the images. Self-hosting the control plane is supported next to the hosted `tumpel.dev`. Nothing proprietary or secret lives in the repository. Secrets stay in tofu and the key-store port.
 
@@ -163,18 +158,18 @@ Each start names its provider. The first check that fails refuses the start, in 
 7. RepositoryUnreadable: neither token can read the repository.
 8. NoPrebuildInputs: the repository holds none of the files.
 
-A start whose key matches a prebuild that is not Failed then returns the newest such prebuild, unless it asks for a rebuild. Past that point, Namespace is refused BuildProviderUnavailable. A GitHub Actions start is refused GitHubNotConnected while no App installation links the tenant, and DispatchRefused when GitHub refuses the token or the dispatch. Otherwise it dispatches the caller workflow and follows the run (`doc/github-actions-prebuild.md`). A Namespace connection is refused IssuerMissing while the stage has no issuer.
+A start whose key matches a prebuild that is not Failed then returns the newest such prebuild, unless it asks for a rebuild. Past that point, Namespace is refused BuildProviderUnavailable. A GitHub Actions start is refused GitHubNotConnected while no App installation links the tenant, and DispatchRefused when GitHub refuses the token or the dispatch. Otherwise it dispatches the caller workflow and follows the run (`doc/github-actions-prebuild.md`). Without a project binding for the repository, a CircleCI start is refused CircleCIProjectMissing. A Namespace connection is refused IssuerMissing while the stage has no issuer.
 
 ### Layer upload
 
-A GitHub Actions prebuild uploads its layer through `POST /v1/prebuilds/{prebuildId}/uploads` and `.../uploads/complete`, with the job's GitHub OIDC token as bearer. Namespace never uses this endpoint: its BuildKit client runs in the supervisor.
+A CI prebuild uploads its layer through `POST /v1/prebuilds/{prebuildId}/uploads` and `.../uploads/complete`, with the job's OIDC token as bearer.
 
-- The token's `aud` is the API origin with no trailing slash. Its keys come from `<gitHubActionsIssuer>/.well-known/jwks`.
-- The token binds `repository` to the prebuild's repository, `workflow_ref` to `<repository>/<caller workflow>@<ref>`, `ref` to `refs/heads/<default branch>` as the dispatch recorded it, and `event_name` to `workflow_dispatch`. It binds `run_id` and `sha` to the run and commit the dispatch recorded.
+- The token's `aud` is the API origin with no trailing slash. A GitHub token's keys come from `<gitHubActionsIssuer>/.well-known/jwks`, and a CircleCI token's from its organization's issuer.
+- A GitHub token binds `repository` to the prebuild's repository, `workflow_ref` to `<repository>/<caller workflow>@<ref>`, `ref` to `refs/heads/<default branch>` as the dispatch recorded it, and `event_name` to `workflow_dispatch`. It binds `run_id` and `sha` to the run and commit the dispatch recorded.
 - The token is checked before anything about the tenant is read. A missing tenant or prebuild, or another repository, answers the same 404.
 - A Dispatched or Building prebuild takes an upload. An upload start from the recorded run moves a Dispatched prebuild to Building.
 - `start` takes `{tenantId, layerDigest, layerSizeBytes}`, records them, and answers `{sha256, url, uploadExpiresAt}`: one PUT to `<tenantId>/prebuilds/<prebuildId>/layers/<digest>`, signed with `content-length` and `x-amz-checksum-sha256` only. The layer cap is 5 GiB. A repeat `start` with the same digest and size answers a fresh grant, and one with another digest or size is refused Conflict. `complete` takes `{tenantId}`, finds the recorded key in the bucket and moves the prebuild to Converting.
-- The reusable workflow runs two jobs. The build job runs the repository's code and holds no `id-token` permission. The upload job holds `id-token: write` and uploads the build job's `layer.tar`. It runs `prebuild.mjs` and Node.js from the root filesystem tar, never from the build job's artifact (NFR-2).
+- On GitHub, the build job runs the repository's code and holds no `id-token` permission. The upload job holds `id-token: write` and uploads the build job's `layer.tar`. It runs `prebuild.mjs` and Node.js from the root filesystem tar, never from the build job's artifact (NFR-2).
 
 ### Build script
 
@@ -182,15 +177,15 @@ Each guest image carries the build script at `/opt/tumpel/prebuild.mjs`, so the 
 
 `prebuild.mjs build <out dir>` runs with a git checkout of the repository at `/root/workspace`, which must be a real directory. Before the lifecycle commands run, it replaces `.git/config` with the core settings and an origin URL without user info. Right before the commands run, it scans the image's files as a baseline. It runs `onCreateCommand`, `updateContentCommand` and `postCreateCommand` with exactly the environment that `guest.json` names, plus `containerEnv`. On timeout it kills the whole process group. It writes `layer.tar` and `layer.json` to the out directory, and a layer over 5 GiB fails `LayerTooLarge`.
 
-`prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>` asks `ACTIONS_ID_TOKEN_REQUEST_URL` for the job's OIDC token with the API origin as `aud`. It exchanges the token, PUTs the layer and calls `complete`.
+`prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>` takes the job's OIDC token from `TUMPEL_JOB_TOKEN` when the orb sets it, and otherwise asks `ACTIONS_ID_TOKEN_REQUEST_URL` for it with the API origin as `aud`. It exchanges the token, PUTs the layer and calls `complete`.
 
 ### Release
 
-The release stores each image's root filesystem tar in the private releases bucket, under `images/<harness>/<version>/<arch>/rootfs/<sha256>`. That sha256 is the image's `rootfsDigest`, `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`, so prod's `current.json` must be published again before the control plane deploys to prod.
+The release stores each image's root filesystem tar in the private releases bucket, under `images/<harness>/<version>/<arch>/rootfs/<sha256>`. That sha256 is `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`, so prod's `current.json` must be published again before the control plane deploys to prod.
 
 ### Connections
 
-`ConnectionKind` is GitHub, GitHubActions or Namespace. GitHub Actions connects on the path `/v1/github-actions-connection` or with `tumpel github-actions`. Namespace connects on `/v1/namespace-connection` or with `tumpel namespace`. Each tenant holds one connection per provider. The GitHub Actions connection names the caller workflow, which the job token must name. The Namespace connection holds the issuer, the `sub` and the audience that the tenant registers at Namespace.
+`ConnectionKind` is GitHub, GitHubActions, CircleCI or Namespace. GitHub Actions connects on the path `/v1/github-actions-connection` or with `tumpel github-actions`. Its link answers `reusableWorkflow` and `callerWorkflowExample`, read from `tumpel/workflows`. CircleCI connects on `/v1/circleci-connection` or with `tumpel circleci`. Namespace connects on `/v1/namespace-connection` or with `tumpel namespace`. Each tenant holds one connection per provider. The GitHub Actions connection names the caller workflow, which the job token must name. The Namespace connection holds the issuer, the `sub` and the audience that the tenant registers at Namespace.
 
 ## FAQ
 
@@ -200,20 +195,131 @@ The release stores each image's root filesystem tar in the private releases buck
 
 **Why GitHub first?** GitHub is where the tenant's repositories and the App already are.
 
-**Why Namespace in phase 1 and not CircleCI?** Namespace differs from GitHub on every axis, so the pair tests the port. CircleCI then adds plumbing.
+**Why CircleCI in phase 1 and not Namespace?** CircleCI works without any registration at the provider. Namespace waits about a week for its support team to register the issuer.
+
+**Why does a CircleCI tenant still commit a config file?** CircleCI runs a pipeline only from a config file, and the file must declare every parameter the trigger passes.
 
 **Can I self-host the issuer?** Yes. A self-hosted control plane serves its own issuer.
 
+## Appendix of providers
+
+Every provider fact below was checked against the provider's own documentation on 2026-11-15.
+
+| Order  | Provider            | Shape                      | Starts a build with                                                              | Job identity                                                 | Free allowance                                                                          |
+| ------ | ------------------- | -------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| 1      | GitHub Actions      | CI dispatch                | `workflow_dispatch` through the App installation token                           | GitHub's OIDC token                                          | Not checked                                                                             |
+| 1      | CircleCI            | CI dispatch                | The recommended pipeline run API, with a personal API token                      | A per-job token from the organization's issuer, custom `aud` | 30,000 credits a month, up to 6,000 build minutes                                       |
+| Parked | Namespace           | Remote BuildKit            | The recipe in the request                                                        | Tumpel's OIDC token, audience `federation.namespaceapis.com` | No included minutes; Docker builds at USD 0.05 each on the Developer plan; 30-day trial |
+| 3      | GitLab CI           | CI dispatch                | The pipeline trigger API; the connection is a GitLab OAuth application           | `id_tokens` with a per-token `aud`, on the Free tier         | 400 compute minutes a month                                                             |
+| 4      | Bitbucket Pipelines | CI dispatch                | An on-demand pipeline, with the YAML in the request body, scope `pipeline:write` | `BITBUCKET_STEP_OIDC_TOKEN`                                  | 50 build minutes; the pricing page does not say per month                               |
+| 5      | Ubicloud            | Runner for GitHub dispatch | The reusable workflow's runner label                                             | GitHub's OIDC token                                          | USD 2.50 a month, 1,250 runner minutes                                                  |
+
+Ubicloud's API takes personal access tokens only, so any later direct use goes through the secret-set fallback. Depot is out for now: it has no free plan, only a 7-day trial. Ona is out: it competes with Tumpel, and its acquisition by OpenAI closed on 2026-08-10.
+
+## Appendix of the CircleCI adapter
+
+### Connection
+
+A tenant connects CircleCI with an account label, its CircleCI organization id and a personal API token. CircleCI's API v2 refuses project tokens. `tumpel circleci start` reads the token from `--token-stdin`, and the dashboard takes it in a password field. The control plane checks the token with `GET /api/v2/me`, seals it like a secret set value and never answers it. CircleCI's OAuth flow with Dynamic Client Registration also issues a personal token. That flow redirects only to the local machine, so only the CLI can run it. Its token lasts 90 days, and the flow issues no refresh token. A start with an expired or revoked token is refused DispatchRefused, with the fix to connect again.
+
+The CircleCI API maps no GitHub repository to a project of a GitHub App organization. So the tenant binds each repository once, with `tumpel circleci project add --repository <url> --project-slug <slug> --pipeline-definition-id <uuid>`. The slug is `gh/<owner>/<name>` in a GitHub OAuth organization and `circleci/<org id>/<project id>` in a GitHub App organization. The binding reads the project id and the pipeline definition. It refuses a definition that checks out another repository. Each binding registers an outbound webhook for `workflow-completed` on its project, with a signing secret the control plane generates and seals. Deleting the binding deletes the webhook.
+
+### Dispatch
+
+The adapter calls `POST /api/v2/project/<slug>/pipeline/run` with the binding's `definition_id`, and with `config` and `checkout` on the default branch. It passes these pipeline parameters:
+
+| Parameter             | Value                                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `tumpel_prebuild_id`  | The prebuild the start recorded                                                                    |
+| `tumpel_tenant_id`    | The tenant that started it                                                                         |
+| `tumpel_api_origin`   | The API origin the upload job calls and names as the token's `aud`                                 |
+| `tumpel_rootfs_url`   | A presigned GET of the guest image's root filesystem tar, valid for the dispatch and build budgets |
+| `tumpel_image_digest` | The digest of the guest image the layer is built on                                                |
+
+CircleCI caps a parameter value at 512 characters. The adapter refuses a start whose presigned URL is longer, before it triggers anything. A 201 answer carries the pipeline id. The prebuild records it in `prebuild_pipelines` and moves to Building, because CircleCI sends no event when a pipeline starts. A 200 answer created no pipeline, and the start is refused DispatchRefused with CircleCI's message. An answer in state `errored` is refused the same way.
+
+### Events
+
+CircleCI posts each `workflow-completed` event to `/v1/circleci-events/{tenantId}`. The handler checks the `v1` signature of the `circleci-signature` header, an HMAC-SHA256 of the body, against the secret of the binding the payload's project names. It ignores a pipeline that no prebuild recorded.
+
+| Event                                                              | Prebuild                                                    |
+| ------------------------------------------------------------------ | ----------------------------------------------------------- |
+| `workflow-completed` of workflow `tumpel-prebuild` without success | Failed in phase Build, with the workflow's `url` as the log |
+| `workflow-completed` with success and no completed upload          | Failed in phase Upload                                      |
+
+A config that fails to compile runs no workflow and sends no event. That prebuild fails in phase Build when the build budget runs out.
+
+### Job token
+
+The orb's upload job mints its token with `circleci run oidc get --aud <api origin>`, which issues a V2 token. The exchange checks it in this order:
+
+1. `iss` matches `https://oidc.circleci.com/org/<uuid>`, and the token verifies against that issuer's `/.well-known/jwks-pub.json`. This check runs before any tenant lookup.
+2. `iss` names the connection's organization, and `oidc.circleci.com/vcs-origin` is `github.com/<owner>/<name>` of the prebuild's repository. Either mismatch answers the same 404 as another repository does on GitHub.
+3. `oidc.circleci.com/project-id` is the binding's project, `oidc.circleci.com/pipeline-id` is the recorded pipeline. The ref claim `oidc.circleci.com/vcs-ref` is `refs/heads/<default branch>`.
+4. `oidc.circleci.com/ssh-rerun` is false. A rerun with SSH hands a person a shell in the job.
+5. The first upload start records `oidc.circleci.com/job-id`. Every later start and `complete` must name the same job.
+6. The first upload start reads `GET /api/v2/pipeline/<id>` with the tenant's token. A `vcs.revision` other than the commit the start read fails the prebuild in phase Dispatch.
+
+The token carries no commit, so rule 6 takes it from CircleCI's API.
+
+### The orb
+
+`tumpel/prebuild` defines two jobs on a Linux machine executor, which runs Docker:
+
+- `build` imports the root filesystem tar, checks the repository out, runs `prebuild.mjs build` in a container and persists the out directory to the workspace. The container gets the same environment as on GitHub.
+- `upload` runs no checkout and no repository code. It takes the upload script and its runtime from the guest image's tar. It attaches the workspace, mints the token and runs `prebuild.mjs upload` with `TUMPEL_JOB_TOKEN` set.
+
+CircleCI sets its tokens in every job, so the build job holds one as well. Rules 3 and 5 bind any token of the pipeline to this one prebuild. A build that mints a token can upload only the layer it already writes.
+
+A GitHub App organization lets a pipeline definition name any config path. The tenant commits this file, such as `.circleci/tumpel-prebuild.yml`, and gives its definition no trigger:
+
+```yaml
+version: 2.1
+orbs:
+  tumpel: tumpel/prebuild@1
+parameters:
+  tumpel_prebuild_id: { type: string, default: "" }
+  tumpel_tenant_id: { type: string, default: "" }
+  tumpel_api_origin: { type: string, default: "" }
+  tumpel_rootfs_url: { type: string, default: "" }
+  tumpel_image_digest: { type: string, default: "" }
+workflows:
+  tumpel-prebuild:
+    jobs:
+      - tumpel/build:
+          rootfs-url: << pipeline.parameters.tumpel_rootfs_url >>
+          image-digest: << pipeline.parameters.tumpel_image_digest >>
+      - tumpel/upload:
+          requires: [tumpel/build]
+          prebuild-id: << pipeline.parameters.tumpel_prebuild_id >>
+          tenant-id: << pipeline.parameters.tumpel_tenant_id >>
+          api-origin: << pipeline.parameters.tumpel_api_origin >>
+          rootfs-url: << pipeline.parameters.tumpel_rootfs_url >>
+```
+
+A GitHub OAuth organization reads config only from the repository's `.circleci/config.yml`. The tenant adds the same lines there, with `when: << pipeline.parameters.tumpel_prebuild_id >>` on the workflow, so a push skips it.
+
+### Publishing
+
+The orb's source lives in this repository at `orbs/prebuild/orb.yml`. A release step publishes it one way, as it publishes the workflow. CircleCI sets these rules:
+
+- A CircleCI organization claims one namespace, and only an owner of that organization can claim it. Changing a claimed namespace takes CircleCI support. The CircleCI organization of the GitHub organization `tumpel` claims `tumpel`. The registry listed `tumpel` as unclaimed on 2026-11-15.
+- A production version follows semver and is immutable. Only an owner of the namespace's organization publishes one. A config that imports `@1` receives every minor and patch release of major version 1.
+- A development version `dev:<label>` is mutable and expires after 90 days. Any member of the organization can publish one, once a first production version exists.
+- CircleCI releases every public registry orb under the MIT license.
+
 ## Appendix of terms
 
-| Term           | Meaning                                                              |
-| -------------- | -------------------------------------------------------------------- |
-| Prebuild       | A repository's built environment, stored as one lower layer          |
-| Input digest   | One digest over a repository's devcontainer files and lockfiles      |
-| Build provider | A service that runs a prebuild and bills the tenant                  |
-| BuildProvider  | The port each provider adapter implements                            |
-| Issuer         | The stage's OIDC token signer at `id.<stage>.tumpel.dev`             |
-| Federation     | A cloud account trusting the issuer's tokens instead of a stored key |
+| Term                | Meaning                                                                 |
+| ------------------- | ----------------------------------------------------------------------- |
+| Prebuild            | A repository's built environment, stored as one lower layer             |
+| Input digest        | One digest over a repository's devcontainer files and lockfiles         |
+| Build provider      | A service that runs a prebuild and bills the tenant                     |
+| BuildProvider       | The port each provider adapter implements                               |
+| Issuer              | The stage's OIDC token signer at `id.<stage>.tumpel.dev`                |
+| Federation          | A cloud account trusting the issuer's tokens instead of a stored key    |
+| Orb                 | A versioned package of CircleCI config that a pipeline imports          |
+| Pipeline definition | A CircleCI project's pairing of a config file and a checkout repository |
 
 ## Appendix of entities
 
@@ -232,6 +338,7 @@ model Prebuild {
 
 enum BuildProvider {
   GitHubActions: "GitHubActions",
+  CircleCI: "CircleCI",
   Namespace: "Namespace",
 }
 
