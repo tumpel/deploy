@@ -16,3 +16,4 @@
 - [ ] No comments in code.
 - [ ] `npm run check` passes before every commit (Biome, no comments, no token-shaped secrets, typecheck, clippy, rustfmt, TypeSpec keys, dates and enums, generated output in sync). `npm run fix` formats.
 - [ ] `npm install` enables the pre-commit hook that runs `npm run check`.
+- [ ] On the dev stage an agent applies the tofu in `packages/control-plane/infra` with `npm run deploy:infra`, without a plan review.
