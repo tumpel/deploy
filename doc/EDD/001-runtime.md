@@ -40,15 +40,25 @@ A placed session keeps its host. Each turn records the host it runs on. A send s
 
 ## Host setup
 
-`tumpel-supervisor install` runs once and uses sudo for that run only. It:
+Adding a host is one command over ssh. `tumpel host mint-token` mints a one-time enrolment token. `tumpel-supervisor install --endpoint <stage origin> --token-file <path|->` then sets the host up, enrols it and starts the unit. It reads the token from a file or from stdin (`-`), so the token stays off the command line. Sudo runs for the installer's own run only. The supervisor itself never asks for admin rights. The installer:
 
-1. adds the supervisor's user to the `kvm` group;
-2. installs Firecracker and the guest kernel at pinned versions, each checked against its digest;
-3. makes `boxCapacity` TAP devices owned by that user through systemd-networkd, where device `tumpel<k>` has gateway 172.16.<k>.1/30 and IPv4 masquerade;
-4. installs the guest filter as a unit that loads before the host network comes up;
-5. installs the supervisor binary and a lingering user unit that runs `tumpel-supervisor run`.
+1. refuses a host that is already enrolled, before any setup step;
+2. tries `sudo -n`, then asks for the password when it has a terminal. Without a terminal it stops and names two fixes: the NOPASSWD sudoers line, or a run from a terminal with the token saved to a file;
+3. adds the supervisor's user to the `kvm` group, restarts the user manager and checks once that the group can read and write `/dev/kvm`;
+4. writes the runtime config, `runtime.json`;
+5. installs Firecracker and the guest kernel at pinned versions, each checked against its digest;
+6. installs the guest filter as a unit that loads before the host network comes up;
+7. makes `boxCapacity` TAP devices owned by that user through systemd-networkd, where device `tumpel<k>` has gateway 172.16.<k>.1/30 and IPv4 masquerade;
+8. installs the supervisor binary and a lingering user unit that runs `tumpel-supervisor run`;
+9. enrols the host and starts the unit.
 
-`boxCapacity` sits in the runtime config, `runtime.json`, between 1 and 256, 8 by default. A small host gets a lower `boxCapacity` at install, and placement counts its slots from that number. The host then enrols with `tumpel-supervisor enrol`, which reads the token from a file and keeps an existing runtime config. Firecracker runs without its jailer, because the jailer needs root. The installer and the binaries are built for x86_64 only for now.
+## Running host
+
+A supervisor that fails restarts after 5 s. Exit codes 3 (NotEnrolled) and 5 (HostRevoked) stop it for good. Exit code 6 (ProtocolError) means the supervisor needs an update, so the unit waits 60 s before each restart. The supervisor does not update itself yet.
+
+Running `install` without `--endpoint` and `--token-file` only sets up the host, and it restarts the unit when the host is enrolled. `tumpel-supervisor enrol` re-enrols a host. It takes `-` for stdin too and keeps an existing runtime config.
+
+`boxCapacity` sits in `runtime.json`, between 1 and 256, 8 by default. A small host gets a lower `boxCapacity` at install, and placement counts its slots from that number. Firecracker runs without its jailer, because the jailer needs root. The installer and the binaries are built for x86_64 only for now. The supervisor does not fetch guest images yet, so someone copies them into `imageCacheDir` by hand.
 
 ## Networking and isolation
 
