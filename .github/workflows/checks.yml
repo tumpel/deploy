@@ -43,18 +43,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: control-plane 1/3
-            cache: control-plane
-            run: TEST_SHARD=1/3 npm test -w @tumpel/control-plane
-          - name: control-plane 2/3
-            cache: control-plane
-            run: TEST_SHARD=2/3 npm test -w @tumpel/control-plane
-          - name: control-plane 3/3
-            cache: control-plane
-            run: TEST_SHARD=3/3 npm test -w @tumpel/control-plane
-          - name: dashboard and scripts
-            cache: ""
-            run: npm test -w @tumpel/dashboard && npm run test:scripts
+          - name: npm 1/3
+            cache: npm-test
+            run: TEST_SHARD=1/3 npm test
+          - name: npm 2/3
+            cache: npm-test
+            run: TEST_SHARD=2/3 npm test
+          - name: npm 3/3
+            cache: npm-test
+            run: TEST_SHARD=3/3 npm test
           - name: cargo
             cache: cargo-test
             run: cargo test --workspace
@@ -67,11 +64,9 @@ jobs:
           node-version: 24
           cache: npm
 
-      - if: matrix.cache != ''
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
 
-      - if: matrix.cache != ''
-        uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.cache }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
