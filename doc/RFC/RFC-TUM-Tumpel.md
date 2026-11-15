@@ -128,7 +128,7 @@ Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with pers
 
 > Warm pooling is a logical thing to do, at least keep it warm for a little while.
 
-Concurrency means any number of sessions per tenant across hosts, each with one running turn.
+Concurrency means any number of sessions per tenant across hosts, each with one running turn. On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#decisions)).
 
 ### Credentials and storage
 
