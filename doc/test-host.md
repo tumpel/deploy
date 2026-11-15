@@ -58,7 +58,7 @@ After `cloud-init status --wait`, reboot it once, then check that `systemctl is-
 
 ## Release builds
 
-GitHub Actions runs the build jobs of `.github/workflows/release.yml` and `.github/workflows/images.yml` on the runner that the repository variable `BUILD_RUNNER` names, now the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
+GitHub Actions runs the image build of `.github/workflows/images.yml` on the runner that the repository variable `BUILD_RUNNER` names, now the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
 
 The self-hosted runner is a second runner instance on the VM `github-actions-runner` on `box`. It lives in `/home/runner/actions-runner-tumpel` as a service, registered to `mvhenten/tumpel` as `github-actions-runner-tumpel`. Leave the other project's runners there alone. The VM does not autostart. When it spins a vCPU, run `virsh destroy`, then `virsh start`. Never reboot it.
 
