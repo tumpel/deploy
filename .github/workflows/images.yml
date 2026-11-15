@@ -88,6 +88,9 @@ jobs:
       - name: Build the guest images
         run: npm run guest:image -- all ${{ matrix.arch }}
 
+      - name: Build the base image
+        run: npm run guest:image -- base ${{ matrix.arch }}
+
       - name: Upload the images and kernels
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -102,6 +105,23 @@ jobs:
         with:
           name: images-${{ matrix.arch }}
           path: .tmp/fragments/${{ matrix.arch }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the base image
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+        run: >-
+          npm run release:publish -- base ${{ matrix.arch }}
+          "$TUMPEL_IMAGE_DIR/base"
+          ".tmp/base-fragments/${{ matrix.arch }}.json"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bases-${{ matrix.arch }}
+          path: .tmp/base-fragments/${{ matrix.arch }}.json
           if-no-files-found: error
           retention-days: 7
 
@@ -128,9 +148,14 @@ jobs:
           pattern: images-*
           path: .tmp/fragments
 
-      - name: Write images.json and carry the images into current.json
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bases-*
+          path: .tmp/base-fragments
+
+      - name: Write images.json with the bases and carry the images into current.json
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
           R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
-        run: npm run release:publish -- image-release .tmp/fragments
+        run: npm run release:publish -- image-release .tmp/fragments .tmp/base-fragments

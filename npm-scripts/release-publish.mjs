@@ -5,6 +5,8 @@ import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, write
 import { request } from "node:https";
 import { basename, dirname, join } from "node:path";
 import {
+  BaseImageManifestSchema,
+  BaseLayout,
   ChannelProtocol,
   GuestImageManifestSchema,
   GuestProtocol,
@@ -27,6 +29,12 @@ const SIGNED_SECONDS = 3600;
 
 const BinaryFragmentSchema = ReleaseManifestSchema.pick({ supervisors: true, clis: true });
 const ImageFragmentSchema = ReleaseManifestSchema.pick({ images: true });
+const BaseFragmentSchema = ImageReleaseSchema.pick({ bases: true });
+const PublishedImagesSchema = ImageReleaseSchema.pick({
+  imageReleaseVersion: true,
+  guestProtocolVersion: true,
+  images: true,
+});
 const LayerFragmentSchema = ReleaseManifestSchema.pick({ harnessLayers: true });
 const LayerPlanSchema = LayerFragmentSchema.extend({
   harnessLayers: ReleaseHarnessLayerSchema.array(),
@@ -321,6 +329,64 @@ const uploadLayers = async (arch, planPath, layerDir, fragmentPath) => {
   writeFragment(fragmentPath, LayerFragmentSchema.parse({ harnessLayers: [...harnessLayers, ...uploaded] }));
 };
 
+const uploadBase = async (arch, baseDir, fragmentPath) => {
+  const architecture = architectureOf(arch);
+  const store = storage();
+  const manifests = readdirSync(baseDir).filter((name) => /^[0-9a-f]{64}\.json$/.test(name));
+  if (manifests.length !== 1)
+    die(
+      `${baseDir} holds ${manifests.length} <imageDigest>.json, not one; build the base with npm run guest:image -- base ${arch}`,
+    );
+  const manifestPath = join(baseDir, manifests[0]);
+  const manifest = BaseImageManifestSchema.parse(JSON.parse(readFileSync(manifestPath, "utf8")));
+  if (manifest.baseLayoutVersion !== BaseLayout.Version)
+    die(
+      `${manifestPath} carries base layout ${manifest.baseLayoutVersion}, this commit ${BaseLayout.Version}; build the base again`,
+    );
+  const prefix = `images/base/${arch}`;
+  const image = await uploadFile(
+    store,
+    `${prefix}/${manifest.imageDigest}`,
+    join(baseDir, `${manifest.imageDigest}.ext4`),
+  );
+  if (image.digest !== manifest.imageDigest)
+    die(`${manifestPath} names image ${manifest.imageDigest}, the file is ${image.digest}`);
+  const kernel = await uploadFile(
+    store,
+    `kernels/${arch}/${manifest.kernelDigest}`,
+    join(baseDir, `${manifest.kernelDigest}.vmlinux`),
+  );
+  if (kernel.digest !== manifest.kernelDigest)
+    die(`${manifestPath} names kernel ${manifest.kernelDigest}, the file is ${kernel.digest}`);
+  const manifestDigest = await sha256(manifestPath);
+  await uploadFile(store, `${prefix}/${manifestDigest}`, manifestPath);
+  const { ociDigest, rootfsDigest } = await uploadOci(
+    store,
+    `oci/base/${arch}`,
+    join(baseDir, `oci-${manifest.imageDigest}`),
+  );
+  const rootfsTar = join(baseDir, `${manifest.imageDigest}.rootfs.tar`);
+  const rootfsActual = await sha256(rootfsTar);
+  if (rootfsActual !== rootfsDigest)
+    die(`the OCI image of the base names layer ${rootfsDigest}, ${rootfsTar} is ${rootfsActual}; build the base again`);
+  await uploadFile(store, `${prefix}/rootfs/${rootfsDigest}`, rootfsTar);
+  writeFragment(
+    fragmentPath,
+    BaseFragmentSchema.parse({
+      bases: [
+        {
+          architecture,
+          imageDigest: image.digest,
+          kernelDigest: kernel.digest,
+          manifestDigest,
+          ociDigest,
+          rootfsDigest,
+        },
+      ],
+    }),
+  );
+};
+
 const headCommit = () => {
   if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
   const result = spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" });
@@ -344,7 +410,7 @@ const supersededBy = (commit, published) => {
   );
 };
 
-const publishImageRelease = async (fragmentDir) => {
+const publishImageRelease = async (fragmentDir, baseFragmentDir) => {
   const imageReleaseVersion = process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : undefined;
   if (!imageReleaseVersion || !IMAGE_RELEASE_TAG.test(imageReleaseVersion))
     die(
@@ -354,15 +420,21 @@ const publishImageRelease = async (fragmentDir) => {
   const missing = [...ENABLED].filter((architecture) => !images.some((image) => image.architecture === architecture));
   if (missing.length > 0)
     die(`the fragments hold no images for ${missing.join(", ")}; build them with npm run guest:image`);
+  const bases = readFragments(baseFragmentDir, BaseFragmentSchema, "base").flatMap((fragment) => fragment.bases);
+  const missingBases = [...ENABLED].filter((architecture) => !bases.some((base) => base.architecture === architecture));
+  if (missingBases.length > 0)
+    die(`the base fragments hold no base for ${missingBases.join(", ")}; build it with npm run guest:image -- base`);
   const release = ImageReleaseSchema.parse({
     imageReleaseVersion,
     commit: headCommit(),
     guestProtocolVersion: GuestProtocol.Version,
     images,
+    baseLayoutVersion: BaseLayout.Version,
+    bases,
   });
   await putJson(storage(), IMAGE_RELEASE, release);
   console.log(
-    `published ${bucket}/${IMAGE_RELEASE} for ${imageReleaseVersion} with ${images.length} images; run the release workflow on main to carry them into ${CURRENT}`,
+    `published ${bucket}/${IMAGE_RELEASE} for ${imageReleaseVersion} with ${images.length} images and ${bases.length} bases; run the release workflow on main to carry them into ${CURRENT}`,
   );
 };
 
@@ -392,7 +464,7 @@ const publishRelease = async (fragmentDir, layerFragmentDir) => {
     die(
       `${bucket}/${IMAGE_RELEASE} does not exist; push a tag images-vX.Y.Z to build and publish the guest images first`,
     );
-  const { imageReleaseVersion, guestProtocolVersion, images } = ImageReleaseSchema.parse(imageRelease);
+  const { imageReleaseVersion, guestProtocolVersion, images } = PublishedImagesSchema.parse(imageRelease);
   if (guestProtocolVersion !== GuestProtocol.Version)
     die(
       `${bucket}/${IMAGE_RELEASE} holds image release ${imageReleaseVersion}, whose guests speak guest protocol ${guestProtocolVersion}, and this commit speaks ${GuestProtocol.Version}; push a tag images-vX.Y.Z on this commit to publish matching images, then run the release workflow on main`,
@@ -426,11 +498,12 @@ const publishRelease = async (fragmentDir, layerFragmentDir) => {
 const [command, ...args] = process.argv.slice(2);
 if (command === "binaries" && args.length === 4) await uploadBinaries(...args);
 else if (command === "images" && args.length === 3) await uploadImages(...args);
-else if (command === "image-release" && args.length === 1) await publishImageRelease(args[0]);
+else if (command === "base" && args.length === 3) await uploadBase(...args);
+else if (command === "image-release" && args.length === 2) await publishImageRelease(...args);
 else if (command === "layer-plan" && args.length === 2) await planLayers(...args);
 else if (command === "layers" && args.length === 4) await uploadLayers(...args);
 else if (command === "manifest" && args.length === 2) await publishRelease(...args);
 else
   die(
-    `usage: ${basename(process.argv[1])} binaries <amd64|arm64> <supervisor binary> <cli binary> <fragment.json> | images <amd64|arm64> <image dir> <fragment.json> | image-release <fragment dir> | layer-plan <amd64|arm64> <plan.json> | layers <amd64|arm64> <plan.json> <layer dir> <fragment.json> | manifest <binary fragment dir> <layer fragment dir>`,
+    `usage: ${basename(process.argv[1])} binaries <amd64|arm64> <supervisor binary> <cli binary> <fragment.json> | images <amd64|arm64> <image dir> <fragment.json> | base <amd64|arm64> <base dir> <fragment.json> | image-release <image fragment dir> <base fragment dir> | layer-plan <amd64|arm64> <plan.json> | layers <amd64|arm64> <plan.json> <layer dir> <fragment.json> | manifest <binary fragment dir> <layer fragment dir>`,
   );

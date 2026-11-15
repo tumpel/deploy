@@ -15,7 +15,7 @@ import {
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/api/schemas";
+import { BaseImageManifestSchema, BaseLayout, GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/api/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
 import {
   CLAUDE_FLAGS,
@@ -116,6 +116,21 @@ umount /proc
 cd /mnt
 pivot_root . rom
 exec chroot . /sbin/init
+`;
+
+const STUB_INIT = `#!/bin/sh
+set -eu
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+fail() {
+  echo "tumpel-init: $1 failed: $2" >&2
+  exit 1
+}
+mountpoint -q /proc || mount -t proc proc /proc || fail proc "mounting /proc"
+mountpoint -q /dev || mount -t devtmpfs devtmpfs /dev || fail dev "mounting /dev"
+output=$(mount -t squashfs -o ro /dev/vdc /opt/tumpel/guest 2>&1) || fail guest "$output"
+[ -x /opt/tumpel/guest/init ] || fail guest "the guest drive on /dev/vdc has no init"
+exec /opt/tumpel/guest/init
 `;
 
 const UNIT = `[Unit]
@@ -224,9 +239,7 @@ const recipeFor = (name, pins) => {
       environment: { ...ENVIRONMENT, DISABLE_AUTOUPDATER: "1" },
     }),
     install: async (tree) => {
-      const node = join(tree, "opt", "tumpel", "node");
-      mkdirSync(node, { recursive: true });
-      run("tar", ["-xJf", await download(pins.node), "-C", node, "--strip-components=1", "--no-same-owner"]);
+      const node = await installNode(tree, pins);
       const prefix = join(tree, "opt", "tumpel", "harness");
       mkdirSync(prefix, { recursive: true });
       run(
@@ -257,6 +270,13 @@ const recipeFor = (name, pins) => {
       return [pins.node];
     },
   };
+};
+
+const installNode = async (tree, pins) => {
+  const node = join(tree, "opt", "tumpel", "node");
+  mkdirSync(node, { recursive: true });
+  run("tar", ["-xJf", await download(pins.node), "-C", node, "--strip-components=1", "--no-same-owner"]);
+  return node;
 };
 
 const installGit = async (tree, pins) => {
@@ -300,7 +320,7 @@ const treeBytes = (tree) =>
       .split("\t")[0],
   );
 
-const packOci = (rootfs, layout, harness, arch) => {
+const packOci = (rootfs, layout, config, arch) => {
   const umoci = tool("umoci");
   const image = `${layout}:${OCI_TAG}`;
   rmSync(layout, { recursive: true, force: true });
@@ -316,34 +336,92 @@ const packOci = (rootfs, layout, harness, arch) => {
     "--architecture",
     arch,
     "--config.workingdir",
-    harness.workingDirectory,
-    ...Object.entries(harness.environment).flatMap(([name, value]) => ["--config.env", `${name}=${value}`]),
+    config.workingDirectory,
+    ...Object.entries(config.environment).flatMap(([name, value]) => ["--config.env", `${name}=${value}`]),
   ]);
-  run(umoci, [
-    "raw",
-    "add-layer",
-    "--image",
-    image,
-    "--history.created_by",
-    `tumpel guest:image ${harness.harness} ${harness.harnessVersion}`,
-    rootfs,
-  ]);
+  run(umoci, ["raw", "add-layer", "--image", image, "--history.created_by", config.createdBy, rootfs]);
   run(umoci, ["gc", "--layout", layout]);
+};
+
+const unpackRootfs = async (tree, pins) => {
+  run(tool("unsquashfs"), ["-no-xattrs", "-ignore-errors", "-q", "-n", "-d", tree, await download(pins.rootfs)], {
+    stdio: ["ignore", "ignore", "inherit"],
+  });
+  for (const dir of ["mnt", "rom", "overlay", "opt", "etc/tumpel", "usr/local/bin", "usr/local/sbin"]) {
+    mkdirSync(join(tree, dir), { recursive: true });
+  }
+};
+
+const installDevTools = async (tree, pins) => {
+  mkdirSync(join(tree, "opt/tumpel"), { recursive: true });
+  copyFileSync(join(ROOT, "npm-scripts/prebuild.mjs"), join(tree, "opt/tumpel/prebuild.mjs"));
+  chmodSync(join(tree, "opt/tumpel/prebuild.mjs"), 0o755);
+  rmSync(join(tree, "etc/resolv.conf"), { force: true });
+  writeFileSync(join(tree, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 9.9.9.9\n");
+  return installGit(tree, pins);
+};
+
+const packImage = async (work, tree, pins, out, ociConfig) => {
+  const [mkfs, e2fsck] = [tool("mkfs.ext4"), tool("e2fsck")];
+  run("chmod", ["-R", "u+rwX", tree]);
+  const image = join(work, "image.ext4");
+  const mib = Math.ceil((treeBytes(tree) * 1.3) / 2 ** 20) + 256;
+  run(mkfs, ["-q", "-F", "-d", tree, "-E", "root_owner=0:0", "-L", "rootfs", image, `${mib}M`]);
+  ownByRoot(tree, image);
+  run(e2fsck, ["-fn", image], { stdio: ["ignore", "ignore", "inherit"] });
+  const imageDigest = await sha256(image);
+  const kernel = await download(pins.kernel);
+  copyFileSync(kernel, join(out, `${pins.kernel.digest}.vmlinux`));
+  renameSync(image, join(out, `${imageDigest}.ext4`));
+  const rootfs = join(out, `${imageDigest}.rootfs.tar`);
+  run("tar", ["-C", tree, "--sort=name", "--numeric-owner", "--owner=0", "--group=0", "-cf", rootfs, "."]);
+  packOci(rootfs, join(out, `oci-${imageDigest}`), ociConfig, pins.arch);
+  return imageDigest;
+};
+
+const buildBase = async (pins) => {
+  const out = join(OUT, "base");
+  const work = join(OUT, `.build-${process.pid}`);
+  const tree = join(work, "tree");
+  mkdirSync(work, { recursive: true });
+  mkdirSync(out, { recursive: true });
+  try {
+    await unpackRootfs(tree, pins);
+    for (const dir of ["opt/harness", "opt/tumpel/guest"]) mkdirSync(join(tree, dir), { recursive: true });
+    writeFileSync(join(tree, "usr/local/sbin/tumpel-init"), STUB_INIT, { mode: 0o755 });
+    writeFileSync(join(tree, "etc/tumpel/base-layout"), `${BaseLayout.Version}\n`);
+    const components = await installDevTools(tree, pins);
+    await installNode(tree, pins);
+    const imageDigest = await packImage(work, tree, pins, out, {
+      workingDirectory: WORKING_DIRECTORY,
+      environment: ENVIRONMENT,
+      createdBy: `tumpel guest:image base ${BaseLayout.Version}`,
+    });
+    const manifest = BaseImageManifestSchema.parse({
+      imageDigest,
+      kernelUrl: pins.kernel.url,
+      kernelDigest: pins.kernel.digest,
+      baseRootfsUrl: pins.rootfs.url,
+      baseRootfsDigest: pins.rootfs.digest,
+      baseLayoutVersion: BaseLayout.Version,
+      components: [...components, pins.node],
+    });
+    const manifestPath = join(out, `${imageDigest}.json`);
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    console.log(manifestPath);
+  } finally {
+    run("chmod", ["-R", "u+w", work]);
+    rmSync(work, { recursive: true, force: true });
+  }
 };
 
 const buildImage = async (name, pins) => {
   const recipe = recipeFor(name, pins);
-  const [unsquashfs, mkfs, e2fsck] = [tool("unsquashfs"), tool("mkfs.ext4"), tool("e2fsck")];
   const work = join(OUT, `.build-${process.pid}`);
   const tree = join(work, "tree");
   mkdirSync(work, { recursive: true });
   try {
-    run(unsquashfs, ["-no-xattrs", "-ignore-errors", "-q", "-n", "-d", tree, await download(pins.rootfs)], {
-      stdio: ["ignore", "ignore", "inherit"],
-    });
-    for (const dir of ["mnt", "rom", "overlay", "opt", "etc/tumpel", "usr/local/bin", "usr/local/sbin"]) {
-      mkdirSync(join(tree, dir), { recursive: true });
-    }
+    await unpackRootfs(tree, pins);
     copyFileSync(pins.guestBin, join(tree, "usr/local/bin/tumpel-guest"));
     chmodSync(join(tree, "usr/local/bin/tumpel-guest"), 0o755);
     writeFileSync(join(tree, "usr/local/sbin/tumpel-init"), INIT, { mode: 0o755 });
@@ -353,25 +431,12 @@ const buildImage = async (name, pins) => {
       join(tree, "etc/systemd/system/multi-user.target.wants/tumpel-guest.service"),
     );
     writeFileSync(join(tree, "etc/tumpel/guest.json"), `${JSON.stringify(recipe.harness, null, 2)}\n`);
-    mkdirSync(join(tree, "opt/tumpel"), { recursive: true });
-    copyFileSync(join(ROOT, "npm-scripts/prebuild.mjs"), join(tree, "opt/tumpel/prebuild.mjs"));
-    chmodSync(join(tree, "opt/tumpel/prebuild.mjs"), 0o755);
-    rmSync(join(tree, "etc/resolv.conf"), { force: true });
-    writeFileSync(join(tree, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 9.9.9.9\n");
-    const components = [...(await installGit(tree, pins)), ...(await recipe.install(tree))];
-    run("chmod", ["-R", "u+rwX", tree]);
-    const image = join(work, "image.ext4");
-    const mib = Math.ceil((treeBytes(tree) * 1.3) / 2 ** 20) + 256;
-    run(mkfs, ["-q", "-F", "-d", tree, "-E", "root_owner=0:0", "-L", "rootfs", image, `${mib}M`]);
-    ownByRoot(tree, image);
-    run(e2fsck, ["-fn", image], { stdio: ["ignore", "ignore", "inherit"] });
-    const imageDigest = await sha256(image);
-    const kernel = await download(pins.kernel);
-    copyFileSync(kernel, join(OUT, `${pins.kernel.digest}.vmlinux`));
-    renameSync(image, join(OUT, `${imageDigest}.ext4`));
-    const rootfs = join(OUT, `${imageDigest}.rootfs.tar`);
-    run("tar", ["-C", tree, "--sort=name", "--numeric-owner", "--owner=0", "--group=0", "-cf", rootfs, "."]);
-    packOci(rootfs, join(OUT, `oci-${imageDigest}`), recipe.harness, pins.arch);
+    const components = [...(await installDevTools(tree, pins)), ...(await recipe.install(tree))];
+    const imageDigest = await packImage(work, tree, pins, OUT, {
+      workingDirectory: recipe.harness.workingDirectory,
+      environment: recipe.harness.environment,
+      createdBy: `tumpel guest:image ${recipe.harness.harness} ${recipe.harness.harnessVersion}`,
+    });
     const manifest = GuestImageManifestSchema.parse({
       imageDigest,
       kernelUrl: pins.kernel.url,
@@ -394,11 +459,15 @@ const main = async () => {
   const [name, arch = HOST_ARCH[process.arch]] = process.argv.slice(2);
   if (!name)
     die(
-      `pass a harness and optionally an architecture: npm run guest:image -- <${buildable().join("|")}|all> [amd64|arm64]`,
+      `pass a harness and optionally an architecture: npm run guest:image -- <base|${buildable().join("|")}|all> [amd64|arm64]`,
     );
   if (!PINS[arch]) die(`no pins for architecture ${arch}; pass amd64 or arm64`);
   if (!RELEASE_ARCHITECTURES.includes(arch)) die(disabledReason(arch));
   const pins = pinsFor(arch);
+  if (name === "base") {
+    await buildBase(pins);
+    return;
+  }
   if (!existsSync(pins.guestBin))
     die(`${pins.guestBin} is missing; build it with TUMPEL_TARGET=${PINS[arch].target} npm run guest:build`);
   for (const harness of name === "all" ? buildable() : [name]) await buildImage(harness, pins);
