@@ -2,26 +2,25 @@
 
 ## Summary
 
-The dashboard is the browser cockpit for one Tumpel tenant. A person signs in with Cloudflare Access and picks a tenant. From there they run hosts, harnesses, personas, secrets, connections, members and sessions, and watch transcripts live. The app runs on Vite and React with TanStack Query and TanStack Router. It calls the public API through the generated client only, so every screen below names the operations it uses. An operation the API lacks is listed under API gaps as a small addition.
+The dashboard is the browser cockpit for one Tumpel tenant. A person signs in and runs hosts, harnesses, personas, secrets, connections, prebuilds, members and sessions, and watch transcripts live. Built on Vite, React, TanStack Query and TanStack Router, it calls the public API through the generated client only, so every screen below names its operations.
 
 ## Users and jobs
 
-Today one operator runs a tenant alone. Later a small team shares a tenant, with one or more owners and any number of members.
+One operator runs a tenant today. Later a small team of owners and members shares it.
 
 1. Start a session on a repository and one of its issues, and watch the turn live.
 2. Steer a running session with the next prompt, then stop or archive it.
 3. Enrol a host, see its state and usage, set its labels and revoke it.
-4. See the fleet at a glance: free box slots, sessions by state, failed turns.
-5. Pin harness versions and keep personas, their files and their secret sets.
-6. Enter a credential once and know when a subscription token expires.
-7. Connect GitHub, and later other services, through OAuth.
-8. Invite a teammate by email and remove them again.
+4. Pin harness versions and keep personas, their files and their secret sets.
+5. Connect GitHub, build providers and later other services.
+6. See each repository's latest prebuild and rebuild it.
+7. Invite a teammate by email and remove them again.
 
 ## Sign-in and tenancy
 
 The dashboard signs in through the control plane's OAuth with PKCE, behind the Cloudflare Access consent page (#2). The token belongs to one principal, and a principal belongs to one tenant. `Identity_whoami` names both.
 
-The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId>`. Filters sit in the query string, so a reload or a shared link opens the same view. The header holds a tenant switcher. It lists the tenants of the signed-in email and keeps one token per tenant. Picking a tenant without a token runs the consent for that tenant and returns to the same path under the new tenant id.
+The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId>`. Filters sit in the query string, so a reload or a shared link opens the same view. The header's tenant switcher lists the tenants of the signed-in email and keeps one token per tenant. Picking a tenant without a token runs the consent for that tenant and returns to the same path under the new tenant id.
 
 Today an email holds a principal in one tenant only, so the switcher needs G1.
 
@@ -36,21 +35,20 @@ Today an email holds a principal in one tenant only, so the switcher needs G1.
 | Harnesses   | The catalog and the tenant's pins; pin and unpin                                   | `HarnessCatalog_list`, `HarnessCatalog_listPins`, `HarnessCatalog_pin`, `HarnessCatalog_unpin`                                                                                     |
 | Personas    | Personas with harness, secret set, git author and files; create, edit, delete      | `Personas_list`, `Personas_get`, `Personas_create`, `Personas_update`, `Personas_delete`, `Personas_uploadFile`, `HarnessCatalog_list`                                             |
 | Secrets     | Secret sets with member names, kinds, providers and expiries; create, edit, delete | `SecretSets_list`, `SecretSets_get`, `SecretSets_create`, `SecretSets_update`, `SecretSets_delete`, G12                                                                            |
-| Connections | Each connection with its state and account; connect, disconnect                    | `GitHubConnections_get`, `GitHubConnections_start`, G5, G6, G10                                                                                                                    |
+| Connections | Each connection with its state and account; connect, disconnect                    | `GitHubConnections_get`, `GitHubConnections_start`, G5, G6, G10, G15, G16, G17                                                                                                     |
+| Prebuilds   | The latest prebuild of each repository; rebuild                                    | G7, G18, G19, G20, G21                                                                                                                                                             |
 | Members     | Members with role, open invites; invite, revoke, remove                            | G2, G3, G4                                                                                                                                                                         |
 | Account     | The signed-in principal and its devices; sign a device out                         | `Identity_whoami`, `Devices_list`, `Devices_revoke`                                                                                                                                |
 
 ## Screen rules
 
-Enrolment shows the minted token and its install command once, with the expiry. The persona file editor lists only the paths the catalog lists for the persona's harness. Per-harness config is the persona's files: the tenant holds no other config per harness.
+Enrolment shows the minted token and its install command once, with the expiry. The persona file editor lists only the paths the catalog lists for the persona's harness. Per-harness config is the persona's files.
 
-Secret values go into a password field and travel once, in the create or update call. The API holds every value back. It returns each member's `updatedAt` with its name, kind, provider and expiry. A subscription token past its `expiresAt` reads Expired and names the fix.
-
-An edit in the dashboard changes the live tenant. The next `tumpel config plan` against the tenant's config file shows it as a change.
+Secret values go into a password field and travel once, in the create or update call. The API holds every value back. A subscription token past its `expiresAt` reads Expired and names the fix.
 
 ## Connections
 
-A connection links the tenant to an outside service through OAuth. GitHub is the first. Every connection has the same three states and the same three actions:
+A connection links the tenant to an outside service. Every connection has the same three states and the same three actions:
 
 | State         | Meaning                                               | Action                       |
 | ------------- | ----------------------------------------------------- | ---------------------------- |
@@ -58,63 +56,82 @@ A connection links the tenant to an outside service through OAuth. GitHub is the
 | NotConnected  | The stage has an app and the tenant has not linked it | Connect                      |
 | Connected     | The tenant holds a link to one account                | Disconnect                   |
 
-For GitHub, NotConfigured is today's `AppMissing`, and its `setupUrl` opens `/github/app/setup`. That page creates the stage's GitHub App once from GitHub's manifest flow. Connect calls `GitHubConnections_start` and sends the browser to its `installUrl`. GitHub returns to `/github/app/installed`, which links the installation and sends the browser back to the Connections screen (G10). Connected shows the account login and the covered repositories (G7). Disconnect removes the link (G6) and says to uninstall the App on GitHub as well.
+For GitHub, NotConfigured is today's `AppMissing`, whose `setupUrl` opens `/github/app/setup`. Connect sends the browser to the `installUrl` of `GitHubConnections_start`. GitHub returns to `/github/app/installed`, which links the installation and sends the browser back (G10). Connected shows the account login and the covered repositories (G7). Disconnect removes the link (G6) and says to uninstall the App on GitHub too.
 
 A later service adds its own operation group with `get`, `start` and `delete`, and one row in `Connections_list` (G5).
 
+### Build providers
+
+A build provider is a connection kind that runs prebuilds on the tenant's own account and bills the tenant ([RFC: Prebuilds](../RFC/RFC-TUM-Prebuilds.md)). Phase 1 has two. Each card shows its state, the billing account and the trust material, each value with a copy control:
+
+| Provider       | Connect                                                                                                           | Billing account            | Trust material                                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub Actions | The installed App, plus a caller workflow in the repository that calls Tumpel's reusable workflow at a pinned tag | The installation's account | The caller workflow                                                                                                                             |
+| Namespace      | A one-time registration of the stage's issuer with Namespace Support for the tenant's workspace                   | The Namespace workspace    | Issuer `https://id.<stage>.tumpel.dev`, subject `tenant:<tenantId>:persona:<personaName>:job:prebuild`, audience `federation.namespaceapis.com` |
+
+## Prebuilds
+
+The Prebuilds screen lists the covered repositories (G7), each with its latest prebuild. A row shows the state (Dispatched, Building, Converting, Done or Failed), the provider, the input digest, start and finish times, the layer size and a link to the provider's log. Rebuild starts a job even when a prebuild with the same key is stored (G21).
+
+A Failed prebuild stays on its repository row until a later one succeeds. It names the phase that failed (dispatch, build, upload or conversion), the detail with its fix, and the log link.
+
 ## Fleet overview
 
-The overview shows numbers the API returns today, and nothing derived beyond counts and sums:
+The overview shows numbers the API returns today:
 
 - Hosts by state: Enrolled, Online, Offline, Revoked.
-- Per host: `boxCapacity`, `boxesRunning`, `boxesWarm`, free slots (capacity minus running minus warm), `loadAverage`, `memoryAvailableMib` and the time of the last report.
+- Per host: the `ReportedHostUsage` fields, free slots (capacity minus running minus warm) and the last report time.
 - Sessions by state, by host and by harness.
 - Subscription tokens by `expiresAt`, soonest first, with expired ones marked.
-- The GitHub connection state.
+- Each connection's state.
 
-The session page holds the numbers of one session. Turns show their state, `lineCount` and duration. Snapshots show `uploadedBytes` or the failure reason. Handovers show its variable names and `repositoryCredentialSource`, and each stop failure its reason and detail. Failed turns across the tenant need G13.
+The session page shows each turn, snapshot, credential handover and stop failure of one session. Failed turns across the tenant need G13.
 
 The overview refreshes on window focus and after each action. Only the live transcript reads on a timer.
 
 ## Live transcript
 
-A turn's transcript reads through `Transcripts_read` with `turnId` and `after`, as the RFC decides. Each page appends its lines and moves the cursor. When the cursor moved, the next read starts at once. When it did not, the view waits 250 ms, doubling to 5 s, as `tumpel transcript read --follow` does. The reads end at a page whose `finished` is true. The view then reads `Turns_get`, and for a Failed turn it shows `Turns_getFailure` with its reason and detail.
+The view reads `Transcripts_read` with `turnId` and the last cursor, as the RFC decides. When a page moves the cursor, the next read starts at once. Otherwise the view waits 250 ms, doubling to 5 s, as `tumpel transcript read --follow` does. A page that reads `finished` ends the reads, and a Failed turn then shows its `Turns_getFailure` reason and detail.
 
-A compact toggle passes `compact` for a Claude Code turn and is hidden for other harnesses. The cursor sits in no URL. A reload reads the turn from its first line.
+A compact toggle passes `compact` for a Claude Code turn and is hidden for other harnesses. On reload, the view reads the turn from its first line.
 
 ## Errors and signed-out state
 
-Every refusal is a `Problem`, and the dashboard shows its `title`, `detail` and `fix`, plus a prefilled link that reports an issue. A 401 switches the whole app to a signed-out state: a persistent notice and a sign-in control that returns to the same URL. On a 403 the view shows Forbidden with its fix. Neither ever renders as an empty list. Only a genuine empty answer renders as empty, and an empty list names the way to add the first item. When the control plane does not answer, the view says so and shows a retry control.
+Every refusal is a `Problem`. The dashboard shows its `title`, `detail` and `fix`, plus a prefilled link that reports an issue. A 401 switches the whole app to a signed-out state: a persistent notice and a sign-in control that returns to the same URL. On a 403 the view shows Forbidden with its fix. Neither ever renders as an empty list. An empty list names the way to add the first item. An unreachable control plane shows a retry control.
 
 ## API gaps
 
-Each signed-in addition is also one MCP tool and one CLI command, as the parity check requires.
+Each signed-in addition also gets an MCP tool and a CLI command.
 
-1. G1 `Identity_listTenants`: the tenants of the caller's email. The consent page takes a tenant choice. Principals become unique per tenant and email, which changes the central store.
-2. G2 `Members_list`: the tenant's principals with role.
-3. G3 `Invitations_create` (email and role), `Invitations_list`, `Invitations_revoke`, and the browser-only `Invitations_accept`, signed in by the identity assertion like `Tenants_signUp`. An email with no invite and no tenant gets `NotInvited`.
-4. G4 `Members_remove`: deletes a principal and signs out its devices.
-5. G5 `Connections_list`: one row per connection kind with its state and account login.
-6. G6 `GitHubConnections_delete`: removes the tenant's installation link.
-7. G7 `GitHubConnections_listRepositories`: the repositories the installation covers.
-8. G8 `GitHubConnections_listIssues`: the open issues of one covered repository.
-9. G9 `Sessions_start` takes an issue number; the control plane reads the issue and builds the prompt (#5).
-10. G10 `GitHubConnections_start` takes a return URL on the dashboard's origin, where the installed callback sends the browser.
-11. G11 `Session` carries its last turn's id, state and time (#7).
-12. G12 `SecretSetUpdate` takes a Stored member, a name with no value that keeps its stored value, as `PersonaFileWrite` does. Today an update needs every value again.
-13. G13 `Turns_listForTenant`: the tenant's turns, filtered by state and by a start time.
-14. G14 The supervisor version the stage serves, so the Hosts screen flags an outdated host. The supervisor has no update command yet (OR-1).
+1. G1 `Identity_listTenants`, and a tenant choice on the consent page. Principals become unique per tenant and email, a central store change.
+2. G2 `Members_list`, with roles.
+3. G3 `Invitations_create`, `_list` and `_revoke`, and a browser-only `_accept` like `Tenants_signUp`.
+4. G4 `Members_remove`, which signs out the member's devices.
+5. G5 `Connections_list`: each connection kind with its state and account.
+6. G6 `GitHubConnections_delete`.
+7. G7 `GitHubConnections_listRepositories`.
+8. G8 `GitHubConnections_listIssues` for one repository.
+9. G9 `Sessions_start` takes an issue number and builds the prompt (#5).
+10. G10 `GitHubConnections_start` takes a return URL on the dashboard's origin.
+11. G11 `Session` carries its last turn's id, state and time.
+12. G12 `SecretSetUpdate` takes a member by name alone and keeps its stored value. Today an update needs every value again.
+13. G13 `Turns_listForTenant`, filtered by state and start time.
+14. G14 The supervisor version the stage serves. The supervisor has no update command yet (OR-1).
+15. G15 `Connections_list` holds the build providers with their billing account.
+16. G16 `GitHubActionsConnections_get`, `_start` and `_delete`, with the caller workflow to copy.
+17. G17 `NamespaceConnections_get`, `_start` and `_delete`. `get` answers the issuer, subject pattern and audience.
+18. G18 `Prebuilds_start`, `Prebuilds_list` per repository and `Prebuilds_get` (FR-1).
+19. G19 `Prebuild` carries start and finish times, layer bytes and the provider's log URL.
+20. G20 `Prebuilds_getFailure`: the failed phase and its fix (FR-5).
+21. G21 A rebuild flag on `Prebuilds_start`.
 
 ## Open questions
 
 1. Does the dashboard register through `OAuth_register` like an MCP client, or ship as a fixed client (#2)?
 2. Where does the model list come from? The catalog names a provider and no models (#5).
 3. Which actions does a Member role lose against an Owner?
+4. How does Tumpel learn that Namespace Support registered the issuer for a workspace?
 
 ## FAQ
 
 **Can the dashboard read a secret value?** No. The API returns no value.
-
-**How does a person work in two tenants?** Through the tenant switcher, which holds one token per tenant (G1).
-
-**Does the transcript stream?** It reads pages with a cursor until one reads `finished`.
