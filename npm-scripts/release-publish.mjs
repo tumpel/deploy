@@ -7,6 +7,7 @@ import { basename, dirname, join } from "node:path";
 import {
   ChannelProtocol,
   GuestImageManifestSchema,
+  GuestProtocol,
   ImageReleaseSchema,
   ReleaseManifestSchema,
 } from "@tumpel/api/schemas";
@@ -262,7 +263,10 @@ const git = (...args) => spawnSync("git", args, { encoding: "utf8" });
 
 const supersededBy = (commit, published) => {
   if (published === commit) return false;
-  if (git("cat-file", "-e", `${published}^{commit}`).status !== 0) return false;
+  if (git("cat-file", "-e", `${published}^{commit}`).status !== 0)
+    return die(
+      `${bucket}/${CURRENT} holds commit ${published}, which this checkout does not know; publish only from a commit of this repository, or fetch the branch that holds ${published}`,
+    );
   const ancestor = git("merge-base", "--is-ancestor", commit, published);
   if (ancestor.status === 0) return true;
   if (ancestor.status === 1) return false;
@@ -281,19 +285,15 @@ const publishImageRelease = async (fragmentDir) => {
   const missing = [...ENABLED].filter((architecture) => !images.some((image) => image.architecture === architecture));
   if (missing.length > 0)
     die(`the fragments hold no images for ${missing.join(", ")}; build them with npm run guest:image`);
-  const release = ImageReleaseSchema.parse({ imageReleaseVersion, commit: headCommit(), images });
-  const store = storage();
-  await putJson(store, IMAGE_RELEASE, release);
-  console.log(`published ${bucket}/${IMAGE_RELEASE} for ${imageReleaseVersion} with ${images.length} images`);
-  const current = await readJson(store, CURRENT);
-  if (current === undefined) {
-    console.log(`${bucket}/${CURRENT} does not exist yet; the next release from main carries these images`);
-    return;
-  }
-  const manifest = ReleaseManifestSchema.parse({ ...ReleaseManifestSchema.parse(current), images });
-  await putJson(store, CURRENT, manifest);
+  const release = ImageReleaseSchema.parse({
+    imageReleaseVersion,
+    commit: headCommit(),
+    guestProtocolVersion: GuestProtocol.Version,
+    images,
+  });
+  await putJson(storage(), IMAGE_RELEASE, release);
   console.log(
-    `published ${bucket}/${CURRENT} for ${manifest.releaseVersion} with the images of ${imageReleaseVersion}`,
+    `published ${bucket}/${IMAGE_RELEASE} for ${imageReleaseVersion} with ${images.length} images; run the release workflow on main to carry them into ${CURRENT}`,
   );
 };
 
@@ -316,7 +316,11 @@ const publishRelease = async (fragmentDir) => {
     die(
       `${bucket}/${IMAGE_RELEASE} does not exist; push a tag images-vX.Y.Z to build and publish the guest images first`,
     );
-  const { imageReleaseVersion, images } = ImageReleaseSchema.parse(imageRelease);
+  const { imageReleaseVersion, guestProtocolVersion, images } = ImageReleaseSchema.parse(imageRelease);
+  if (guestProtocolVersion !== GuestProtocol.Version)
+    die(
+      `${bucket}/${IMAGE_RELEASE} holds image release ${imageReleaseVersion}, whose guests speak guest protocol ${guestProtocolVersion}, and this commit speaks ${GuestProtocol.Version}; push a tag images-vX.Y.Z on this commit to publish matching images, then run the release workflow on main`,
+    );
   const commit = headCommit();
   const current = await readJson(store, CURRENT);
   if (current !== undefined) {
