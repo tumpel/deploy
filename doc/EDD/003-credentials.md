@@ -32,7 +32,7 @@ For each turn, the guest writes the persona's files and exports the variables be
 
 ## App creation
 
-Each stage has one GitHub App. A person creates it once from GitHub's manifest flow at the browser page `/github/app/setup`, and GitHub returns to `/github/app/created`. The stage's Cloudflare Access application covers both pages and refuses the proof's service token. Adding `?organization=<login>` creates the App under that organization. Once an App exists, the page refuses.
+Each stage has one GitHub App, and every self-hosted control plane registers its own. A person creates it once from GitHub's manifest flow at the browser page `/github/app/setup`, and GitHub returns to `/github/app/created`. The stage's Cloudflare Access application covers both pages and refuses the proof's service token. Adding `?organization=<login>` creates the App under that organization. Once an App exists, the page refuses.
 
 The manifest asks for write on contents, pull requests, issues and discussions. It also asks for write on checks, statuses and workflows, and for read on metadata and actions. It leaves out the administration, members, organization and secrets permissions. The App requests user authorization on install and redirects on update. Its callback and setup URL are both `/github/app/installed`.
 

@@ -35,7 +35,7 @@ Coding agent harnesses such as Claude Code or Codex run in a terminal on the mac
 
 Tumpel is cloud agents: the infrastructure that runs harnesses. That means hosts, boxes, sessions, turns, personas, secret sets and credentials. A super harness is the management, communication and memory layer across harnesses, such as Recall. Tumpel builds no super harness. A tenant brings its own.
 
-Tumpel has three parts. The supervisor runs on hosts the tenant brings: Linux machines with KVM. Cloudflare Workers run the control plane, which holds tenants, sessions and turns. Both the MCP server and the `tumpel` CLI call one public API.
+Tumpel has three parts. The supervisor runs on hosts the tenant brings: Linux machines with KVM. Cloudflare Workers run the control plane, which holds tenants, sessions and turns.
 
 ```mermaid
 flowchart LR
@@ -52,19 +52,19 @@ A host enrols with a one-time token and keeps one outbound WebSocket to the cont
 
 ### Sessions and turns
 
-Each session belongs to a tenant and runs one harness on one host. The harness's output comes back as numbered lines that a caller reads with a cursor. Every phase of a turn has a budget, and an overrun ends the turn Failed with a reason that names the phase.
+Each session belongs to a tenant and runs one harness on one host. The harness's output comes back as numbered lines that a caller reads with a cursor.
 
 ### Credentials
 
-A persona names one harness and carries that harness's own config files. It names one secret set. Besides the GitHub App token for the session's repository, that set is the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel to the box. The box exports it into the harness's environment.
+A persona names one harness and carries that harness's own config files. It names one secret set. Besides the GitHub App token for the session's repository, that set is the only source of secrets for its sessions. The control plane stores each value with envelope encryption, decrypts it per turn and sends it over the channel to the box.
 
 ### Snapshots
 
-When a turn completes, the supervisor stores the box's files in object storage as chunks that every session of the tenant shares. A fresh box restores the session from its latest snapshot, on the same host or on another one.
+When a turn completes, the supervisor stores the box's files in object storage as chunks that every session of the tenant shares. A fresh box restores the session from its latest snapshot.
 
 ### Proof
 
-After every deploy, agents prove the stage on a real host. They sign in, enrol the host, run real turns on a real harness and restore a session from its snapshots, with no person in a browser. The proof passed all twelve steps against `dev` on `tumpel-host`.
+Agents sign in, enrol the host, run real turns on a real harness and restore a session from its snapshots, with no person in a browser. The proof passed all twelve steps against `dev` on `tumpel-host`.
 
 ## Requirements
 
@@ -128,7 +128,7 @@ Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with pers
 
 > Warm pooling is a logical thing to do, at least keep it warm for a little while.
 
-Concurrency means any number of sessions per tenant across hosts, each with one running turn. On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#decisions)).
+On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#decisions)).
 
 ### Domain and stages
 
@@ -138,7 +138,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 ### Credentials and storage
 
-**The provider credential is an environment variable.** For each turn, the box exports the provider credential into the harness's environment. When the credential changes, the box restarts the harness before the next turn. A host-side gateway issuing per-session virtual keys is a non-goal for v1.
+**The provider credential is an environment variable.** For each turn, the box exports the provider credential into the harness's environment. A host-side gateway issuing per-session virtual keys is a non-goal for v1.
 
 > I would follow industry.
 
@@ -150,7 +150,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Snapshot bytes move on presigned URLs.** The control plane signs an upload URL for each pack and for each snapshot's root, and download URLs for a restore, so a host holds no storage key. Memory state never leaves the host.
 
-**Snapshots are chunked and packed.** Only the chunks the tenant lacks leave the host. The host cuts each changed file into content-defined chunks and concatenates the new ones into packs of about 8 MiB. A manifest lists every file of the upper directory with its chunks, so a restore reads the latest snapshot alone. An archive deletes the packs that hold no remaining chunk and never repacks (EDD-004). The cost is a host chunk cache with no eviction, and packs that a failed snapshot leaves in storage.
+**Snapshots are chunked and packed.** Only the chunks the tenant lacks leave the host. The host cuts each changed file into content-defined chunks and concatenates the new ones into packs of about 8 MiB. An archive deletes the packs that hold no remaining chunk and never repacks (EDD-004). The cost is a host chunk cache with no eviction, and packs that a failed snapshot leaves in storage.
 
 > the duplicity model
 
@@ -160,7 +160,7 @@ Concurrency means any number of sessions per tenant across hosts, each with one 
 
 **Channel ordering and reconnect.** Every message carries a sequence number and an acknowledgement. After a reconnect, each side resends what the other has not acknowledged, and the receiver drops duplicates.
 
-**Repository access is a GitHub App installation token.** Each stage has one GitHub App, and each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN`. When no installation covers the repository, the box uses the secret set's `GITHUB_TOKEN` (EDD-003).
+**Repository access is a GitHub App installation token.** Every self-hosted control plane registers its own GitHub App, one per stage, at its own `/github/app/setup` page (ruling of 2026-11-15). Each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN` (EDD-003).
 
 **MCP and CLI parity is a build check.** Every signed-in operation is one MCP tool and one CLI command on the same handler. The build fails on a gap.
 
