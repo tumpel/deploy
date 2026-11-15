@@ -10,11 +10,11 @@ Agents prove every stage after its deploy, against that stage's control plane an
 
 The reference host is a Linux VM on the hypervisor `box`, with a host-passthrough CPU so it exposes KVM, 4 vCPU and 8 GiB. The control plane is the stage's deployed Worker. An agent on the development machine drives the release's CLI and the hosted MCP server.
 
-`npm run proof:e2e` runs the twelve steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
+`npm run proof:e2e` runs the thirteen steps against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
 
 ## Signing in
 
-The test run holds a Cloudflare Access service token. Access issues a JWT for it that carries the token's client id. The Worker var `ACCESS_PROOF_COMMON_NAME` holds that client id. The Worker takes the token as the owner of the test tenant "Tumpel proof". It takes it on two endpoints only: device approve and device deny. `npm run proof -- tumpel login` starts the device flow and approves the device code with the token. The token lives in the runner's environment and never in the repository. The subscription token and its expiry come from the runner's own Claude Code credential by default, or from the encrypted key that `TUMPEL_PROOF_CREDENTIAL=dotfiles:<key name>` names, with the expiry in `TUMPEL_PROOF_CREDENTIAL_EXPIRES_AT`.
+The test run holds a Cloudflare Access service token. Access issues a JWT for it that carries the token's client id. The Worker var `ACCESS_PROOF_COMMON_NAME` holds that client id. The Worker takes the token as the owner of the test tenant "Tumpel proof". It takes it on three endpoints only: device approve, device deny and the OAuth consent page. `npm run proof -- tumpel login` starts the device flow and approves the device code with the token. The token lives in the runner's environment and never in the repository. The subscription token and its expiry come from the runner's own Claude Code credential by default, or from the encrypted key that `TUMPEL_PROOF_CREDENTIAL=dotfiles:<key name>` names, with the expiry in `TUMPEL_PROOF_CREDENTIAL_EXPIRES_AT`.
 
 ## Steps
 
@@ -30,10 +30,11 @@ The test run holds a Cloudflare Access service token. Access issues a JWT for it
 10. Secrecy. A search of the host's disk, its journal and every transcript finds no copy of the credential. `tumpel session handovers` lists the variable names.
 11. Refused credential. A secret set with an invalid key fails its turn with a reason that names the set and how to replace the value.
 12. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
+13. Connector. The run follows the 401 from `/mcp` to both metadata documents, registers a client and signs in with PKCE through the service token. It redeems the code, then calls `initialize`, `tools/list` and `tumpel_host_list_usage`. The step fails unless the result lists the host that step 2 enrolled.
 
 ## Passing
 
-A run passes when all twelve steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
+A run passes when all thirteen steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
 
 ## Result
 
@@ -55,6 +56,6 @@ A cloud agent in a box worked a real issue of this repository and opened a draft
 
 ## FAQ
 
-**Does a person approve anything?** No. The service token approves the device code.
+**Does a person approve anything?** No. The service token approves the device code and the connector's consent.
 
 **Which harnesses does the proof cover?** Claude Code, plus each harness the catalog adds once its image builds.

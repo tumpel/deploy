@@ -8,9 +8,30 @@ The MCP server runs on the control plane's Worker, on a path of the control plan
 
 ## Sign-in
 
-The control plane serves OAuth protected resource metadata (RFC 9728). It also serves authorization server metadata (RFC 8414). It accepts dynamic client registration (RFC 7591) and authorization with PKCE. On the CLI side, `tumpel login` runs the device flow (RFC 8628): it prints a URL and a code, and a browser approves the code. Cloudflare Access one-time PIN guards the consent, approve and deny pages. Device tokens are stored hashed and work until revoked. The CLI keeps its endpoint and token in a file only the user can read.
+`tumpel login` runs the device flow (RFC 8628): it prints a URL and a code, and a browser approves the code. Cloudflare Access one-time PIN guards the consent, approve and deny pages. Device tokens are stored hashed and work until revoked. The CLI keeps its endpoint and token in a file only the user can read.
 
 A 401 or 403 from the control plane reaches the caller as a signed-out error that says to run `tumpel login`. It never reaches the caller as an empty list.
+
+## Connecting a client
+
+An MCP client connects to `<origin>/mcp`, where `<origin>` is the stage's origin. The issuer and metadata take the origin from the request.
+
+1. `/mcp` without a valid token answers 401 with `WWW-Authenticate: Bearer resource_metadata="<origin>/.well-known/oauth-protected-resource/mcp", scope="tumpel"`.
+2. That URL serves the protected resource metadata (RFC 9728), and so does the same path without `/mcp`. It names this origin as the authorization server. `/.well-known/oauth-authorization-server[/mcp]` serves the server metadata (RFC 8414).
+3. `/oauth/register` registers public clients only (RFC 7591, `token_endpoint_auth_method` `none`), with up to 10 https redirect URIs. Registrations no sign-in used are removed after 1 h.
+4. `/oauth/authorize` takes PKCE with S256 only and a verifier of 43 to 128 characters. The optional `resource` (RFC 8707) must be `<origin>/mcp`.
+5. `/oauth/consent` sits behind the stage's Access application. People sign in with an Access identity, checked by origin and a `__Host-` CSRF cookie. The proof signs in with its Access service token, bound to the stage's proof common name, which binds the code to the proof principal and tenant.
+6. The callback carries the code, `state` and `iss`.
+7. `/oauth/token` redeems the code and each refresh token.
+
+| Item               | Lifetime and use                                           |
+| ------------------ | ---------------------------------------------------------- |
+| Sign-in request    | 10 min                                                     |
+| Authorization code | 120 s, single use, bound to `client_id` and `redirect_uri` |
+| Access token       | 1 h                                                        |
+| Refresh token      | 30 d, single use, replaced by a new one on each refresh    |
+
+Reusing a spent code or refresh token revokes every token of that client and principal. Each bearer token resolves to a principal and that principal's tenant.
 
 ## Parity
 
