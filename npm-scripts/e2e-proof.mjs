@@ -761,20 +761,26 @@ const steps = [
     run: async () => {
       const rows = tumpelJson(["connection", "list"]);
       const builders = rows.filter((row) => row.kind !== "GitHub");
-      if (builders.length !== 3 || builders.some((row) => row.state !== "NotConnected")) {
-        fail(`the build provider rows are not all NotConnected: ${JSON.stringify(rows)}`);
+      const kinds = builders.map((row) => row.kind).join(",");
+      if (kinds !== "GitHubActions,Namespace" || builders.some((row) => row.state === "Connected")) {
+        fail(`the build provider rows are not GitHubActions and Namespace, neither Connected: ${JSON.stringify(rows)}`);
       }
-      const result = spawnSync(
-        CLI,
-        ["prebuild", "start", "--repository", REPOSITORY, "--persona-id", state.personaId],
-        { encoding: "utf8", timeout: 60_000 },
-      );
-      if (result.status === 0) fail(`a prebuild started with no build provider connected: ${result.stdout.trim()}`);
-      const refusal = result.stderr.trim().split("\n").at(-1) ?? "";
-      if (!refusal.includes("No build provider")) fail(`the start was refused for another reason: ${refusal}`);
+      for (const provider of ["GitHubActions", "Namespace"]) {
+        const result = spawnSync(
+          CLI,
+          ["prebuild", "start", "--repository", REPOSITORY, "--persona-id", state.personaId, "--provider", provider],
+          { encoding: "utf8", timeout: 60_000 },
+        );
+        if (result.status === 0)
+          fail(`a prebuild started on ${provider}, which is not connected: ${result.stdout.trim()}`);
+        const refusal = result.stderr.trim().split("\n").at(-1) ?? "";
+        if (!refusal.includes("Build provider not connected") || !refusal.includes(provider)) {
+          fail(`the start on ${provider} was refused for another reason: ${refusal}`);
+        }
+      }
       const listed = tumpelJson(["prebuild", "list", "--repository", REPOSITORY]);
-      if (listed.length !== 0) fail(`the refused start left ${listed.length} prebuilds of ${REPOSITORY}`);
-      return `3 build provider rows NotConnected; refused NoBuildProvider, 0 prebuilds of ${REPOSITORY}`;
+      if (listed.length !== 0) fail(`the refused starts left ${listed.length} prebuilds of ${REPOSITORY}`);
+      return `build provider rows ${builders.map((row) => `${row.kind} ${row.state}`).join(", ")}; both starts refused NoBuildProvider, 0 prebuilds of ${REPOSITORY}`;
     },
   },
   {
