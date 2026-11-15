@@ -19,7 +19,7 @@ One operator runs a tenant today. Later a small team of owners and members share
 
 ## First run
 
-A new operator signs in through Access at `https://app.<stage>.tumpel.dev` and finishes setup there. The CLI and the device page stay for automation and agents.
+A new operator signs in through Access at `https://<stage>.tumpel.dev` and finishes setup there. The CLI and the device page stay for automation and agents.
 
 When the Access email holds no tenant, the consent page asks for the tenant name and the git author name and email that `Tenants_signUp` requires. It then finishes the same sign-in (G22).
 
@@ -147,7 +147,6 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 2. Where does the model list come from? The catalog names a provider and no models (#5).
 3. Which actions does a Member role lose against an Owner? Starting and deleting connections, and managing members and invitations.
 4. How does Tumpel learn that Namespace Support registered the issuer for a workspace?
-5. Does `https://dev.tumpel.dev`, which does not resolve, redirect to the dashboard at `https://app.dev.tumpel.dev`?
 
 ## FAQ
 

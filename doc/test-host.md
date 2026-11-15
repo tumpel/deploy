@@ -4,7 +4,7 @@
 
 - 4 vCPU, 8 GiB, q35, `<cpu mode='host-passthrough'>`, so `/dev/kvm` exists in the guest.
 - Disk `/mnt/nvme/vms/tumpel-host.qcow2`, 40 G, standalone qcow2 converted from `~/vm-staging/noble-server-cloudimg-amd64-20261017.img` (Ubuntu 24.04, sha256 `04e8f246...5b6c94`, checked against Ubuntu's SHA256SUMS).
-- Cloud-init NoCloud seed `tumpel-host-seed.iso` in the same directory, built from `~/vm-staging/tumpel-host-seed/{meta-data,user-data}`: passwordless sudo, sandbox's key, no password login, `qemu-guest-agent`, 2 G swapfile.
+- Cloud-init NoCloud seed `tumpel-host-seed.iso` in the same directory, built from `~/vm-staging/tumpel-host-seed/{meta-data,user-data}`: passwordless sudo, the group `kvm`, sandbox's key, no password login, `qemu-guest-agent`, 2 G swapfile.
 - Domain XML: `~/vm-config/tumpel-host.xml` on box. Autostart is off.
 
 Rebuild, on box as `mvhenten` (no sudo needed):
@@ -17,6 +17,10 @@ qemu-img convert -O qcow2 ~/vm-staging/noble-server-cloudimg-amd64-20261017.img 
 qemu-img resize /mnt/nvme/vms/tumpel-host.qcow2 40G
 $V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V start tumpel-host && $V domifaddr tumpel-host
 ```
+
+`virsh undefine --remove-all-storage` cannot delete the disk and the seed under `/mnt/nvme/vms`, because libvirt does not manage them. Remove them by hand. Each host gets its IP from a DHCP lease on the network `default`. A rebuild of `tumpel-host-2` with the same MAC got 192.168.122.217 back.
+
+On a fresh host, drop the old host key on `sandbox` with `ssh-keygen -R <address>`, then wait for the seed with `cloud-init status --wait` on the host. Then download the supervisor from the release and install it with the token on stdin, as Host setup below shows. The host reads Online in about 10 s.
 
 ## Second host
 
@@ -47,7 +51,7 @@ tumpel host mint-token --expires-in 600 | ssh tumpel-host ./tumpel-supervisor in
 
 The installer:
 
-1. checks that `mvhenten` can open `/dev/kvm`; when not, it adds the user to group `kvm`, restarts the user manager so the supervisor runs with that group, and checks the access once with `sg kvm`;
+1. checks that `mvhenten` can open `/dev/kvm`; when not, it adds the user to group `kvm`, restarts the user manager so the supervisor runs with that group, and checks the access once with `sg kvm`. On these test hosts the seed already puts `mvhenten` in `kvm`, so this step does nothing;
 2. writes `~/.local/state/tumpel-supervisor/runtime.json` (`SupervisorRuntime`) with defaults when the file is missing, and brings an older one to the current schema: it adds missing fields with their defaults and drops fields the schema no longer has;
 3. downloads Firecracker v1.18.0 to `firecrackerPath`, checked against the digest pinned in `crates/tumpel-supervisor/src/install.rs`;
 4. writes the guest filter `/etc/tumpel-guest-filter.nft` and the unit `tumpel-guest-filter.service` that loads it at boot;
