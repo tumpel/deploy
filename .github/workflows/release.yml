@@ -4,16 +4,6 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-    paths:
-      - "crates/**"
-      - "Cargo.lock"
-      - "Cargo.toml"
-      - "rust-toolchain.toml"
-      - "npm-scripts/release-publish.mjs"
-      - "npm-scripts/release-architectures.mjs"
-      - "packages/api/release.tsp"
-      - ".github/workflows/release.yml"
-      - ".github/workflows/checks.yml"
   workflow_dispatch:
     inputs:
       stage:
@@ -49,7 +39,7 @@ jobs:
 
   binaries:
     needs: plan
-    runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-24.04' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -74,7 +64,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: release-${{ matrix.target }}
+          shared-key: release-${{ matrix.target }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - if: matrix.packages != ''

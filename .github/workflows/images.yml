@@ -68,7 +68,8 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: guest-${{ matrix.target }}
+          shared-key: release-${{ matrix.target }}
+          save-if: false
 
       - name: Install image tools
         run: |
