@@ -158,10 +158,9 @@ const mintToken = () => {
 };
 
 const enrol = (name, envPrefix) => {
-  const tokenFile = `.tumpel-proof-enrol-${randomBytes(4).toString("hex")}`;
-  ssh(`umask 077; cat > ${tokenFile}`, `${mintToken()}\n`);
   const out = ssh(
-    `${envPrefix} ./tumpel-supervisor enrol --endpoint ${ENDPOINT} --token-file ${tokenFile} --name ${name}; s=$?; rm -f ${tokenFile}; exit $s`,
+    `${envPrefix} ./tumpel-supervisor enrol --endpoint ${ENDPOINT} --token-file - --name ${name}`,
+    `${mintToken()}\n`,
   );
   return JSON.parse(out.slice(0, out.lastIndexOf("}") + 1)).hostId;
 };
