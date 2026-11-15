@@ -21,18 +21,20 @@ One operator runs a tenant today. Later a small team of owners and members share
 
 A new operator signs in through Access at `https://<stage>.tumpel.dev` and finishes setup there. The CLI and the device page stay for automation and agents.
 
-When the Access email holds no tenant, the consent page asks for the tenant name that `Tenants_signUp` requires. It then finishes the same sign-in (G22).
+When the Access email holds no tenant, the consent page asks for the tenant name that `Tenants_signUp` takes, under the wizard's header and stepper. It then finishes the same sign-in (G22) and opens `/t/<tenantId>/setup`.
 
-The dashboard opens `/t/<tenantId>/setup` until every step reads done. Each step has one button and reads its state from the API. UX picks a checklist or a wizard.
+The setup wizard has six steps at `/t/<tenantId>/setup/<step>`. `/t/<tenantId>/setup` opens the first step that reads not done. Each step reads its state from the API; a waiting step reads again every 2 to 10 seconds while it is open, and on tab focus. The overview shows Resume setup until the first five read done.
 
-| Step              | The button                                                                                                                            | Done when                                                                                      |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Connect GitHub    | Opens the `installUrl` of `GitHubConnections_start`, which returns to the setup page (G10)                                            | `GitHubConnections_get` reads Connected                                                        |
-| Add a host        | Calls `EnrolmentTokens_mint` and shows its `installCommand` fed the `token` on stdin, with the expiry and a copy control              | `Hosts_list` holds an Online host                                                              |
-| Connect claude.ai | Shows `https://api.<stage>.tumpel.dev/mcp` with a copy control and two lines: add it in claude.ai as a custom connector, then sign in | G25 lists a claude.ai client                                                                   |
-| Apply a config    | Imports a config file, or opens the persona and secret set forms (#4, #14)                                                            | A persona's secret set holds a credential for its harness (`Personas_list`, `SecretSets_list`) |
+| Step      | The step                                                                                                                        | Done when                                                                       |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| Tenant    | Shows the tenant's name                                                                                                         | `Identity_whoami` answers                                                       |
+| GitHub    | Sends the tab to the `installUrl` of `GitHubConnections_start`, which returns to `/t/<tenantId>/setup/github?from=github` (G10) | `GitHubConnections_get` reads Connected                                         |
+| Host      | Calls `EnrolmentTokens_mint` and shows its `installCommand` fed the `token` on stdin, with the expiry and a copy control        | `Hosts_list` holds an Online host                                               |
+| claude.ai | Shows `https://api.<stage>.tumpel.dev/mcp` with a copy control and how to add it in claude.ai as a custom connector             | `OAuthGrants_list` holds a grant from https://claude.ai                         |
+| Persona   | Writes a Claude token, and a GitHub token while the App is not installed, to the Default persona's secret set                   | A persona's secret set holds an unexpired credential for its harness's provider |
+| Done      | Sums up the five steps                                                                                                          |                                                                                 |
 
-An import reads a `TenantConfig` file such as `doc/personas/tumpel-dev.json` and shows each schema error with its JSON pointer. It asks for each file a `from` names and each env-sourced value, in password fields. It shows the plan from G23 with its deletes and applies it on confirm (G24). A refusal shows its `Problem` and leaves the step not done.
+The Secret sets page imports a `TenantConfig` file such as `doc/personas/tumpel-dev.json` and shows each schema error with its JSON pointer. It asks for each file a `from` names and each env-sourced value, in password fields. It shows the plan from G23 with its deletes and applies it on confirm (G24).
 
 ## Sign-in and tenancy
 
