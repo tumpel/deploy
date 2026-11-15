@@ -32,10 +32,11 @@ const USAGE = `usage:
     when the S7 workflow runs the build in docker run with no runner environment and no runner
     mounts but the workspace: a command can read the runner's environment from /proc/$PPID/environ.
   prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>
-    Runs in a GitHub Actions step with id-token: write that runs no repository code. Requests the
-    job's OIDC token with aud <api origin>, exchanges it at POST /v1/prebuilds/<prebuild id>/uploads
-    for one presigned PUT of the layer, PUTs layer.tar before the grant expires, then calls
-    POST /v1/prebuilds/<prebuild id>/uploads/complete.`;
+    Runs in a job that runs no repository code. Takes the job's OIDC token from TUMPEL_JOB_TOKEN
+    when set, as the CircleCI orb mints it with aud <api origin>; otherwise, in a GitHub Actions step
+    with id-token: write, requests the job's OIDC token with aud <api origin>. Exchanges it at
+    POST /v1/prebuilds/<prebuild id>/uploads for one presigned PUT of the layer, PUTs layer.tar
+    before the grant expires, then calls POST /v1/prebuilds/<prebuild id>/uploads/complete.`;
 
 const LIFECYCLE = ["onCreateCommand", "updateContentCommand", "postCreateCommand"];
 const UNSUPPORTED = {
@@ -365,6 +366,7 @@ const required = (name) => {
 };
 
 const jobToken = async (audience) => {
+  if (process.env.TUMPEL_JOB_TOKEN) return process.env.TUMPEL_JOB_TOKEN;
   const url = new URL(required("ACTIONS_ID_TOKEN_REQUEST_URL"));
   url.searchParams.set("audience", audience);
   const response = await fetch(url, {

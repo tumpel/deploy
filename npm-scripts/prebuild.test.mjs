@@ -142,8 +142,8 @@ test("a command past the budget is killed with every process it started", () => 
   assert.match(result.stderr, /build budget/);
 });
 
-test("the upload exchanges the job token, puts the layer and completes the prebuild", async () => {
-  const out = join(DIR, "upload");
+const uploadWith = async (name, env) => {
+  const out = join(DIR, name);
   const layer = Buffer.from("layer bytes");
   const digest = createHash("sha256").update(layer).digest("hex");
   write(join(out, "layer.tar"), layer);
@@ -188,7 +188,7 @@ test("the upload exchanges the job token, puts the layer and completes the prebu
   await new Promise((listening) => server.listen(0, "127.0.0.1", listening));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const child = spawn(process.execPath, [SCRIPT, "upload", out, origin, "t1", "p1"], {
-    env: { ...RUNNER_ENV, ACTIONS_ID_TOKEN_REQUEST_URL: `${origin}/token?api-version=2.0` },
+    env: env(origin),
     stdio: ["ignore", "pipe", "pipe"],
   });
   let stderr = "";
@@ -198,6 +198,14 @@ test("the upload exchanges the job token, puts the layer and completes the prebu
   const code = await new Promise((exited) => child.on("exit", exited));
   server.close();
   assert.equal(code, 0, stderr);
+  return seen;
+};
+
+test("the upload exchanges the job token, puts the layer and completes the prebuild", async () => {
+  const seen = await uploadWith("upload", (origin) => ({
+    ...RUNNER_ENV,
+    ACTIONS_ID_TOKEN_REQUEST_URL: `${origin}/token?api-version=2.0`,
+  }));
   assert.deepEqual(seen, [
     "GET /token",
     "POST /v1/prebuilds/p1/uploads",
@@ -205,4 +213,10 @@ test("the upload exchanges the job token, puts the layer and completes the prebu
     "GET /token",
     "POST /v1/prebuilds/p1/uploads/complete",
   ]);
+});
+
+test("the upload presents TUMPEL_JOB_TOKEN when the orb sets it and requests no GitHub token", async () => {
+  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("ACTIONS_ID_TOKEN")));
+  const seen = await uploadWith("orb-upload", () => ({ ...env, TUMPEL_JOB_TOKEN: "job-token" }));
+  assert.deepEqual(seen, ["POST /v1/prebuilds/p1/uploads", "PUT /put", "POST /v1/prebuilds/p1/uploads/complete"]);
 });
