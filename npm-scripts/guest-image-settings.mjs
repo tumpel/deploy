@@ -1,3 +1,5 @@
+import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
+
 export const CLONE_SECONDS = 120;
 export const WORKING_DIRECTORY = "/root/workspace";
 export const LTS_NODE_VERSION = "26.13.1";
@@ -22,6 +24,29 @@ export const CLAUDE_FLAGS = [
 ];
 export const NODE_ARCH = { amd64: "x64", arm64: "arm64" };
 
+const codexCredentialVariables = () => [
+  ...new Set(
+    HARNESS_CATALOG.filter((entry) => entry.harness === "Codex").flatMap((entry) =>
+      entry.credentials.map((credential) => credential.variable),
+    ),
+  ),
+];
+export const CODEX_FLAGS = [
+  "exec",
+  "--json",
+  "--dangerously-bypass-approvals-and-sandbox",
+  "--skip-git-repo-check",
+  "-c",
+  "check_for_update_on_startup=false",
+  "-c",
+  "features.shell_snapshot=false",
+  ...["apps", "connectors", "plugins", "remote_plugin"].flatMap((feature) => ["-c", `features.${feature}=false`]),
+  "-c",
+  "shell_environment_policy.ignore_default_excludes=true",
+  "-c",
+  `shell_environment_policy.exclude=${JSON.stringify(codexCredentialVariables())}`,
+];
+
 export const HARNESS_RUNS = {
   ClaudeCode: {
     protocol: "ClaudeStreamJson",
@@ -31,6 +56,12 @@ export const HARNESS_RUNS = {
       { name: "DISABLE_AUTOUPDATER", value: "1" },
       { name: "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", value: "1" },
     ],
+  },
+  Codex: {
+    protocol: "CodexExecJson",
+    binary: "codex",
+    flags: CODEX_FLAGS,
+    fixedVariables: [],
   },
   PiDev: {
     protocol: "PiRpc",
