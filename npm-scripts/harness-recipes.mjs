@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { GuestHarnessSchema } from "@tumpel/api/schemas";
+import { GuestHarnessSchema } from "@tumpel/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
 import {
   CLONE_SECONDS,

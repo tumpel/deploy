@@ -2,7 +2,7 @@
 
 - [ ] Rust for the host supervisor, host workers and the CLI (`crates/`).
 - [ ] Workers in TypeScript (`packages/control-plane`).
-- [ ] TypeSpec first: change `packages/api/main.tsp`, run `npm run generate`, commit `packages/api/generated` and `crates/tumpel-api/src`. Never hand-write a generated type.
+- [ ] TypeSpec first: change `typespec/main.tsp` or `typespec/lib`, run `npm run generate`; the output lands in `build/` and is never committed. Never hand-write a generated type.
 - [ ] Keys are `<entity>Id`; business dates are ISO 8601 strings with an offset; enums are PascalCase.
 - [ ] Every config file and input is defined by a schema.
 - [ ] One SQLite database per tenant; only what sign-in and routing need before the tenant is known is stored centrally; everything else per tenant.
@@ -15,7 +15,7 @@
 - [ ] The guest image ships build-essential, pkg-config, git, gh, curl, jq, zip, unzip, ripgrep, fd, tree, Node (LTS through fnm), Python (through uv) and a stable Rust toolchain with clippy and rustfmt (`doc/guest-image.md`), so never install them in a box.
 - [ ] Supported harnesses: Claude Code, Codex, OpenCode, Pi.dev; Mistral's coding agent planned.
 - [ ] No comments in code.
-- [ ] `npm run check` passes before every commit (Biome, no comments, no token-shaped secrets, typecheck, clippy, rustfmt, TypeSpec keys, dates and enums, generated output in sync). `npm run fix` formats.
+- [ ] `npm run check` passes before every commit (Biome, no comments, no token-shaped secrets, typecheck, clippy, rustfmt, TypeSpec keys, dates and enums, TypeSpec channel wire guard). `npm run fix` formats.
 - [ ] CI runs on the self-hosted runner `tumpel-build`; before pushing to main, run the test files your change touches locally.
 - [ ] Text a user reads (dashboard, CLI messages, problem details) says what happened and what to do next in plain words, with no gap, requirement, EDD, ADR or RFC ids and no "until X is built" caveats; `npm run prose:check` enforces it.
 - [ ] `npm install` enables the pre-commit hook that runs `npm run check`.

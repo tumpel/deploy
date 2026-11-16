@@ -8,7 +8,7 @@ Tumpel has three layers:
 - **Hosts**: machines a tenant owns, each running `tumpel-supervisor` (`crates/tumpel-supervisor`), which boots a box per session and runs a harness (Claude Code, Codex, OpenCode or Pi.dev; Mistral's coding agent is planned) turn by turn.
 - **Clients**: the `tumpel` CLI (`crates/tumpel`), a client of the same public API as the MCP server hosted on the control plane (doc/adr/005), so a terminal or an agent can start sessions and read their turns.
 
-The API is defined once in TypeSpec (`packages/api`) and its OpenAPI and JSON Schema output is committed under `packages/api/generated`.
+The API is defined once in TypeSpec (`typespec/`); `npm run generate` writes its OpenAPI, JSON Schema, zod and Rust output under `build/`.
 
 ## Install the CLI
 

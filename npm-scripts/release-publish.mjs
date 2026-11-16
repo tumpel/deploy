@@ -14,7 +14,7 @@ import {
   ImageReleaseSchema,
   ReleaseHarnessLayerSchema,
   ReleaseManifestSchema,
-} from "@tumpel/api/schemas";
+} from "@tumpel/schemas";
 import { CHECKSUM_HEADER, checksumOf, presignUrl } from "../packages/control-plane/src/presign.ts";
 import { layerHarnesses, layerPrefix, layerRecipe, recipeKey } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";

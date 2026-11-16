@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ReleaseManifestSchema } from "@tumpel/api/schemas";
+import { ReleaseManifestSchema } from "@tumpel/schemas";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const INFRA = join(ROOT, "packages", "control-plane", "infra");

@@ -1,6 +1,6 @@
 # Tenant config
 
-A tenant keeps its personas, secret sets, harness pins and host labels in one JSON file, defined by `TenantConfig` in `packages/api/config.tsp` and checked against `packages/api/generated/TenantConfig.json`.
+A tenant keeps its personas, secret sets, harness pins and host labels in one JSON file, defined by `TenantConfig` in `typespec/lib/config.tsp` and checked against `build/json-schema/TenantConfig.json`, which `npm run generate` writes.
 
 ```json
 {

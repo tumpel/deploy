@@ -59,7 +59,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
+          package-manager-cache: false
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -78,8 +78,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools ${{ matrix.packages }}
 
+      - name: Generate the TypeSpec output into build/
+        run: npm run generate
+
       - name: Install npm workspaces
-        run: npm ci --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - name: Build the supervisor and the CLI
         run: npm run release:build
@@ -154,10 +157,13 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
+          package-manager-cache: false
+
+      - name: Generate the TypeSpec output into build/
+        run: npm run generate:typespec
 
       - name: Install npm workspaces
-        run: npm ci --no-audit --no-fund
+        run: npm ci --prefer-offline --no-audit --no-fund
 
       - uses: actions/download-artifact@v8
         with:

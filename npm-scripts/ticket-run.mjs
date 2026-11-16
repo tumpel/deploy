@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { parseArgs } from "node:util";
-import { PersonaSchema, StartedSessionFromIssueSchema } from "@tumpel/api/schemas";
+import { PersonaSchema, StartedSessionFromIssueSchema } from "@tumpel/schemas";
 import { z } from "zod";
 
 const TUMPEL = process.env.TUMPEL_BIN ?? "tumpel";

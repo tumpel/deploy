@@ -4,7 +4,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { BaseLayout } from "@tumpel/api/schemas";
+import { BaseLayout } from "@tumpel/schemas";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const TARGET = process.env.TUMPEL_TARGET ?? "x86_64-unknown-linux-gnu";

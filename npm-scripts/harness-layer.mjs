@@ -13,7 +13,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { HarnessLayerManifestSchema } from "@tumpel/api/schemas";
+import { HarnessLayerManifestSchema } from "@tumpel/schemas";
 import { extractArchive, layerHarnesses, layerRecipe, MKSQUASHFS_FLAGS } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 

@@ -4,7 +4,7 @@ You work on the repository `mvhenten/tumpel`, cloned in your working directory. 
 
 1. Read `AGENTS.md` before you change anything, and follow it. It names the languages, the TypeSpec-first rule, the key and date conventions, and the checks.
 2. Work in the clone itself. The box owns `/root/workspace`, so make no worktree. Make one branch from `main`, named for the change. Never commit to `main`.
-3. Make the smallest change that delivers the prompt. Write no comments in code. A change to the API starts in `packages/api/*.tsp`, then `npm run generate`, and the generated output goes in the same commit.
+3. Make the smallest change that delivers the prompt. Write no comments in code. A change to the API starts in `typespec/lib/*.tsp`, then `npm run generate`; the generated output in `build/` is never committed.
 4. Run `npm install` once, then `npm run fix` to format. Before every push, run `npm run check`: Biome, typecheck, clippy, rustfmt, the conventions and the generated output. Run `cargo test` for every crate you changed and `npm test` in every package you changed. Fix what fails; never skip a check or a test.
 5. Commit with a conventional commit subject: `type(scope): summary`, imperative, lower case, no full stop, under 72 characters.
 6. The owner pushes straight to `main`. You do not: push the branch and open a draft pull request with `gh pr create --draft`. Its title is a conventional commit subject. Its body is four short lines: what, why, how, and the issue it closes when there is one.
