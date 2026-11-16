@@ -92,16 +92,8 @@ jobs:
       - name: Generate the Rust API crate into build/
         run: make generate-rust
 
-      - name: Build the supervisor and the CLI the control-plane tests drive
+      - name: Build the supervisor and the CLI the integration tests drive
         run: cargo build -p tumpel-supervisor -p tumpel
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: build-all
-          path: build
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
 
       - uses: actions/upload-artifact@v7
         with:
@@ -205,14 +197,14 @@ jobs:
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
           "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
 
-  test-ts:
-    needs: generate
+  test:
+    needs: check
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-test-ts
+      group: ${{ github.workflow }}-${{ github.ref }}-test
       cancel-in-progress: true
-    name: test (ts)
+    name: npm tests
     steps:
       - uses: actions/checkout@v7
 
@@ -232,8 +224,8 @@ jobs:
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Run the dashboard, pages and npm-scripts tests
-        run: npm run test:ts
+      - name: Run the unit tests of every package and the npm-scripts tests
+        run: npm test
 
       - if: failure()
         name: Cancel the rest of the run
@@ -243,18 +235,14 @@ jobs:
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
           "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
 
-  test-control-plane:
+  integration:
     needs: binaries
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-test-control-plane-${{ matrix.shard }}
+      group: ${{ github.workflow }}-${{ github.ref }}-integration
       cancel-in-progress: true
-    strategy:
-      fail-fast: true
-      matrix:
-        shard: [1/3, 2/3, 3/3]
-    name: test (control-plane ${{ matrix.shard }})
+    name: integration tests
     env:
       TUMPEL_PREBUILT_BINARIES: "1"
     steps:
@@ -267,11 +255,11 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: build-all
+          name: build-typespec
           path: build
 
       - name: Mark the downloaded build/ as current
-        run: touch build/.typespec && touch build/.rust
+        run: touch build/.typespec
 
       - uses: actions/download-artifact@v8
         with:
@@ -284,8 +272,8 @@ jobs:
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Run the control-plane tests
-        run: TEST_SHARD=${{ matrix.shard }} npm test -w @tumpel/control-plane
+      - name: Run the integration tests against the built binaries
+        run: npm run test:integration -w @tumpel/control-plane
 
       - if: failure()
         name: Cancel the rest of the run
