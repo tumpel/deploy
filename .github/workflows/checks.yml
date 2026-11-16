@@ -13,6 +13,9 @@ jobs:
   check:
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-check
+      cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
 
@@ -38,8 +41,11 @@ jobs:
         run: npm run check
 
   test:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-test-${{ matrix.name }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:

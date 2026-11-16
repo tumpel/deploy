@@ -20,7 +20,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 5
     outputs:
       include: ${{ steps.matrix.outputs.include }}
@@ -42,7 +42,7 @@ jobs:
 
   images:
     needs: plan
-    runs-on: ${{ vars.BUILD_RUNNER || 'ubuntu-24.04' }}
+    runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -127,7 +127,7 @@ jobs:
 
   publish:
     needs: [checks, images]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 10
     concurrency:
       group: image-release-${{ inputs.stage || 'dev' }}

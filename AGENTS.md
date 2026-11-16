@@ -15,6 +15,7 @@
 - [ ] Supported harnesses: Claude Code, Codex, OpenCode, Pi.dev; Mistral's coding agent planned.
 - [ ] No comments in code.
 - [ ] `npm run check` passes before every commit (Biome, no comments, no token-shaped secrets, typecheck, clippy, rustfmt, TypeSpec keys, dates and enums, generated output in sync). `npm run fix` formats.
+- [ ] CI runs on the self-hosted runner `tumpel-build`; before pushing to main, run the test files your change touches locally.
 - [ ] Text a user reads (dashboard, CLI messages, problem details) says what happened and what to do next in plain words, with no gap, requirement, EDD, ADR or RFC ids and no "until X is built" caveats; `npm run prose:check` enforces it.
 - [ ] `npm install` enables the pre-commit hook that runs `npm run check`.
 - [ ] On the dev stage an agent applies the tofu in `packages/control-plane/infra` with `npm run deploy:infra`, without a plan review.

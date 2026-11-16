@@ -21,7 +21,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 5
     outputs:
       include: ${{ steps.matrix.outputs.include }}
@@ -39,8 +39,11 @@ jobs:
 
   binaries:
     needs: plan
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
+    concurrency:
+      group: release-binaries-${{ github.ref }}-${{ matrix.arch }}
+      cancel-in-progress: true
     strategy:
       fail-fast: false
       matrix:
@@ -139,7 +142,7 @@ jobs:
 
   publish:
     needs: [checks, binaries]
-    runs-on: ubuntu-24.04
+    runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 10
     concurrency:
       group: release-publish-${{ inputs.stage || 'dev' }}
