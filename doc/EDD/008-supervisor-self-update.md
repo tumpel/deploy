@@ -53,7 +53,7 @@ Each phase the host enters sends SupervisorUpdateStep. Each failure sends Superv
 | `~/.local/state/tumpel-supervisor/update-rolled-back.json` | A rollback to report      |
 | `~/.local/state/tumpel-supervisor/update-refusal.json`     | The refused sha256        |
 
-The installer writes the user unit with `ExecStart=<binary> run` and the rollback shell in `ExecStartPre`. The shell finds the state directory the way the supervisor does: `TUMPEL_SUPERVISOR_DIR`, then `XDG_STATE_HOME`, then `~/.local/state`.
+The installer writes the user unit with `ExecStart=<binary> run` and the rollback shell in `ExecStartPre`. A binary that reaches Welcome on trial rewrites the unit to that text when it differs and reloads systemd, so a host installed with the older `run --update-binary` unit moves to the shell-owned trial on its first update. Under that older unit no shell marks the trial, so the binary takes an `update-pending.json` naming itself as its trial, and `run` accepts and ignores `--update-binary`. The shell finds the state directory the way the supervisor does: `TUMPEL_SUPERVISOR_DIR`, then `XDG_STATE_HOME`, then `~/.local/state`.
 
 ## Release order
 
