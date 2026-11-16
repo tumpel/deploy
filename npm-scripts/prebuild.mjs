@@ -33,6 +33,10 @@ const USAGE = `usage:
     TUMPEL_PREBUILD_SECONDS bounds the commands, 3600 by default. The environment is clean only
     when the S7 workflow runs the build in docker run with no runner environment and no runner
     mounts but the workspace: a command can read the runner's environment from /proc/$PPID/environ.
+  prebuild.mjs run
+    Runs in a tumpel box with the repository cloned at /root/workspace: reads the config and runs
+    its lifecycle commands as build does, and writes no layer, since the box's snapshot holds the
+    result. Leaves .git/config as the clone wrote it.
   prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>
     Runs in a job that runs no repository code. Takes the job's OIDC token from TUMPEL_JOB_TOKEN
     when set, as the CircleCI orb mints it with aud <api origin>; otherwise, in a GitHub Actions step
@@ -469,7 +473,17 @@ const upload = async (outDir, apiOrigin, tenantId, prebuildId) => {
   console.log(`prebuild: uploaded ${description.sizeBytes} bytes, sha256 ${description.sha256}, to ${prebuildId}`);
 };
 
+const run = async () => {
+  const root = resolve(process.env.TUMPEL_PREBUILD_ROOT ?? "/");
+  const workspace = join(root, WORKSPACE);
+  checkout(workspace);
+  console.log(`prebuild: running the setup step of ${workspace}`);
+  const devcontainer = readDevcontainer(workspace);
+  await runLifecycle(workspace, commandEnvironment(imageEnvironment(root), devcontainer), devcontainer);
+};
+
 const [command, ...args] = process.argv.slice(2);
 if (command === "build" && args.length === 1) await build(args[0]);
+else if (command === "run" && args.length === 0) await run();
 else if (command === "upload" && args.length === 4) await upload(...args);
 else die(USAGE);
