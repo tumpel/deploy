@@ -91,7 +91,7 @@ Each stage is one push by one lane, in this order. Stages 1 and 2 must be on mai
 1. devops: `harness:layer`, `HarnessLayerManifest` and `ReleaseHarnessLayer`. The binaries job builds missing layers, and `current.json` gains `harnessLayers`.
 2. devops: `guest:image -- base` builds the base with the stub init. `images.json` carries `bases` beside the harness images. Tag an image release.
 3. engineer: the binaries job packs the guest drive. The supervisor embeds it, writes it at start and exits `GuestDriveUnwritable`.
-4. engineer: the host layer cache, with digest checks, eviction past `layerCacheMib` and the shared fetch lock.
+4. engineer: the host layer cache, with digest checks, eviction past `layerCacheMib` and the shared fetch lock. Done: `layers::resolve` takes the fetch deadline from its caller so stage 5 can share the budget, and the supervisor fills fields missing from `runtime.json` with defaults at start, not only at install.
 5. engineer: layered boot. TurnOffer names base and layer on channel protocol 11. The supervisor attaches the six slots, the guest drive's init mounts the stack, and placement reads `bases` and `harnessLayers`.
 6. devops: `release-publish` swaps the GuestProtocol refusal for `baseLayoutVersion`, and image releases carry bases only.
 7. engineer: prebuild keys name the base digest, prebuild layers mount as squashfs, and the proof records step 4 against the old cold first line.
