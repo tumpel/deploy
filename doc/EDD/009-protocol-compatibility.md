@@ -77,7 +77,7 @@ The data lock becomes one file per supported version, `packages/api/channel-wire
 
 ## The guest link
 
-The guest gets no control channel. The supervisor is its control plane: it picks the guest drive, boots the box and fails it. `GuestProtocol` gains `Oldest`, GuestHello names the guest's range, and a new GuestWelcome names the version the box speaks. A layered boot carries the guest drive of the supervisor's own build, so it always matches. A full image carries its own guest, which is why a GuestProtocol bump needs an `images-v*` tag in the same window as the supervisor today (images-v0.1.13 is current; one pending commit bumps the guest to 10). `release-publish` checks that the images' guest range meets the supervisor's, in place of the equality at line 469.
+The guest gets no control channel. The supervisor is its control plane: it picks the guest drive, boots the box and fails it. A layered boot carries the guest drive of the supervisor's own build, so it always matches. A full image carries its own guest, so `GuestProtocol` carries `Oldest` next to `Version`, as the data channel does. The supervisor accepts a guest whose GuestHello `protocolVersion` lies from `Oldest` to `Version` and fails any other box BoxBootFailed, naming both; `release-publish` accepts an image release whose `guestProtocolVersion` lies in that window. The window holds only versions the supervisor speaks, so `Oldest` drops below `Version` only in a bump whose supervisor still speaks the older guest, and a bump that keeps the older guest needs no `images-v*` tag before the supervisor publishes.
 
 ## Lapsed hosts
 
