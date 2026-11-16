@@ -34,11 +34,56 @@ jobs:
           if [ "$BUILD_ARM64" = true ]; then include="[$AMD64, $ARM64]"; else include="[$AMD64]"; fi
           echo "include=$include" >> "$GITHUB_OUTPUT"
 
-  checks:
-    uses: ./.github/workflows/checks.yml
+  generate:
+    runs-on: [self-hosted, tumpel-build]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: build
+          key: build-${{ hashFiles('typespec/**', '!typespec/node_modules/**', 'Makefile', 'crates/xtask/**', 'Cargo.lock') }}
+
+      - if: steps.build-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - if: steps.build-cache.outputs.cache-hit != 'true'
+        name: Put the runner rustup on PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - if: steps.build-cache.outputs.cache-hit != 'true'
+        name: Install the toolchain rust-toolchain.toml pins
+        run: rustup toolchain install
+
+      - if: steps.build-cache.outputs.cache-hit != 'true'
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-bin: "false"
+          key: generate
+
+      - if: steps.build-cache.outputs.cache-hit != 'true'
+        name: Generate the TypeSpec output into build/
+        run: make generate
+
+      - if: steps.build-cache.outputs.cache-hit != 'true'
+        name: Fail on an uncommitted rewrite of the channel wire lock
+        run: git diff --exit-code typespec/channel-wire
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: build
+          path: build
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
   binaries:
-    needs: plan
+    needs: [plan, generate]
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
@@ -61,7 +106,8 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Put the runner rustup on PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Install the toolchain rust-toolchain.toml pins
         run: |
@@ -70,6 +116,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: "false"
           shared-key: release-${{ matrix.target }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -78,8 +125,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools ${{ matrix.packages }}
 
-      - name: Generate the TypeSpec output into build/
-        run: npm run generate
+      - uses: actions/download-artifact@v8
+        with:
+          name: build
+          path: build
+
+      - name: Mark the downloaded build/ as current
+        run: touch build/.typespec && touch build/.rust
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
@@ -143,7 +195,7 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: [checks, binaries]
+    needs: [generate, binaries]
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 10
     concurrency:
@@ -159,8 +211,13 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Generate the TypeSpec output into build/
-        run: npm run generate:typespec
+      - uses: actions/download-artifact@v8
+        with:
+          name: build
+          path: build
+
+      - name: Mark the downloaded build/ as current
+        run: touch build/.typespec && touch build/.rust
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund

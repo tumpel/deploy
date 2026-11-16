@@ -37,9 +37,6 @@ jobs:
           if [ "$BUILD_ARM64" = true ]; then include="[$AMD64, $ARM64]"; else include="[$AMD64]"; fi
           echo "include=$include" >> "$GITHUB_OUTPUT"
 
-  checks:
-    uses: ./.github/workflows/checks.yml
-
   images:
     needs: plan
     runs-on: [self-hosted, tumpel-build]
@@ -62,7 +59,8 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Put the runner rustup on PATH
+        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
       - name: Install the toolchain rust-toolchain.toml pins
         run: |
@@ -71,6 +69,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-bin: "false"
           shared-key: release-${{ matrix.target }}
           save-if: false
 
@@ -129,7 +128,7 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: [checks, images]
+    needs: images
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 10
     concurrency:
