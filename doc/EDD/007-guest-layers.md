@@ -92,7 +92,13 @@ Each stage is one push by one lane, in this order. Stages 1 and 2 must be on mai
 2. devops: `guest:image -- base` builds the base with the stub init. `images.json` carries `bases` beside the harness images. Tag an image release.
 3. engineer: the binaries job packs the guest drive. The supervisor embeds it, writes it at start and exits `GuestDriveUnwritable`.
 4. engineer: the host layer cache, with digest checks, eviction past `layerCacheMib` and the shared fetch lock. Done: `layers::resolve` takes the fetch deadline from its caller so stage 5 can share the budget, and the supervisor fills fields missing from `runtime.json` with defaults at start, not only at install.
-5. engineer: layered boot. TurnOffer names base and layer on channel protocol 11. The supervisor attaches the six slots, the guest drive's init mounts the stack, and placement reads `bases` and `harnessLayers`.
+5. engineer: layered boot. TurnOffer names base and layer on channel protocol 11. The supervisor attaches the six slots, the guest drive's init mounts the stack, and placement reads `bases` and `harnessLayers`. Done:
+   - TurnOffer and ClaudeSetupBoxOffer carry `image` as a `BootImage` union of the full `GuestImageDownload` and `LayeredImageDownload`, on channel protocol 14, because main had reached 13. The full image boots wherever the release lacks a base or the layer, until stage 6.
+   - `current.json` gains `bases`, copied from `images.json` at publish.
+   - TurnImageFetching keeps one `imageDigest` and names the base, or the layer when only the layer is missing.
+   - The supervisor holds the base and the layer of a running or setting-up box, and placing a new base deletes the other bases no box holds.
+   - The guest agent reads `tumpel-harness.json` from the layer named by `tumpel.harness` on the kernel command line, and `/etc/tumpel/guest.json` in a full image.
+   - The supervisor attaches four slots plus the restore archive; prebuild layers stay with stage 7.
 6. devops: `release-publish` swaps the GuestProtocol refusal for `baseLayoutVersion`, and image releases carry bases only.
 7. engineer: prebuild keys name the base digest, prebuild layers mount as squashfs, and the proof records step 4 against the old cold first line.
 8. devops: crates.io publishing of `tumpel-api` and `tumpel` on `v*` tags.

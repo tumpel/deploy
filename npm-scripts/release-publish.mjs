@@ -34,6 +34,7 @@ const PublishedImagesSchema = ImageReleaseSchema.pick({
   imageReleaseVersion: true,
   guestProtocolVersion: true,
   images: true,
+  bases: true,
 });
 const LayerFragmentSchema = ReleaseManifestSchema.pick({ harnessLayers: true });
 const LayerPlanSchema = LayerFragmentSchema.extend({
@@ -464,7 +465,7 @@ const publishRelease = async (fragmentDir, layerFragmentDir) => {
     die(
       `${bucket}/${IMAGE_RELEASE} does not exist; push a tag images-vX.Y.Z to build and publish the guest images first`,
     );
-  const { imageReleaseVersion, guestProtocolVersion, images } = PublishedImagesSchema.parse(imageRelease);
+  const { imageReleaseVersion, guestProtocolVersion, images, bases } = PublishedImagesSchema.parse(imageRelease);
   if (guestProtocolVersion !== GuestProtocol.Version)
     die(
       `${bucket}/${IMAGE_RELEASE} holds image release ${imageReleaseVersion}, whose guests speak guest protocol ${guestProtocolVersion}, and this commit speaks ${GuestProtocol.Version}; push a tag images-vX.Y.Z on this commit to publish matching images, then run the release workflow on main`,
@@ -490,6 +491,7 @@ const publishRelease = async (fragmentDir, layerFragmentDir) => {
     clis,
     images,
     harnessLayers,
+    bases,
   });
   await putJson(store, CURRENT, manifest);
   console.log(`published ${bucket}/${CURRENT} for ${releaseVersion} with the images of ${imageReleaseVersion}`);
