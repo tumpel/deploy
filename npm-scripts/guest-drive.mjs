@@ -84,6 +84,7 @@ After=local-fs.target
 ExecStart=/opt/tumpel/guest/tumpel-guest
 Restart=always
 RestartSec=1
+Delegate=yes
 StandardOutput=journal+console
 StandardError=journal+console
 
