@@ -4,7 +4,6 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/mvhenten/tumpel/main/packages/api/generated/TenantConfig.json",
   "personas": [
     {
       "name": "Reviewer",

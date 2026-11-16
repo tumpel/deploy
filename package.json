@@ -7,7 +7,6 @@
   },
   "workspaces": [
     "packages/*",
-    "build/json-schema",
     "build/openapi",
     "build/schemas"
   ],

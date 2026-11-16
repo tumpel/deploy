@@ -1,5 +1,4 @@
 {
-  "$schema": "https://raw.githubusercontent.com/mvhenten/tumpel/main/packages/api/generated/TenantConfig.json",
   "personas": [
     {
       "name": "tumpel-dev",

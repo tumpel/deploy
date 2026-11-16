@@ -73,7 +73,7 @@ The first planned additive change brings back the control plane's backup timers 
 
 ## Codegen and the wire lock
 
-The data lock becomes one file per supported version, `packages/api/channel-wire/v<N>.json`, and the guard covers the guest messages in `supervisor.tsp` as `guest-wire/v<N>.json`. A lock older than the newest is frozen. Raising `Oldest` deletes the files below it. The older versions' types come from frozen copies of the generated output or from `@versioned` with `@added` and `@removed` (decision 2). The `@versioned` path through the zod emitter and `crates/xtask` is not tested. Either way, three versions in the window means three copies of the data types.
+The data lock becomes one file per supported version, `typespec/channel-wire/v<N>.json`, and the guard covers the guest messages in `supervisor.tsp` as `guest-wire/v<N>.json`. A lock older than the newest is frozen. Raising `Oldest` deletes the files below it. The older versions' types come from frozen copies of the generated output or from `@versioned` with `@added` and `@removed` (decision 2). The `@versioned` path through the zod emitter and `crates/xtask` is not tested. Either way, three versions in the window means three copies of the data types.
 
 ## The guest link
 
