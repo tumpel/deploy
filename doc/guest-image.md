@@ -4,7 +4,7 @@
 
 The build:
 
-1. Downloads the Firecracker CI Ubuntu 24.04 squashfs and kernel, the Ubuntu `git` and `libcurl3t64-gnutls` packages, the Ubuntu packages listed in `npm-scripts/guest-packages.mjs`, the GitHub CLI `gh`, the Node LTS runtime, `fnm`, `uv` and `rustup-init`, each checked against the digest pinned in `npm-scripts/guest-image.mjs`.
+1. Downloads the Firecracker CI Ubuntu 24.04 squashfs and kernel, the Ubuntu `git` and `libcurl3t64-gnutls` packages, the Ubuntu packages listed in `npm-scripts/guest-packages.mjs` (written by `npm run guest:packages -- <arch> <base rootfs squashfs>`, which resolves them against the base), the GitHub CLI `gh`, the Node LTS runtime, `fnm`, `uv` and `rustup-init`, each checked against the digest pinned in `npm-scripts/guest-image.mjs`.
 2. Unpacks the squashfs with `unsquashfs`, unpacks the packages with `dpkg-deb -x` and `gh` into `/usr/local/bin`, installs the tooling under Preinstalled tooling, running the build machine's own `uv` and `rustup-init` to fetch Python and the Rust toolchain, adds `tumpel-guest`, its systemd unit, `/usr/local/sbin/tumpel-init` and `/etc/tumpel/guest.json` (`GuestHarness`), and runs `npm install` for the linux platform package of the catalog's pinned Claude Code release, whose native `claude` binary is the harness command.
 3. Packs the tree with `mkfs.ext4 -d` and sets every inode to root with `debugfs`.
 
