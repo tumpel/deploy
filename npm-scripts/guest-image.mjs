@@ -37,13 +37,16 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = process.env.TUMPEL_IMAGE_DIR ?? join(homedir(), "development", ".tmp", "tumpel-images");
 const FIRECRACKER_CI = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20261111-778a26c0594c-0";
 const LAUNCHPAD = "https://launchpad.net/ubuntu/+archive/primary/+files";
-const NODE_VERSION = "24.22.3";
 const GIT_VERSION = "2.43.0-1ubuntu7.4";
 const LIBCURL_VERSION = "8.5.0-2ubuntu10.16";
 const GH_VERSION = "2.103.3";
 const FNM_VERSION = "1.39.0";
 const UV_VERSION = "0.13.8";
 const RUSTUP_VERSION = "1.29.3";
+const RUST_VERSION = "1.100.0";
+const RUST_CHANNEL_DIGEST = "3051e859570f64a8c5acb9d09e87425db52c7d97287c67e8f6d57d7d34ef9258";
+const PYTHON_BUILD = "20261110";
+const NODE_HOME = "/opt/tumpel/node";
 const RUST_COMPONENTS = ["clippy", "rustfmt"];
 
 const PINS = {
@@ -51,7 +54,6 @@ const PINS = {
     target: "x86_64-unknown-linux-gnu",
     kernel: "0ee1eb9074bfe4d90b3a6c0d3ea9c7c7b8c7563e69796fd73e7801db83a67b9f",
     rootfs: "f84ec1241d88414f43c417319fbaa31751d1cf4298f127b004c0bee8d95885c8",
-    node: "4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb",
     git: "c79b7948ef9860c97ec74293a90178676e63368a0711c95c28a55af4edf1adab",
     libcurl: "f3993897876cd03ea10941c9b364965ff95d0226459f31f6c5f5b93562c80798",
     gh: "4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d",
@@ -59,12 +61,12 @@ const PINS = {
     fnm: "7807664f39d39fc518da1c35ba0181e4b3267603c4b1dedeb4b5fc6ae440a224",
     uv: "5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91",
     rustup: "b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55",
+    python: "ad23d1b73fac26440b0306ae06911031344c49a90ec19716c8362e7fa40cae43",
   },
   arm64: {
     target: "aarch64-unknown-linux-gnu",
     kernel: "36640239c15df144c9defef7a74053413053de21469368e99472124e515ced80",
     rootfs: "fc6e9a413344b9ab7e3415598988a9a4a7fd8bd62fc49cf8ce5225ca3b7039b9",
-    node: "6e51a2ada00f0011cc266f65d98922b403d7ad88f809ca2aa615a5fe1ce6e86c",
     git: "b46ef5ad7292f8ae69a7ec18c05e5b40f6c1fca837df2ce4b05b05bd46c9dc2b",
     libcurl: "057490ffc9901df7fe09913e381442fc7615bb972a1dc4198e38bcf840447e77",
     gh: "ee32df2323c8847f5fac6cb6b4b69ca75828e9329a8f22f677021f7b3306ce63",
@@ -72,6 +74,7 @@ const PINS = {
     fnm: "4eaff58b2c5bf30d0934027572dd0b5bbb60d2a1af309230b53662d4b1d45599",
     uv: "74f2f5c6024d397481db228db8fc25eed420db192243f88438c118e7e013e585",
     rustup: "9f608c142e0e38a78957d0661ba1dfaf0b6fb37184cfaa4b9a0aa57af6184282",
+    python: "d1367a6c3cd86a9e35712072841f1376859f3b47a2a54e224421a0f9fd169047",
   },
 };
 const FIRECRACKER_ARCH = { amd64: "x86_64", arm64: "aarch64" };
@@ -87,12 +90,6 @@ const pinsFor = (arch) => {
     guestBin: process.env.TUMPEL_GUEST_BIN ?? join(ROOT, "target", pins.target, "release", "tumpel-guest"),
     kernel: { url: `${ci}/vmlinux-6.18.62`, digest: pins.kernel },
     rootfs: { url: `${ci}/ubuntu-24.04.squashfs`, digest: pins.rootfs },
-    node: {
-      name: "node",
-      version: NODE_VERSION,
-      url: `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH[arch]}.tar.xz`,
-      digest: pins.node,
-    },
     git: {
       name: "git",
       version: GIT_VERSION,
@@ -134,6 +131,18 @@ const pinsFor = (arch) => {
       version: RUSTUP_VERSION,
       url: `https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${pins.target}/rustup-init`,
       digest: pins.rustup,
+    },
+    rust: {
+      name: "rust",
+      version: RUST_VERSION,
+      url: `https://static.rust-lang.org/dist/channel-rust-${RUST_VERSION}.toml`,
+      digest: RUST_CHANNEL_DIGEST,
+    },
+    python: {
+      name: "cpython",
+      version: PYTHON_VERSION,
+      url: `https://releases.astral.sh/github/python-build-standalone/releases/download/${PYTHON_BUILD}/cpython-${PYTHON_VERSION}%2B${PYTHON_BUILD}-${pins.target}-install_only_stripped.tar.gz`,
+      digest: pins.python,
     },
     packages: UBUNTU_PACKAGES[arch].map(([file, digest]) => {
       const [name, version] = file.split("_");
@@ -254,11 +263,10 @@ const recipeFor = (name, pins) => {
     return {
       harness: withBinary(harness, `${HARNESS_PREFIX}/bin/${install.binary}`),
       install: async (tree) => {
-        await installNode(tree, pins);
         const bin = join(tree, HARNESS_PREFIX, "bin");
         mkdirSync(bin, { recursive: true });
         extractArchive(await download(component), bin, install);
-        return [pins.node, component];
+        return [component];
       },
     };
   }
@@ -266,13 +274,12 @@ const recipeFor = (name, pins) => {
   return {
     harness: withBinary(harness, binary),
     install: async (tree) => {
-      const node = await installNode(tree, pins);
       const prefix = join(tree, HARNESS_PREFIX);
       mkdirSync(prefix, { recursive: true });
       run(
         process.execPath,
         [
-          join(node, "lib", "node_modules", "npm", "bin", "npm-cli.js"),
+          join(tree, NODE_HOME, "lib", "node_modules", "npm", "bin", "npm-cli.js"),
           "install",
           "--prefix",
           prefix,
@@ -295,16 +302,9 @@ const recipeFor = (name, pins) => {
       if (!existsSync(installed))
         die(`npm installed no ${installed}; check that ${install.package}@${install.version} is published`);
       chmodSync(installed, 0o755);
-      return [pins.node];
+      return [];
     },
   };
-};
-
-const installNode = async (tree, pins) => {
-  const node = join(tree, "opt", "tumpel", "node");
-  mkdirSync(node, { recursive: true });
-  run("tar", ["-xJf", await download(pins.node), "-C", node, "--strip-components=1", "--no-same-owner"]);
-  return node;
 };
 
 const installGit = async (tree, pins) => {
@@ -411,6 +411,7 @@ const installNodeManager = async (tree, pins) => {
   ]);
   mkdirSync(join(tree, FNM_DIR, "aliases"), { recursive: true });
   symlinkSync(installation, join(tree, FNM_DIR, "aliases", "default"));
+  run("cp", ["-al", join(tree, installation), join(tree, NODE_HOME)]);
   const bin = join(tree, "root/.local/bin");
   mkdirSync(bin, { recursive: true });
   run(tool("unzip"), ["-q", "-o", await download(pins.fnm), "fnm", "-d", bin]);
@@ -433,7 +434,7 @@ const installPython = async (tree, pins, host, work) => {
   const python = `${UV_PYTHON_DIR}/${key}/bin/python${minor}`;
   if (!existsSync(join(tree, python))) die(`uv installed no ${python}; check PYTHON_VERSION against uv ${UV_VERSION}`);
   for (const name of [`python${minor}`, "python3", "python"]) symlinkSync(python, join(bin, name));
-  return [pins.uv];
+  return [pins.uv, pins.python];
 };
 
 const installRust = async (tree, pins, host, work) => {
@@ -451,7 +452,7 @@ const installRust = async (tree, pins, host, work) => {
       "--profile",
       "minimal",
       "--default-toolchain",
-      "stable",
+      RUST_VERSION,
       "--component",
       RUST_COMPONENTS.join(","),
       "--default-host",
@@ -470,7 +471,7 @@ const installRust = async (tree, pins, host, work) => {
     writeFileSync(path, readFileSync(path, "utf8").replaceAll(tree, ""));
   }
   for (const dir of ["downloads", "tmp"]) rmSync(join(rustupHome, dir), { recursive: true, force: true });
-  return [pins.rustup];
+  return [pins.rustup, pins.rust];
 };
 
 const relinkIntoGuest = (tree, dir) => {
@@ -532,7 +533,6 @@ const buildBase = async (pins) => {
     writeFileSync(join(tree, "usr/local/sbin/tumpel-init"), STUB_INIT, { mode: 0o755 });
     writeFileSync(join(tree, "etc/tumpel/base-layout"), `${BaseLayout.Version}\n`);
     const components = await installDevTools(tree, pins, work);
-    await installNode(tree, pins);
     const imageDigest = await packImage(work, tree, pins, out, {
       workingDirectory: WORKING_DIRECTORY,
       environment: ENVIRONMENT,
@@ -545,7 +545,7 @@ const buildBase = async (pins) => {
       baseRootfsUrl: pins.rootfs.url,
       baseRootfsDigest: pins.rootfs.digest,
       baseLayoutVersion: BaseLayout.Version,
-      components: [...components, pins.node],
+      components,
     });
     const manifestPath = join(out, `${imageDigest}.json`);
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

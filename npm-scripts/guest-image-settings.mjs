@@ -5,7 +5,7 @@ export const PYTHON_VERSION = "3.15.2";
 export const FNM_DIR = "/root/.local/share/fnm";
 export const UV_PYTHON_DIR = "/root/.local/share/uv/python";
 export const ENVIRONMENT = {
-  PATH: `${FNM_DIR}/aliases/default/bin:/root/.cargo/bin:/root/.local/bin:/opt/tumpel/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+  PATH: `${FNM_DIR}/aliases/default/bin:/root/.cargo/bin:/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
   HOME: "/root",
   LANG: "C.UTF-8",
 };
