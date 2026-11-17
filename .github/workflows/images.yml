@@ -127,6 +127,10 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Delete the build dir
+        if: always()
+        run: rm -rf "$TUMPEL_IMAGE_DIR"
+
   publish:
     needs: images
     runs-on: [self-hosted, tumpel-build]

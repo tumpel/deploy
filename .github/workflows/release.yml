@@ -194,6 +194,10 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Delete the build dir
+        if: always()
+        run: rm -rf "$TUMPEL_LAYER_DIR"
+
   publish:
     needs: [generate, binaries]
     runs-on: [self-hosted, tumpel-build]
