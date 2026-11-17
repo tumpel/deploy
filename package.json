@@ -15,6 +15,8 @@
     "generate": "npm run generate -w @tumpel/api && npm run generate:rust",
     "generate:rust": "cargo run --quiet -p xtask -- generate-api && cargo fmt -p tumpel-api",
     "generate:check": "npm-scripts/generate-check.sh",
+    "channel:bump": "npm run channel:bump -w @tumpel/api",
+    "channel:drop": "npm run channel:drop -w @tumpel/api",
     "surface": "node npm-scripts/surface.mjs --write",
     "surface:check": "node npm-scripts/surface.mjs",
     "clippy": "cargo clippy --workspace --all-targets -- -D warnings",
