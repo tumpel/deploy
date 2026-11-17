@@ -82,17 +82,17 @@ Charts use uPlot: canvas, about 50 KB minified, built for time series, with zoom
 
 ## Appendix of phases
 
-| Phase       | From and to                                 | Clock         | Limit                               | Failure               |
-| ----------- | ------------------------------------------- | ------------- | ----------------------------------- | --------------------- |
-| Claim       | TurnOffer sent, TurnClaim arrives           | Control plane | `turnClaimBudgetSeconds`, 60 s      | NotClaimed            |
-| Image fetch | TurnImageFetching, image in cache           | Host          | `image.fetchSeconds`                | ImageFetchTimedOut    |
-| Restore     | first RestoreChunks, files ready            | Host          | `budgets.bootSeconds`               | SnapshotUnreadable    |
-| Boot        | box start or resume, GuestHello             | Host          | `budgets.bootSeconds`, 45 s         | BoxBootFailed         |
-| Clone       | box ready, TurnRepositoryReady              | Host          | `cloneSeconds`                      | RepositoryCloneFailed |
-| First line  | TurnRepositoryReady, first TurnLine arrives | Control plane | `turnFirstLineBudgetSeconds`, 120 s | NoFirstOutput         |
-| Run         | first TurnLine, TurnComplete arrives        | Control plane | `turnTotalBudgetSeconds`, 3600 s    | TurnTimedOut          |
-| Startup     | TurnOffer sent, first TurnLine arrives      | Control plane | the phases above                    | the phase's own       |
-| Snapshot    | SnapshotRequest sent, SnapshotDone arrives  | Control plane | `snapshotDeadlineSeconds`, 900 s    | NotAnswered           |
+| Phase       | From and to                                 | Clock         | Limit                                                                                                          | Failure                                       |
+| ----------- | ------------------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Claim       | TurnOffer sent, TurnClaim arrives           | Control plane | `turnClaimBudgetSeconds`, 60 s                                                                                 | NotClaimed                                    |
+| Image fetch | TurnImageFetching, image in cache           | Host          | `image.fetchSeconds`                                                                                           | ImageFetchTimedOut                            |
+| Restore     | first RestoreChunks, files ready            | Host          | `budgets.bootSeconds` + 1 s per started 32 MiB and per started 2,000 entries; the dispatch credential's expiry | SnapshotUnreadable, DispatchCredentialExpired |
+| Boot        | box start or resume, GuestHello             | Host          | `budgets.bootSeconds`, 45 s, + the restore allowance for the restore archive                                   | BoxBootFailed                                 |
+| Clone       | box ready, TurnRepositoryReady              | Host          | `cloneSeconds`                                                                                                 | RepositoryCloneFailed                         |
+| First line  | TurnRepositoryReady, first TurnLine arrives | Control plane | `turnFirstLineBudgetSeconds`, 120 s                                                                            | NoFirstOutput                                 |
+| Run         | first TurnLine, TurnComplete arrives        | Control plane | `turnTotalBudgetSeconds`, 3600 s                                                                               | TurnTimedOut                                  |
+| Startup     | TurnOffer sent, first TurnLine arrives      | Control plane | the phases above                                                                                               | the phase's own                               |
+| Snapshot    | SnapshotRequest sent, SnapshotDone arrives  | Control plane | `snapshotDeadlineSeconds`, 900 s                                                                               | NotAnswered                                   |
 
 ## Appendix of wire changes
 
