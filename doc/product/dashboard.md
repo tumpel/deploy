@@ -64,7 +64,9 @@ Start a session reads GitHub as not connected from the `GitHubNotConnected` refu
 
 Secret values go into a password field and travel once, in the create or update call. The API holds every value back. Editing a set shows each member's value as stored. A value is sent only for a member whose value changes. A renamed member keeps its stored value, and a removed member loses its value alone. A subscription token past its `expiresAt` reads Expired and names the fix.
 
-Set up Claude Code sits beside the Claude token field of the persona step and on each secret set's page. It calls `ClaudeSetups_start` for that set and shows a panel driven by `ClaudeSetups_get`. The panel reads again on tab focus and on Check again, never on a timer; only the countdown ticks.
+Creating a secret set is a wizard. Step 1 names the set, prefilled with a two-word suggestion, and creates it empty. Step 2 picks what to add: an API key or token, an Anthropic subscription, OpenRouter, or a Codex subscription. Step 3 is that choice's form. Add a secret on an existing set opens the same wizard at step 2. The API key or token form shows each field once the one before it has a value; the provider and type fill in the variable name from the harness catalog. Adding a secret replaces a stored credential for the same provider.
+
+Set up Claude Code sits beside the Claude token field of the persona step and in the wizard's Anthropic subscription step. It calls `ClaudeSetups_start` for that set and shows a panel driven by `ClaudeSetups_get`. The panel reads the setup every second while it runs and stops once it completes or fails.
 
 | State        | The panel shows                                                                                                                                                                              |
 | ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
