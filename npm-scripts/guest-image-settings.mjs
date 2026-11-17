@@ -1,7 +1,11 @@
 export const CLONE_SECONDS = 120;
 export const WORKING_DIRECTORY = "/root/workspace";
+export const LTS_NODE_VERSION = "26.13.1";
+export const PYTHON_VERSION = "3.15.2";
+export const FNM_DIR = "/root/.local/share/fnm";
+export const UV_PYTHON_DIR = "/root/.local/share/uv/python";
 export const ENVIRONMENT = {
-  PATH: "/opt/tumpel/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+  PATH: `${FNM_DIR}/aliases/default/bin:/root/.cargo/bin:/root/.local/bin:/opt/tumpel/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
   HOME: "/root",
   LANG: "C.UTF-8",
 };

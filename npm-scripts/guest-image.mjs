@@ -6,7 +6,11 @@ import {
   copyFileSync,
   createReadStream,
   existsSync,
+  linkSync,
   mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -16,7 +20,16 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BaseImageManifestSchema, BaseLayout, GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/api/schemas";
-import { ENVIRONMENT, NODE_ARCH, WORKING_DIRECTORY } from "./guest-image-settings.mjs";
+import {
+  ENVIRONMENT,
+  FNM_DIR,
+  LTS_NODE_VERSION,
+  NODE_ARCH,
+  PYTHON_VERSION,
+  UV_PYTHON_DIR,
+  WORKING_DIRECTORY,
+} from "./guest-image-settings.mjs";
+import { UBUNTU_PACKAGES } from "./guest-packages.mjs";
 import { extractArchive, layerHarnesses, layerRecipe } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
@@ -28,6 +41,10 @@ const NODE_VERSION = "24.22.3";
 const GIT_VERSION = "2.43.0-1ubuntu7.4";
 const LIBCURL_VERSION = "8.5.0-2ubuntu10.16";
 const GH_VERSION = "2.103.3";
+const FNM_VERSION = "1.39.0";
+const UV_VERSION = "0.13.8";
+const RUSTUP_VERSION = "1.29.3";
+const RUST_COMPONENTS = ["clippy", "rustfmt"];
 
 const PINS = {
   amd64: {
@@ -38,6 +55,10 @@ const PINS = {
     git: "c79b7948ef9860c97ec74293a90178676e63368a0711c95c28a55af4edf1adab",
     libcurl: "f3993897876cd03ea10941c9b364965ff95d0226459f31f6c5f5b93562c80798",
     gh: "4c806978ffce1cec70853302a56d70ac6da4f19bae7adca4e1a8ab00633dd91d",
+    ltsNode: "5c063e46bab0fbc1c17cc445d7ff129cbdcd0471be6ed83b6ab864f8143bc864",
+    fnm: "7807664f39d39fc518da1c35ba0181e4b3267603c4b1dedeb4b5fc6ae440a224",
+    uv: "5acfd9177cfecf0bf87578f059728215ccc884388988f55f7a65041b57387d91",
+    rustup: "b1c8cb14e30889e7e2999e6b69e62d9e9b9ffc0f4df8180564d306d9680e6c55",
   },
   arm64: {
     target: "aarch64-unknown-linux-gnu",
@@ -47,9 +68,14 @@ const PINS = {
     git: "b46ef5ad7292f8ae69a7ec18c05e5b40f6c1fca837df2ce4b05b05bd46c9dc2b",
     libcurl: "057490ffc9901df7fe09913e381442fc7615bb972a1dc4198e38bcf840447e77",
     gh: "ee32df2323c8847f5fac6cb6b4b69ca75828e9329a8f22f677021f7b3306ce63",
+    ltsNode: "89e1853138db51e8b82d3e98ba9c0d3f2956a28e5e55ea1b7e12d25aae92d5dd",
+    fnm: "4eaff58b2c5bf30d0934027572dd0b5bbb60d2a1af309230b53662d4b1d45599",
+    uv: "74f2f5c6024d397481db228db8fc25eed420db192243f88438c118e7e013e585",
+    rustup: "9f608c142e0e38a78957d0661ba1dfaf0b6fb37184cfaa4b9a0aa57af6184282",
   },
 };
 const FIRECRACKER_ARCH = { amd64: "x86_64", arm64: "aarch64" };
+const FNM_ASSET = { amd64: "fnm-linux", arm64: "fnm-arm64" };
 const HOST_ARCH = { x64: "amd64", arm64: "arm64" };
 
 const pinsFor = (arch) => {
@@ -57,6 +83,7 @@ const pinsFor = (arch) => {
   const ci = `${FIRECRACKER_CI}/${FIRECRACKER_ARCH[arch]}`;
   return {
     arch,
+    target: pins.target,
     guestBin: process.env.TUMPEL_GUEST_BIN ?? join(ROOT, "target", pins.target, "release", "tumpel-guest"),
     kernel: { url: `${ci}/vmlinux-6.18.62`, digest: pins.kernel },
     rootfs: { url: `${ci}/ubuntu-24.04.squashfs`, digest: pins.rootfs },
@@ -84,6 +111,34 @@ const pinsFor = (arch) => {
       url: `https://github.com/cli/cli/releases/download/v${GH_VERSION}/gh_${GH_VERSION}_linux_${arch}.tar.gz`,
       digest: pins.gh,
     },
+    ltsNode: {
+      name: "node",
+      version: LTS_NODE_VERSION,
+      url: `https://nodejs.org/dist/v${LTS_NODE_VERSION}/node-v${LTS_NODE_VERSION}-linux-${NODE_ARCH[arch]}.tar.xz`,
+      digest: pins.ltsNode,
+    },
+    fnm: {
+      name: "fnm",
+      version: FNM_VERSION,
+      url: `https://github.com/Schniz/fnm/releases/download/v${FNM_VERSION}/${FNM_ASSET[arch]}.zip`,
+      digest: pins.fnm,
+    },
+    uv: {
+      name: "uv",
+      version: UV_VERSION,
+      url: `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${pins.target}.tar.gz`,
+      digest: pins.uv,
+    },
+    rustup: {
+      name: "rustup",
+      version: RUSTUP_VERSION,
+      url: `https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${pins.target}/rustup-init`,
+      digest: pins.rustup,
+    },
+    packages: UBUNTU_PACKAGES[arch].map(([file, digest]) => {
+      const [name, version] = file.split("_");
+      return { name, version, url: `${LAUNCHPAD}/${file}`, digest };
+    }),
   };
 };
 const OCI_TAG = "rootfs";
@@ -325,13 +380,126 @@ const unpackRootfs = async (tree, pins) => {
   }
 };
 
-const installDevTools = async (tree, pins) => {
+const hostPins = () => {
+  const arch = HOST_ARCH[process.arch];
+  if (!PINS[arch]) die(`no pins for the build machine architecture ${process.arch}; build images on amd64 or arm64`);
+  return pinsFor(arch);
+};
+
+const installPackages = async (tree, pins) => {
+  const dpkgDeb = tool("dpkg-deb");
+  for (const deb of pins.packages) run(dpkgDeb, ["-x", await download(deb), tree]);
+  for (const [link, target] of [
+    ["cc", "gcc"],
+    ["c++", "g++"],
+    ["fd", "fdfind"],
+  ])
+    symlinkSync(target, join(tree, "usr/bin", link));
+  return pins.packages;
+};
+
+const installNodeManager = async (tree, pins) => {
+  const installation = `${FNM_DIR}/node-versions/v${LTS_NODE_VERSION}/installation`;
+  mkdirSync(join(tree, installation), { recursive: true });
+  run("tar", [
+    "-xJf",
+    await download(pins.ltsNode),
+    "-C",
+    join(tree, installation),
+    "--strip-components=1",
+    "--no-same-owner",
+  ]);
+  mkdirSync(join(tree, FNM_DIR, "aliases"), { recursive: true });
+  symlinkSync(installation, join(tree, FNM_DIR, "aliases", "default"));
+  const bin = join(tree, "root/.local/bin");
+  mkdirSync(bin, { recursive: true });
+  run(tool("unzip"), ["-q", "-o", await download(pins.fnm), "fnm", "-d", bin]);
+  chmodSync(join(bin, "fnm"), 0o755);
+  return [pins.ltsNode, pins.fnm];
+};
+
+const installPython = async (tree, pins, host, work) => {
+  const bin = join(tree, "root/.local/bin");
+  mkdirSync(bin, { recursive: true });
+  run("tar", ["-xzf", await download(pins.uv), "-C", bin, "--strip-components=1", "--no-same-owner"]);
+  const runner = join(work, "uv");
+  mkdirSync(runner, { recursive: true });
+  run("tar", ["-xzf", await download(host.uv), "-C", runner, "--strip-components=1", "--no-same-owner"]);
+  const key = `cpython-${PYTHON_VERSION}-linux-${FIRECRACKER_ARCH[pins.arch]}-gnu`;
+  run(join(runner, "uv"), ["python", "install", "--no-bin", "--install-dir", join(tree, UV_PYTHON_DIR), key], {
+    env: { ...process.env, UV_NO_CONFIG: "1", UV_CACHE_DIR: join(work, "uv-cache") },
+  });
+  const minor = PYTHON_VERSION.split(".").slice(0, 2).join(".");
+  const python = `${UV_PYTHON_DIR}/${key}/bin/python${minor}`;
+  if (!existsSync(join(tree, python))) die(`uv installed no ${python}; check PYTHON_VERSION against uv ${UV_VERSION}`);
+  for (const name of [`python${minor}`, "python3", "python"]) symlinkSync(python, join(bin, name));
+  return [pins.uv];
+};
+
+const installRust = async (tree, pins, host, work) => {
+  const cargoHome = join(tree, "root/.cargo");
+  const rustupHome = join(tree, "root/.rustup");
+  const runner = join(work, "rustup-init");
+  copyFileSync(await download(host.rustup), runner);
+  chmodSync(runner, 0o755);
+  const { RUSTUP_TOOLCHAIN, ...environment } = process.env;
+  run(
+    runner,
+    [
+      "-y",
+      "--no-modify-path",
+      "--profile",
+      "minimal",
+      "--default-toolchain",
+      "stable",
+      "--component",
+      RUST_COMPONENTS.join(","),
+      "--default-host",
+      pins.target,
+    ],
+    { env: { ...environment, CARGO_HOME: cargoHome, RUSTUP_HOME: rustupHome } },
+  );
+  const bin = join(cargoHome, "bin");
+  const proxies = readdirSync(bin);
+  for (const name of proxies) rmSync(join(bin, name));
+  copyFileSync(await download(pins.rustup), join(bin, "rustup"));
+  chmodSync(join(bin, "rustup"), 0o755);
+  for (const name of proxies.filter((name) => name !== "rustup")) linkSync(join(bin, "rustup"), join(bin, name));
+  for (const name of readdirSync(cargoHome).filter((name) => name.startsWith("env"))) {
+    const path = join(cargoHome, name);
+    writeFileSync(path, readFileSync(path, "utf8").replaceAll(tree, ""));
+  }
+  for (const dir of ["downloads", "tmp"]) rmSync(join(rustupHome, dir), { recursive: true, force: true });
+  return [pins.rustup];
+};
+
+const relinkIntoGuest = (tree, dir) => {
+  const links = run("find", [join(tree, dir), "-type", "l", "-lname", `${tree}/*`], {
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  for (const link of links.stdout.toString().split("\n").filter(Boolean)) {
+    const target = readlinkSync(link).slice(tree.length);
+    rmSync(link);
+    symlinkSync(target, link);
+  }
+};
+
+const installDevTools = async (tree, pins, work) => {
   mkdirSync(join(tree, "opt/tumpel"), { recursive: true });
   copyFileSync(join(ROOT, "npm-scripts/prebuild.mjs"), join(tree, "opt/tumpel/prebuild.mjs"));
   chmodSync(join(tree, "opt/tumpel/prebuild.mjs"), 0o755);
   rmSync(join(tree, "etc/resolv.conf"), { force: true });
   writeFileSync(join(tree, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 9.9.9.9\n");
-  return installGit(tree, pins);
+  const host = hostPins();
+  const components = [
+    ...(await installGit(tree, pins)),
+    ...(await installPackages(tree, pins)),
+    ...(await installNodeManager(tree, pins)),
+    ...(await installPython(tree, pins, host, work)),
+    ...(await installRust(tree, pins, host, work)),
+  ];
+  relinkIntoGuest(tree, "root");
+  return components;
 };
 
 const packImage = async (work, tree, pins, out, ociConfig) => {
@@ -363,7 +531,7 @@ const buildBase = async (pins) => {
     for (const dir of ["opt/harness", "opt/tumpel/guest"]) mkdirSync(join(tree, dir), { recursive: true });
     writeFileSync(join(tree, "usr/local/sbin/tumpel-init"), STUB_INIT, { mode: 0o755 });
     writeFileSync(join(tree, "etc/tumpel/base-layout"), `${BaseLayout.Version}\n`);
-    const components = await installDevTools(tree, pins);
+    const components = await installDevTools(tree, pins, work);
     await installNode(tree, pins);
     const imageDigest = await packImage(work, tree, pins, out, {
       workingDirectory: WORKING_DIRECTORY,
@@ -404,7 +572,7 @@ const buildImage = async (name, pins) => {
       join(tree, "etc/systemd/system/multi-user.target.wants/tumpel-guest.service"),
     );
     writeFileSync(join(tree, "etc/tumpel/guest.json"), `${JSON.stringify(recipe.harness, null, 2)}\n`);
-    const components = [...(await installDevTools(tree, pins)), ...(await recipe.install(tree))];
+    const components = [...(await installDevTools(tree, pins, work)), ...(await recipe.install(tree))];
     const imageDigest = await packImage(work, tree, pins, OUT, {
       workingDirectory: recipe.harness.workingDirectory,
       environment: recipe.harness.environment,
