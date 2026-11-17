@@ -1,11 +1,10 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ReleaseManifestSchema } from "@tumpel/schemas";
+import { currentRelease, downloadRelease } from "./release-download.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const INFRA = join(ROOT, "packages", "control-plane", "infra");
@@ -75,39 +74,17 @@ const value = (name) =>
 
 const endpoint = `https://${value("hostname")}`;
 
-const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
-
-const currentRelease = async () => {
-  const url = `${endpoint}/v1/releases/current`;
-  const response = await fetch(url);
-  if (!response.ok)
-    die(`GET ${url} answered ${response.status}: ${await response.text()}; publish a release to ${STAGE}`);
-  return ReleaseManifestSchema.parse(await response.json());
-};
-
-const download = async (release, kind, entries, architecture) => {
-  const entry = entries.find((each) => each.architecture === architecture);
-  if (!entry) die(`release ${release.releaseVersion} on ${STAGE} carries no ${kind} for ${architecture}`);
-  const path = join(RELEASE_DIR, `${kind}-${architecture.toLowerCase()}-${entry.sha256}`);
-  if (existsSync(path) && sha256(readFileSync(path)) === entry.sha256) return path;
-  const url = `${endpoint}/v1/releases/${kind}/${architecture}`;
-  const response = await fetch(url);
-  if (!response.ok) die(`GET ${url} answered ${response.status}: ${await response.text()}`);
-  const body = Buffer.from(await response.arrayBuffer());
-  const digest = sha256(body);
-  if (digest !== entry.sha256)
-    die(
-      `GET ${url} returned sha256 ${digest}, release ${release.releaseVersion} names ${entry.sha256}; publish the release again with the release workflow`,
-    );
-  mkdirSync(RELEASE_DIR, { recursive: true });
-  writeFileSync(path, body, { mode: 0o755 });
-  return path;
-};
+const download = (release, kind, entries, architecture) =>
+  downloadRelease({ endpoint, stage: STAGE, release, kind, entries, architecture, dir: RELEASE_DIR }).catch((error) =>
+    die(error.message),
+  );
 
 const localArchitecture =
   LOCAL_ARCHITECTURES[process.arch] ?? die(`no release CLI for ${process.arch}; set TUMPEL_PROOF_CLI to a local build`);
 const release =
-  process.env.TUMPEL_PROOF_CLI && process.env.TUMPEL_PROOF_SUPERVISOR ? undefined : await currentRelease();
+  process.env.TUMPEL_PROOF_CLI && process.env.TUMPEL_PROOF_SUPERVISOR
+    ? undefined
+    : await currentRelease(endpoint, STAGE).catch((error) => die(error.message));
 const cli = process.env.TUMPEL_PROOF_CLI || (await download(release, "cli", release.clis, localArchitecture));
 const supervisor =
   process.env.TUMPEL_PROOF_SUPERVISOR ||

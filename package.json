@@ -57,6 +57,7 @@
     "tenant:apply": "node npm-scripts/tenant-apply.mjs",
     "presupervisor:build": "make generate",
     "supervisor:build": "npm run guest:build && npm run guest:drive && TUMPEL_GUEST_DRIVE=\"$PWD/.tmp/guest-drive/${TUMPEL_TARGET:-x86_64-unknown-linux-gnu}.squashfs\" RUSTFLAGS=\"-C target-feature=+crt-static\" cargo build --release -p tumpel-supervisor --target ${TUMPEL_TARGET:-x86_64-unknown-linux-gnu}",
+    "supervisor:fetch": "node npm-scripts/supervisor-fetch.mjs",
     "precli:build": "make generate",
     "cli:build": "RUSTFLAGS=\"-C target-feature=+crt-static\" cargo build --release -p tumpel --target ${TUMPEL_TARGET:-x86_64-unknown-linux-gnu}",
     "prerelease:build": "make generate",

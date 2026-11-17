@@ -92,15 +92,14 @@ jobs:
       - name: Generate the Rust API crate into build/
         run: make generate-rust
 
-      - name: Build the supervisor and the CLI the integration tests drive
-        run: cargo build -p tumpel-supervisor -p tumpel
+      - name: Build the CLI the integration tests drive
+        run: cargo build -p tumpel
 
       - uses: actions/upload-artifact@v7
         with:
           name: rust-binaries
           path: |
             ${{ env.CARGO_TARGET_DIR }}/debug/tumpel
-            ${{ env.CARGO_TARGET_DIR }}/debug/tumpel-supervisor
           if-no-files-found: error
           retention-days: 1
 
@@ -266,13 +265,18 @@ jobs:
           name: rust-binaries
           path: target/debug
 
-      - name: Make the downloaded binaries executable
-        run: chmod +x target/debug/tumpel target/debug/tumpel-supervisor
+      - name: Make the downloaded CLI executable
+        run: chmod +x target/debug/tumpel
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Run the integration tests against the built binaries
+      - name: Fetch the released supervisor, checked against its sha256 and cached per version
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: TUMPEL_SUPERVISOR_CACHE="$HOME/supervisor-releases" npm run supervisor:fetch
+
+      - name: Run the integration tests against the built CLI and the released supervisor
         run: npm run test:integration -w @tumpel/control-plane
 
       - if: failure()
