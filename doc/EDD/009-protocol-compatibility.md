@@ -56,7 +56,7 @@ Speaking to an older peer costs the newer side: a supervisor speaks every versio
 
 ## Breaking and additive changes
 
-Every data wire change still takes a new version, as the wire guard enforces today. The window makes a version cheap. Both decoders ignore unknown fields: zod drops them, and the generated Rust types carry no `deny_unknown_fields`.
+A new optional field on the current version needs no new version: the current version's lock is the living one, and the wire guard accepts the field there. A removal, a retype, a required field and a new message each take a new version, and every lock below the current version stays frozen. The window makes a version cheap. Both decoders ignore unknown fields: zod drops them, and the generated Rust types carry no `deny_unknown_fields`.
 
 | Change                                     | Older receiver    | Kind     |
 | ------------------------------------------ | ----------------- | -------- |
@@ -67,7 +67,7 @@ Every data wire change still takes a new version, as the wire guard enforces tod
 | Field, message, member or variant gone     | Fails to decode   | Breaking |
 | Field type changed                         | Fails to decode   | Breaking |
 
-An additive change lets one encoder serve both versions. A breaking change needs an adapter on each side between the newest types and the older version's, deleted with that version. The supervisor gains the refusal the control plane already has, and answers an unknown data message with a refusal and keeps the socket open. The no-optional-fields rule stays: a field added in version 19 is required in the version 19 types and absent from the version 18 types.
+An additive change lets one encoder serve both versions. A breaking change needs an adapter on each side between the newest types and the older version's, deleted with that version. The supervisor gains the refusal the control plane already has, and answers an unknown data message with a refusal and keeps the socket open. A field that must be required arrives with a new version: it is required in the version 19 types and absent from the version 18 types; an optional field joins the current version in place.
 
 The first planned additive change brings back the control plane's backup timers for the clone. `cdf8a28` took `cloneSeconds` off TurnClaim, because the host learns it only once the image is in hand. Since then the control plane no longer fails a turn ImageFetchTimedOut or NoFirstOutput itself, and the host enforces both. Data version 19 adds a host message, TurnBoxReady, with `cloneSeconds`, sent once the image is in hand. A control plane on 19 arms its backup timers from it. A host on 18 never sends it, and its turns keep the host's budgets alone. A control plane on 18 refuses the frame, and the turn goes on. No host is locked out, and nothing changes until both sides reach 19.
 
