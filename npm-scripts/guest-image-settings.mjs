@@ -17,6 +17,8 @@ export const CLAUDE_FLAGS = [
   "stream-json",
   "--verbose",
   "--dangerously-skip-permissions",
+  "--settings",
+  JSON.stringify({ permissions: { deny: ["Agent", "Monitor"] } }),
 ];
 export const NODE_ARCH = { amd64: "x64", arm64: "arm64" };
 
@@ -25,7 +27,10 @@ export const HARNESS_RUNS = {
     protocol: "ClaudeStreamJson",
     binary: "claude",
     flags: CLAUDE_FLAGS,
-    fixedVariables: [{ name: "DISABLE_AUTOUPDATER", value: "1" }],
+    fixedVariables: [
+      { name: "DISABLE_AUTOUPDATER", value: "1" },
+      { name: "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS", value: "1" },
+    ],
   },
   PiDev: {
     protocol: "PiRpc",
