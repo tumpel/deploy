@@ -9,7 +9,7 @@
 
 ## Summary
 
-A prebuild installs a repository's dependencies once, ahead of any session, and stores the result. A box then starts with that work done. Tumpel runs no build on its own machines. It asks a build provider that the tenant already uses, such as GitHub Actions or CircleCI, and the provider bills the tenant. Every provider hands back the same thing: a container image layer, uploaded to Tumpel's object storage on presigned URLs. Tumpel stores that layer in the same chunk and pack store as snapshots, so a box reads one format whatever built it. Tumpel also becomes an OpenID Connect issuer. A tenant's cloud account and build provider can then trust short-lived tokens that Tumpel signs, and no tenant stores a cloud key in Tumpel. This RFC adds to RFC: Tumpel and replaces none of it.
+A prebuild installs a repository's dependencies once, ahead of any session, and stores the result. A box then starts with that work done. Tumpel runs no build on its own machines. A tenant host belongs to the tenant, so a build on that host meets this rule. Each tenant sets one target for its prebuilds: one of its hosts, GitHub Actions, or CircleCI. A CI provider bills the tenant. Every provider hands back the same thing: a container image layer, uploaded to Tumpel's object storage on presigned URLs. Tumpel stores that layer in the same chunk and pack store as snapshots, so a box reads one format whatever built it. Tumpel also becomes an OpenID Connect issuer. A tenant's cloud account and build provider can then trust short-lived tokens that Tumpel signs, and no tenant stores a cloud key in Tumpel. This RFC adds to RFC: Tumpel and replaces none of it.
 
 ## Tenets
 
@@ -84,7 +84,7 @@ Namespace trusts a custom issuer only after Namespace Support registers it, once
 ### Business requirements
 
 - **BR-1 Faster first turn.** As a tenant member, I want a box to start with the repository's dependencies installed, so that a turn starts on the task.
-- **BR-2 My build accounts.** As a tenant, I want prebuilds to run on build accounts I already have, so that I use their free minutes and their bills.
+- **BR-2 My chosen target.** As a tenant, I want to choose the single place my prebuilds run, from my own host, GitHub Actions and CircleCI. A target that cannot build fails the prebuild by name. Tumpel then tries no other target.
 - **BR-3 No cloud keys.** As a tenant owner, I want my cloud accounts to trust Tumpel without a stored key, so that no long-lived cloud key exists.
 
 ### Functional requirements
@@ -129,6 +129,8 @@ On 2026-11-15 the following rulings were made:
 **The issuer defaults stand: 300 s token life and RS256.** His ruling: safe default, 2026-11-15.
 
 **The issuer has no key rotation.** It signs with one key. His ruling, 2026-11-16.
+
+**Each tenant has an explicit setting for where its prebuilds run: its own host, GitHub Actions or CircleCI.** Each tenant picks exactly one. When the chosen target cannot build, the prebuild fails with a named error, and nothing moves to another target. A build on the host still meets "Tumpel runs no build", because the host is tenant-owned. His ruling, 2026-11-16.
 
 **The BuildKit client and the conversion of an OCI layer to packs run in the supervisor, on a tenant host that carries a builder role.** No new runtime is added. Ruled under the tenets, 2026-11-15.
 
