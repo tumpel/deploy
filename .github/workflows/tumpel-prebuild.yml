@@ -1,0 +1,19 @@
+name: tumpel prebuild
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/tumpel-prebuild.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  prebuild:
+    uses: tumpel/workflows/.github/workflows/prebuild.yml@v2
+    with:
+      apiOrigin: https://api.dev.tumpel.dev
