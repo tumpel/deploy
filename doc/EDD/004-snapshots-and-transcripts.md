@@ -53,7 +53,6 @@ The supervisor boots a fresh box from the image with an empty overlay drive and 
 - A manifest of 100,000 files encodes to about 40 MB. A snapshot ships only its changed chunks.
 - Restoring such a tree cold takes about 210 lockstep round trips.
 - Paths that are not UTF-8 fail the snapshot `UpperDirectoryUnreadable`.
-- A snapshot stored before commit 25baf06 fails a restore `SnapshotUnreadable`, and the detail says to start a new session.
 
 ## Transcripts
 

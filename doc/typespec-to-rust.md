@@ -1,6 +1,6 @@
 # TypeSpec to Rust
 
-Chosen: progenitor 0.16 (OpenAPI 3.0 to types and a reqwest client), run as a library from `crates/xtask` by `npm run generate`, output written to `build/tumpel-api/generated.rs`.
+progenitor 0.16 (OpenAPI 3.0 to types and a reqwest client) runs as a library from `crates/xtask` under `npm run generate` and writes `build/tumpel-api/generated.rs`.
 
 Rejected:
 

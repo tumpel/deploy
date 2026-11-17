@@ -3,13 +3,11 @@
 | Field   | Value                                                                                                                                                                         |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Status  | Proposed                                                                                                                                                                      |
-| Author  | Matthijs van Henten                                                                                                                                                           |
-| Date    | 2026-11-15                                                                                                                                                                    |
 | Related | [RFC: Tumpel](RFC-TUM-Tumpel.md), [EDD-003](../EDD/003-credentials.md), [EDD-004](../EDD/004-snapshots-and-transcripts.md), [Dashboard requirements](../product/dashboard.md) |
 
 ## Summary
 
-A prebuild installs a repository's dependencies once, ahead of any session, and stores the result. A box then starts with that work done. Tumpel runs no build on its own machines. A tenant host belongs to the tenant, so a build on that host meets this rule. Each tenant sets one target for its prebuilds: one of its hosts, GitHub Actions, or CircleCI. A CI provider bills the tenant. Every provider hands back the same thing: a container image layer, uploaded to Tumpel's object storage on presigned URLs. Tumpel stores that layer in the same chunk and pack store as snapshots, so a box reads one format whatever built it. Tumpel also becomes an OpenID Connect issuer. A tenant's cloud account and build provider can then trust short-lived tokens that Tumpel signs, and no tenant stores a cloud key in Tumpel. This RFC adds to RFC: Tumpel and replaces none of it.
+A prebuild installs a repository's dependencies once, ahead of any session, and stores the result. A box then starts with that work done. Tumpel runs no build on its own machines. A tenant host belongs to the tenant, so a build on that host meets this rule. Each tenant sets one target for its prebuilds: one of its hosts, GitHub Actions, or CircleCI. A CI provider bills the tenant. Every provider hands back the same thing: a container image layer, uploaded to Tumpel's object storage on presigned URLs. Tumpel stores that layer in the same chunk and pack store as snapshots, so a box reads one format whatever built it. Tumpel is also an OpenID Connect issuer. A tenant's cloud account and build provider can then trust short-lived tokens that Tumpel signs, and no tenant stores a cloud key in Tumpel. This RFC adds to RFC: Tumpel and replaces none of it.
 
 ## Tenets
 
@@ -25,7 +23,7 @@ The guest image holds Ubuntu, git, the GitHub CLI and the harness, and none of a
 
 A prebuild is a job of its own. Its input is a repository plus one digest over the repository's devcontainer files and lockfiles. Its output is one content-addressed layer. The repository, the input digest and the base image digest form the prebuild's key, so every commit with the same devcontainer, lockfiles and base shares one layer, whatever the harness (EDD-007).
 
-At a session's first turn, the control plane reads those files through the GitHub App, computes the digest and finds the stored prebuild with that key. When one exists, the turn offer names it. The supervisor restores the layer from packs the way it restores a snapshot (EDD-004), and the box boots with three layers: the base image, the prebuild layer and the session's own overlay. The harness layer mounts beside them. A session keeps the prebuild it started with. When no prebuild matches, the box boots from the image alone, as it does now.
+At a session's first turn, the control plane reads those files through the GitHub App, computes the digest and finds the stored prebuild with that key. When one exists, the turn offer names it. The supervisor restores the layer from packs the way it restores a snapshot (EDD-004), and the box boots with three layers: the base image, the prebuild layer and the session's own overlay. The harness layer mounts beside them. A session keeps the prebuild it started with. When no prebuild matches, the box boots from the image alone.
 
 ### The output contract
 
@@ -49,7 +47,7 @@ Each provider joins the dashboard's Connections screen as one connection, with t
 
 Phase 1 builds two adapters: GitHub Actions and CircleCI. Both start a CI pipeline on the tenant's account, and both jobs upload through one exchange, with the job's own OIDC token. GitHub dispatches through the existing App, and CircleCI through the tenant's API token. A GitHub token proves one run on one commit. A CircleCI token proves one pipeline, and every job in it holds one. CircleCI registers nothing at the provider side, so a tenant connects it in one step. Its free plan gives 30,000 credits a month. Phase 1 also builds the issuer and publishes both opt-in packages.
 
-Namespace is parked. Its support team takes about a week to register a custom issuer, and the owner has not yet signed up with Namespace. Its code, its connection kind and its documents stay as they are. Nothing extends them until the registration is done.
+Namespace is parked. Its support team takes about a week to register a custom issuer. Its code, its connection kind and its documents stay as they are, and nothing extends them while it is parked.
 
 ## Follow-ups
 
@@ -108,33 +106,23 @@ Namespace trusts a custom issuer only after Namespace Support registers it, once
 
 ## Decisions
 
-On 2026-11-15 the following rulings were made:
-
-> we keep github dispatch as the escape hatch. we meet the devs where they are already, and we add 2-3 alternative contenders to prove the infrastructure, those who are generous towards free build minutes and oidc/oauth.
-
-> fine, we do two to start with, but your other recommendations get planned, so we have an easy follow up strategy I can kick off in a few stolen moments.
-
-> tumpel will be oss.
-
-### Rulings
-
 **Tenants opt in through a reusable workflow.** Tumpel publishes the prebuild workflow in the public repository `tumpel/workflows`. The prebuild start commits a short caller workflow through the App, which triggers on `workflow_dispatch` and on a push to its own path on the default branch and calls `tumpel/workflows/.github/workflows/prebuild.yml@v2` with only the API origin. The App's manifest adds write on Actions, Contents and Workflows, which the dispatch and the commit require. A prebuild never fails because the repository lacks the caller workflow.
 
-**`tumpel/workflows` is the workflow's source.** The workflows move at their own pace, so they live in their own repository. Agents commit there like in any other repository, tag an immutable `vX.Y.Z` and move the major tag `v1` when a change is ready. Skew between the workflow and the API is handled case by case in the change that causes it. Ruled on D6.
+**`tumpel/workflows` is the workflow's source.** The workflows move at their own pace, so they live in their own repository. Agents commit there like in any other repository, tag an immutable `vX.Y.Z` and move the major tag when a change is ready. Skew between the workflow and the API is handled case by case in the change that causes it.
 
-**CircleCI is the second adapter, and tenants import the orb `tumpel/prebuild@1` in their own config.** Tumpel commits no file into a tenant repository. Ruled 2026-11-15.
+**CircleCI is the second adapter, and tenants import the orb `tumpel/prebuild@1` in their own config.** Tumpel commits no file into a tenant repository.
 
-**Tumpel is open source under Apache-2.0.** The repository stays private for now. Anyone can fetch the reusable workflow, the installer and the images. Self-hosting the control plane is supported next to the hosted `tumpel.dev`. Nothing proprietary or secret lives in the repository. Secrets stay in tofu and the key-store port.
+**Tumpel is open source under Apache-2.0.** Anyone can fetch the reusable workflow, the installer and the images. Self-hosting the control plane is supported next to the hosted `tumpel.dev`. Nothing proprietary or secret lives in the repository. Secrets stay in tofu and the key-store port.
 
-**The issuer defaults stand: 300 s token life and RS256.** His ruling: safe default, 2026-11-15.
+**The issuer defaults stand: 300 s token life and RS256.**
 
-**The issuer has no key rotation.** It signs with one key. His ruling, 2026-11-16.
+**The issuer has no key rotation.** It signs with one key.
 
-**Each tenant has an explicit setting for where its prebuilds run: its own host, GitHub Actions or CircleCI.** Each tenant picks exactly one. When the chosen target cannot build, the prebuild fails with a named error, and nothing moves to another target. A build on the host still meets "Tumpel runs no build", because the host is tenant-owned. His ruling, 2026-11-16.
+**Each tenant has an explicit setting for where its prebuilds run: its own host, GitHub Actions or CircleCI.** Each tenant picks exactly one. When the chosen target cannot build, the prebuild fails with a named error, and nothing moves to another target. A build on the host still meets "Tumpel runs no build", because the host is tenant-owned.
 
-**The BuildKit client and the conversion of an OCI layer to packs run in the supervisor, on a tenant host that carries a builder role.** No new runtime is added. Ruled under the tenets, 2026-11-15.
+**The BuildKit client and the conversion of an OCI layer to packs run in the supervisor, on a tenant host that carries a builder role.** No new runtime is added.
 
-**A job gets its upload URLs by presenting its provider's OIDC token.** A URL in the dispatch inputs is a credential in the run's record. GitHub, CircleCI, GitLab and Bitbucket each issue a job token. He took the safe default.
+**A job gets its upload URLs by presenting its provider's OIDC token.** A URL in the dispatch inputs is a credential in the run's record. GitHub, CircleCI, GitLab and Bitbucket each issue a job token.
 
 ## Implementation notes
 
@@ -186,7 +174,7 @@ Each base image carries the build script at `/opt/tumpel/prebuild.mjs`, so the b
 
 ### Release
 
-The release stores the base image's root filesystem tar in the private releases bucket, under `bases/<arch>/rootfs/<sha256>`. The tar holds no harness and no guest agent. That sha256 is `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`, so prod's `current.json` must be published again before the control plane deploys to prod.
+The release stores the base image's root filesystem tar in the private releases bucket, under `bases/<arch>/rootfs/<sha256>`. The tar holds no harness and no guest agent. That sha256 is `diff_ids[0]` of the OCI config that `ociDigest` names. A build job loads the tar with `docker import`. The control plane refuses a manifest without `clis`.
 
 ### Connections
 
@@ -208,7 +196,7 @@ The release stores the base image's root filesystem tar in the private releases 
 
 ## Appendix of providers
 
-Every provider fact below was checked against the provider's own documentation on 2026-11-15.
+Every provider fact below comes from the provider's own documentation.
 
 | Order  | Provider            | Shape                      | Starts a build with                                                              | Job identity                                                 | Free allowance                                                                          |
 | ------ | ------------------- | -------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -219,7 +207,7 @@ Every provider fact below was checked against the provider's own documentation o
 | 4      | Bitbucket Pipelines | CI dispatch                | An on-demand pipeline, with the YAML in the request body, scope `pipeline:write` | `BITBUCKET_STEP_OIDC_TOKEN`                                  | 50 build minutes; the pricing page does not say per month                               |
 | 5      | Ubicloud            | Runner for GitHub dispatch | The reusable workflow's runner label                                             | GitHub's OIDC token                                          | USD 2.50 a month, 1,250 runner minutes                                                  |
 
-Ubicloud's API takes personal access tokens only, so any later direct use goes through the secret-set fallback. Depot is out for now: it has no free plan, only a 7-day trial. Ona is out: it competes with Tumpel, and its acquisition by OpenAI closed on 2026-08-10.
+Ubicloud's API takes personal access tokens only, so any later direct use goes through the secret-set fallback. Depot is out: it has no free plan, only a 7-day trial. Ona is out: it competes with Tumpel.
 
 ## Appendix of the CircleCI adapter
 
@@ -308,7 +296,7 @@ A GitHub OAuth organization reads config only from the repository's `.circleci/c
 
 The orb's source lives in this repository at `orbs/prebuild/orb.yml`. A release step publishes it one way, as it publishes the workflow. CircleCI sets these rules:
 
-- A CircleCI organization claims one namespace, and only an owner of that organization can claim it. Changing a claimed namespace takes CircleCI support. The CircleCI organization of the GitHub organization `tumpel` claims `tumpel`. The registry listed `tumpel` as unclaimed on 2026-11-15.
+- A CircleCI organization claims one namespace, and only an owner of that organization can claim it. Changing a claimed namespace takes CircleCI support. The CircleCI organization of the GitHub organization `tumpel` claims `tumpel`.
 - A production version follows semver and is immutable. Only an owner of the namespace's organization publishes one. A config that imports `@1` receives every minor and patch release of major version 1.
 - A development version `dev:<label>` is mutable and expires after 90 days. Any member of the organization can publish one, once a first production version exists.
 - CircleCI releases every public registry orb under the MIT license.

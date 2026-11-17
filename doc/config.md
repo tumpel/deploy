@@ -63,12 +63,12 @@ tumpel host set-labels <hostId> gpu
 
 `tumpel config plan` and `apply` keep reading secret values from the variables `valueFrom.env` names.
 
-## Set up your own tenant
+## Set up a tenant
 
-`doc/personas/` holds `tumpel-dev.json` with the persona `tumpel-dev`, which works on this repository with Claude Code on Opus. Its secret set carries a Claude Code subscription token and a GitHub token. Sign in as yourself and apply it:
+`doc/personas/` holds `tumpel-dev.json` with the persona `tumpel-dev`, which works on this repository with Claude Code on Opus. Its secret set carries a Claude Code subscription token and a GitHub token. To apply it:
 
 1. `tumpel login --endpoint <stage origin>`, such as `https://api.dev.tumpel.dev`.
 2. Open the URL it prints in a browser and approve the code.
 3. `npm run tenant:apply -- doc/personas/tumpel-dev.json`
 
-`tenant:apply` reads the subscription token and its expiry from `~/.claude/.credentials.json` and the GitHub token from `gh auth token`, in process. It passes them to `tumpel config apply` through the environment only, so a rerun rotates the values. `TUMPEL_CREDENTIAL=dotfiles:<key name>` with `TUMPEL_CREDENTIAL_EXPIRES_AT` reads the token from dotfiles instead. Export any other secret the file names first. `--endpoint <url>` overrides the control plane the CLI env file names; it must be the one you signed in to.
+`tenant:apply` reads the subscription token and its expiry from `~/.claude/.credentials.json` and the GitHub token from `gh auth token`, in process. It passes them to `tumpel config apply` through the environment only, so a rerun rotates the values. `TUMPEL_CREDENTIAL=dotfiles:<key name>` with `TUMPEL_CREDENTIAL_EXPIRES_AT` reads the token from dotfiles instead. Export any other secret the file names first. `--endpoint <url>` overrides the control plane the CLI env file names; it must be the control plane the CLI signed in to.

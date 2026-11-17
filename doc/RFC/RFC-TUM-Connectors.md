@@ -3,8 +3,6 @@
 | Field   | Value                                                                                                                                                                                                  |
 | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Status  | Proposed                                                                                                                                                                                               |
-| Author  | Matthijs van Henten                                                                                                                                                                                    |
-| Date    | 2026-11-16                                                                                                                                                                                             |
 | Related | [RFC: Tumpel](RFC-TUM-Tumpel.md), [EDD-003](../EDD/003-credentials.md), [EDD-005](../EDD/005-mcp-and-cli.md), [EDD-007](../EDD/007-guest-layers.md), [Dashboard requirements](../product/dashboard.md) |
 
 ## Summary
@@ -13,16 +11,14 @@ A connector is a remote MCP server that a tenant registers once and attaches to 
 
 ## Requirements
 
-Quoted words are the owner's brief of 2026-11-16.
-
 ### Business requirements
 
-- **BR-1 Any MCP server on a persona.** As a tenant, I want to attach "any remote MCP server" to a persona, "so every session on that persona gets it".
+- **BR-1 Any MCP server on a persona.** As a tenant, I want to attach any remote MCP server to a persona, so every session on that persona gets it.
 - **BR-2 Recall first.** Recall is the first connector.
 
 ### Functional requirements
 
-- **FR-1 Register.** An Owner registers a server by URL, with OAuth "like claude.ai custom connectors" or with "a token in a secret set". (BR-1)
+- **FR-1 Register.** An Owner registers a server by URL, with OAuth like claude.ai custom connectors or with a token in a secret set. (BR-1)
 - **FR-2 Attach.** A persona lists its connectors. Each turn of its sessions gets every one. (BR-1)
 - **FR-3 Every harness.** Claude Code, Codex, OpenCode and Pi.dev each get the relay endpoint in their own config. (BR-1)
 - **FR-4 Parity.** Every connector operation is one MCP tool and one CLI command, modelled in TypeSpec first. (BR-1)
@@ -52,7 +48,7 @@ A sign-in is a `TenantConnectorSignIn` or a `MemberConnectorSignIn` (Decision 1)
 
 When the control plane prepares an offer, it reuses the access token while it has more than `connectorTokenMinSeconds` (900 s) left. Otherwise it refreshes within 10 s, one refresh per sign-in at a time, so a server that rotates single-use refresh tokens never sees one twice. A refused or timed-out refresh fails the turn `ConnectorRefreshFailed`, quotes the server, and sets the sign-in NotConnected with the fix: connect again. A turn whose sign-in is NotConnected fails `ConnectorNotConnected`.
 
-The supervisor refreshes a token that nears expiry mid-turn (Decision 3). This RFC does not yet say how a rotated refresh token gets back to the control plane.
+The supervisor refreshes a token that nears expiry mid-turn (Decision 3). How a rotated refresh token gets back to the control plane is open.
 
 ## Token sign-in
 
@@ -91,7 +87,7 @@ Pi has carried MCP as a built-in extension since 0.99.0, and the catalog pins 1.
 { "mcpServers": { "tumpel": { "url": "http://127.0.0.1:<relayPort>/mcp" } } }
 ```
 
-The maintained third-party extension `pi-mcp-adapter` (Nico Bailon, 7.0.1 of 2026-11-04) reads the same file and turns the built-in one off. The persona needs only the built-in one.
+The maintained third-party extension `pi-mcp-adapter` (Nico Bailon, 7.0.1) reads the same file and turns the built-in one off. The persona needs only the built-in one.
 
 The guest fails a Pi turn on a persona with connectors only when that file is missing, with `ConnectorSetupMissing`. Its detail says in plain words that the persona needs `.pi/agent/mcp.json` with the `tumpel` server at the relay endpoint.
 
@@ -115,16 +111,16 @@ Each stage is one push, in this order.
 4. OpenCode and Pi wiring.
 5. `TenantConfig`, the test MCP server and the two proof steps.
 
-## Decisions for Matthijs
+## Decisions
 
-1. **Who owns the sign-in.** Ruled. Connectors form one flat model. A tenant sign-in and member sign-ins exist from day one, flattened per turn into one keyed list that names each type and owner (Handover). A member's entry takes precedence over the tenant's for the same connector.
-2. **Persona fields.** Ruled. A new `Personas_patch` sets a persona's connectors, and a field left out of it stays unchanged. On create, a missing connector list means none. `Personas_update` keeps its full-replace semantics. Matthijs gave the reason: changing one value of a persona is a patch, and a patch never erases anything. Every PUT update in the API gets a PATCH beside it.
-3. **Token in the box or a relay.** Ruled: a relay on the host (Relay). The supervisor gets the tokens per turn over the channel, holds them in memory only and refreshes them. One host gateway serves this relay and the per-session virtual keys for provider keys, which RFC: Tumpel lists as a non-goal for v1.
-4. **Transcripts to a super harness.** Ruled: nothing built. A super harness reads transcripts through the existing transcript read (Recall).
-5. **Pi.** Ruled. Pi reaches connectors through its MCP extension, set up in the persona's files at the relay endpoint (Pi). The guest refuses a Pi turn only without that setup. The proof runs a Pi session through the relay before Tumpel documents the setup (NFR-6).
-6. **Proof of OAuth.** Ruled. Agents prove the OAuth sign-in headlessly against a test server on the proof host, which the Pi step also uses (Proof).
-7. **Recall.** Ruled. Recall is an ordinary connector to the tenant's own Recall.
-8. **A failed server.** Ruled. The turn fails fast with a named reason per cause, and the detail points at the toggle (Failures and the toggle).
+1. **Who owns the sign-in.** Connectors form one flat model. A tenant sign-in and member sign-ins exist side by side, flattened per turn into one keyed list that names each type and owner (Handover). A member's entry takes precedence over the tenant's for the same connector.
+2. **Persona fields.** A new `Personas_patch` sets a persona's connectors, and a field left out of it stays unchanged. On create, a missing connector list means none. `Personas_update` keeps its full-replace semantics. Changing one value of a persona is a patch, and a patch never erases anything. Every PUT update in the API gets a PATCH beside it.
+3. **Token in the box or a relay.** A relay on the host (Relay). The supervisor gets the tokens per turn over the channel, holds them in memory only and refreshes them. One host gateway serves this relay and the per-session virtual keys for provider keys, which RFC: Tumpel lists as a non-goal for v1.
+4. **Transcripts to a super harness.** A super harness reads transcripts through the existing transcript read (Recall).
+5. **Pi.** Pi reaches connectors through its MCP extension, set up in the persona's files at the relay endpoint (Pi). The guest refuses a Pi turn only without that setup. The proof runs a Pi session through the relay before Tumpel documents the setup (NFR-6).
+6. **Proof of OAuth.** Agents prove the OAuth sign-in headlessly against a test server on the proof host, which the Pi step also uses (Proof).
+7. **Recall.** Recall is an ordinary connector to the tenant's own Recall.
+8. **A failed server.** The turn fails fast with a named reason per cause, and the detail points at the toggle (Failures and the toggle).
 
 ## FAQ
 
@@ -263,7 +259,7 @@ Operations: `OAuthConnectors_list`, `_get`, `_start`, `_delete`; `TokenConnector
 | Recall's transport, OAuth flow and token lifetimes   | `recall/README.md`, Custom connector                        |
 | Codex `-c` flags and persona `config.toml`           | PR #24                                                      |
 | Pi MCP built in since 0.99.0, `~/.pi/agent/mcp.json` | Pi `packages/coding-agent/docs/mcp.md` and CHANGELOG 0.99.0 |
-| `pi-mcp-adapter` maintainer, version and date        | npm registry, `pi-mcp-adapter`                              |
+| `pi-mcp-adapter` maintainer and version              | npm registry, `pi-mcp-adapter`                              |
 | Pi catalog pin 1.5.2 and persona file paths          | `packages/control-plane/src/harness-catalog.ts`             |
 | Grant expiry                                         | EDD-003 Handover                                            |
 | Virtual keys a non-goal for v1                       | RFC: Tumpel, Credentials and storage                        |

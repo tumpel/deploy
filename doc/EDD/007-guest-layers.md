@@ -34,9 +34,9 @@ Every fetch takes the host's one fetch lock. A box that needs a layer another bo
 - `harnessLayers`: one `ReleaseHarnessLayer` per harness, version and architecture, with `layerDigest`, `manifestDigest` and `sizeBytes`. Shell joins as a layer for tests.
 - `supervisors`: each `ReleaseSupervisor` adds `guestDriveDigest`, the digest of the guest drive inside that binary.
 
-`ImageRelease` names `bases` and `baseLayoutVersion`, without `guestProtocolVersion`. `rootfsDigest` is the diff_id of the base's root filesystem tar, with no harness and no guest agent. Prebuild jobs load that tar.
+`ImageRelease` names `bases`, `baseLayoutVersion` and `guestProtocolVersion`. `rootfsDigest` is the diff_id of the base's root filesystem tar, with no harness and no guest agent. Prebuild jobs load that tar.
 
-The guest drive holds `tumpel-guest`, its systemd unit and `init`, the mount sequence below. The release job packs it, and the supervisor embeds it with `include_bytes!` and writes it to the cache at start. A supervisor that cannot write it exits `GuestDriveUnwritable`, code 8. `release-publish` drops the GuestProtocol refusal. It refuses a release whose commit's `BaseLayout.Version` differs from `images.json`'s `baseLayoutVersion`, and names the image release tag to push.
+The guest drive holds `tumpel-guest`, its systemd unit and `init`, the mount sequence below. The release job packs it, and the supervisor embeds it with `include_bytes!` and writes it to the cache at start. A supervisor that cannot write it exits `GuestDriveUnwritable`, code 8. `release-publish` refuses a release whose commit's `BaseLayout.Version` differs from `images.json`'s `baseLayoutVersion`, or whose `GuestProtocol.Oldest` to `GuestProtocol.Version` misses its `guestProtocolVersion`, and names the image release tag to push.
 
 ## Boot and mount sequence
 
@@ -52,18 +52,18 @@ The guest drive holds `tumpel-guest`, its systemd unit and `init`, the mount seq
 Firecracker names drives in the order the supervisor configures them, so the first four slots are fixed. The supervisor names the optional drives on the kernel command line as `tumpel.prebuild=vdX` and `tumpel.restore=vdX`.
 
 1. The base's stub `/usr/local/sbin/tumpel-init` mounts `vdc` at `/opt/tumpel/guest` and runs `/opt/tumpel/guest/init`.
-2. That init mounts the overlay drive, formats it on first boot and unpacks a restore archive into the upper directory, as now.
+2. That init mounts the overlay drive, formats it on first boot and unpacks a restore archive into the upper directory.
 3. It mounts the overlay with `lowerdir=<prebuild>:/`, so the prebuild layer sits over the base, under the session's upper directory.
 4. It mounts a tmpfs at `/opt/harness` in the merged root, mounts `vdd` at `/opt/harness/<harness>/<version>` and moves the guest mount into the merged root.
 5. It pivots and starts systemd. The guest agent reads `tumpel-harness.json`, puts the layer's `bin` first on `PATH` and names the harness and version in GuestHello.
 
-Every step runs within `bootSeconds`. A failed step prints `tumpel-init: <step> failed: <error>` on the console, and the turn fails BoxBootFailed with that tail. When GuestHello names another harness than the offer, the turn fails BoxBootFailed. Fetching fails ImageFetchFailed, ImageFetchTimedOut or ImageNotReleased, naming the part. TurnOffer adds the harness layer's digests and URLs, which takes channel protocol 11. A Claude setup box boots the same stack.
+Every step runs within `bootSeconds`. A failed step prints `tumpel-init: <step> failed: <error>` on the console, and the turn fails BoxBootFailed with that tail. When GuestHello names another harness than the offer, the turn fails BoxBootFailed. Fetching fails ImageFetchFailed, ImageFetchTimedOut or ImageNotReleased, naming the part. TurnOffer carries the harness layer's digests and URLs. A Claude setup box boots the same stack.
 
 ## Prebuilds, snapshots and the proof
 
 The harness and guest mounts sit outside the overlay, so a snapshot holds none of their files and does not depend on the harness digest. A prebuild runs no harness, and its key names the base's `imageDigest`, so one prebuild serves every harness. `prebuild.mjs` stays in the base, because CI prebuild jobs load only the base tar. The supervisor packs a fetched prebuild layer into a squashfs with the backhand crate and caches it by prebuild key.
 
-The proof keeps its seventeen steps. Step 4's first turn now fetches the base and the harness layer within the fetch budget. Step 2's published supervisor carries the guest drive.
+In the proof, step 4's first turn fetches the base and the harness layer within the fetch budget, and step 2's published supervisor carries the guest drive.
 
 `images.yml` builds the base only, without the Rust toolchain or the guest. `release.yml` packs the guest drive, builds missing harness layers and publishes the crates on a `v*` tag (OR-5).
 
@@ -74,34 +74,11 @@ The proof keeps its seventeen steps. Step 4's first turn now fetches the base an
 - Drive count: with `pci=off` on x86_64, each virtio-mmio device takes one of 19 legacy interrupts. Net and vsock take two, which leaves 17 drives against the six a box uses. Past 17, Firecracker's PCI transport lifts the limit.
 - Hotplug: Firecracker attaches drives before boot, so a warm box keeps its harness layer.
 - Decompression: the kernel builds one squashfs decompressor per mount. If step 4's first line slows, `-noD -noF` stores data uncompressed at a larger download.
-- Boot cost: the extra drives and mounts are not measured. Stage 7 measures them.
+- Boot cost: the extra drives and mounts are not measured.
 - Size: the Claude Code image uses 687 MB and the Shell image 373 MB on the build machine, and each harness image repeats the base. A compressed layer is not measured.
-- Skew: a smaller contract remains between the stub init and the guest drive's init. `release-publish` checks it as `baseLayoutVersion`.
-- Prebuild script: a change to `prebuild.mjs` still needs an image release. Moving it to the guest drive means a second URL for the orb.
+- Skew: the stub init and the guest drive's init share a contract, which `release-publish` checks as `baseLayoutVersion`.
+- Prebuild script: a change to `prebuild.mjs` needs an image release. Moving it to the guest drive means a second URL for the orb.
 - crates.io: `tumpel-api` must publish before `tumpel`. Whether trusted publishing can create a first version is not checked. If not, a person publishes each crate once.
-
-## CI minutes
-
-A guest change saves about 13 job minutes and 4 minutes of wall clock, because it needs no image run. A harness bump saves about 12 job minutes the same way. Other pushes to main cost about 0.4 job minutes more. The appendix holds the measured baseline.
-
-## Build plan
-
-Each stage is one push by one lane, in this order. Stages 1 and 2 must be on main and released before stage 5.
-
-1. devops: `harness:layer`, `HarnessLayerManifest` and `ReleaseHarnessLayer`. The binaries job builds missing layers, and `current.json` gains `harnessLayers`.
-2. devops: `guest:image -- base` builds the base with the stub init. `images.json` carries `bases` beside the harness images. Tag an image release.
-3. engineer: the binaries job packs the guest drive. The supervisor embeds it, writes it at start and exits `GuestDriveUnwritable`.
-4. engineer: the host layer cache, with digest checks, eviction past `layerCacheMib` and the shared fetch lock. Done: `layers::resolve` takes the fetch deadline from its caller so stage 5 can share the budget, and the supervisor fills fields missing from `runtime.json` with defaults at start, not only at install.
-5. engineer: layered boot. TurnOffer names base and layer on channel protocol 11. The supervisor attaches the six slots, the guest drive's init mounts the stack, and placement reads `bases` and `harnessLayers`. Done:
-   - TurnOffer and ClaudeSetupBoxOffer carry `image` as a `BootImage` union of the full `GuestImageDownload` and `LayeredImageDownload`, on channel protocol 14, because main had reached 13. The full image boots wherever the release lacks a base or the layer, until stage 6.
-   - `current.json` gains `bases`, copied from `images.json` at publish.
-   - TurnImageFetching keeps one `imageDigest` and names the base, or the layer when only the layer is missing.
-   - The supervisor holds the base and the layer of a running or setting-up box, and placing a new base deletes the other bases no box holds.
-   - The guest agent reads `tumpel-harness.json` from the layer named by `tumpel.harness` on the kernel command line, and `/etc/tumpel/guest.json` in a full image.
-   - The supervisor attaches four slots plus the restore archive; prebuild layers stay with stage 7.
-6. devops: `release-publish` swaps the GuestProtocol refusal for `baseLayoutVersion`, and image releases carry bases only.
-7. engineer: prebuild keys name the base digest, prebuild layers mount as squashfs, and the proof records step 4 against the old cold first line.
-8. devops: crates.io publishing of `tumpel-api` and `tumpel` on `v*` tags.
 
 ## FAQ
 
@@ -115,7 +92,7 @@ Each stage is one push by one lane, in this order. Stages 1 and 2 must be on mai
 
 ## Appendix of kernel facts
 
-Checked on 2026-11-15 against `resources/guest_configs/microvm-kernel-ci-x86_64-6.18.config` and the aarch64 file in `firecracker-microvm/firecracker`, and against the strings of the pinned `vmlinux-6.18.62` (sha256 `0ee1eb90...`).
+Checked against `resources/guest_configs/microvm-kernel-ci-x86_64-6.18.config` and the aarch64 file in `firecracker-microvm/firecracker`, and against the strings of the pinned `vmlinux-6.18.62` (sha256 `0ee1eb90...`).
 
 | Option                          | x86_64  | aarch64     |
 | ------------------------------- | ------- | ----------- |
@@ -127,16 +104,3 @@ Checked on 2026-11-15 against `resources/guest_configs/microvm-kernel-ci-x86_64-
 | `CONFIG_VIRTIO_BLK`             | y       | not checked |
 
 Firecracker's `src/vmm/src/arch/x86_64/layout.rs` sets legacy GSIs 5 to 23. `device_manager/mmio.rs` gives each virtio-mmio device one. `devices/virtio/block/virtio/device.rs` builds the virtio-blk id from `st_dev`, `st_rdev` and `st_ino`. `docs/block.md` states that the root device becomes `/dev/vda` and the rest follow in configuration order. The kernel's `overlayfs.rst` stacks lower directories from left to right, top first.
-
-## Appendix of CI minutes
-
-Measured on 2026-11-15. Image run `images-v0.1.2` took 14.3 job minutes and 4.2 minutes wall clock, 10.3 job minutes of it checks. Release run 43762892658 took 14.1 job minutes and 4.4 minutes, 10.9 of it checks. Today a guest or harness change needs both runs.
-
-| Change                 | Today                 | After, estimated          | Saved            |
-| ---------------------- | --------------------- | ------------------------- | ---------------- |
-| Guest fix or bump      | 28.4 job min, 8.6 min | about 15 job min, 4.5 min | about 13 job min |
-| Harness pin bump       | 28.4 job min, 8.6 min | about 16 job min, 4.5 min | about 12 job min |
-| Base change            | 28.4 job min          | about 27 job min          | about 1 job min  |
-| Any other push to main | 14.1 job min          | about 14.5 job min        | costs 0.4        |
-
-The estimates assume the guest drive adds one job minute, a harness layer two, and `squashfs-tools` half a minute. A base image run drops the Rust toolchain and the guest build.

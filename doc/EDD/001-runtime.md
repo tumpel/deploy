@@ -8,7 +8,7 @@ The supervisor runs each session in a Firecracker microVM, the box, on a tenant'
 
 ## Box lifecycle
 
-A box boots from a base image, a kernel, a harness layer and the supervisor's guest drive, each named by digest (EDD-007). The supervisor refuses a guest whose greeting, GuestHello, names another harness than the offer. GuestHello also carries `protocolVersion`, now 2. On any other version the turn fails BoxBootFailed, and the detail names both versions and says to rebuild the image.
+A box boots from a base image, a kernel, a harness layer and the supervisor's guest drive, each named by digest (EDD-007). The supervisor refuses a guest whose greeting, GuestHello, names another harness than the offer. GuestHello also carries `protocolVersion`. On a version outside `GuestProtocol.Oldest` to `GuestProtocol.Version` the turn fails BoxBootFailed, and the detail names both and says to rebuild the image.
 
 A second drive per session holds the overlay upper directory, which the guest's init mounts over the image before it starts the guest agent. A cold boot of a session with snapshots attaches one more read-only drive with the restored files (EDD-004). The agent dials the host over vsock once ready and speaks length-prefixed JSON.
 
@@ -24,7 +24,7 @@ The fetch budget is `turnImageFetchBudgetSeconds` in `ControlPlaneSettings`; EDD
 
 ## Repository
 
-The images carry pinned git and gh. Before the harness starts, the guest clones the session's repository into `/root/workspace`. It skips the clone when the repository is there already. Git reads `GITHUB_TOKEN` through a credential helper, so the token stays out of the URL and off the disk. gh reads the token as `GH_TOKEN`. Commits carry the offer's `gitAuthorName` and `gitAuthorEmail`, which follow the repository credential source (EDD-003). `GitHubApp` commits as the App's bot `<app-slug>[bot]`, with the email `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. `SecretSet` commits as the GitHub user of the set's `GITHUB_TOKEN`, with the email `<id>+<login>@users.noreply.github.com`. The control plane reads that user with GET `/user` once, when the `GITHUB_TOKEN` member is written, and stores it with the set. It refuses the write when GitHub refuses the token. Nobody enters a git identity. Tenant migration 0025 dropped the persona's git author columns.
+The images carry pinned git and gh. Before the harness starts, the guest clones the session's repository into `/root/workspace`. It skips the clone when the repository is there already. Git reads `GITHUB_TOKEN` through a credential helper, so the token stays out of the URL and off the disk. gh reads the token as `GH_TOKEN`. Commits carry the offer's `gitAuthorName` and `gitAuthorEmail`, which follow the repository credential source (EDD-003). `GitHubApp` commits as the App's bot `<app-slug>[bot]`, with the email `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. `SecretSet` commits as the GitHub user of the set's `GITHUB_TOKEN`, with the email `<id>+<login>@users.noreply.github.com`. The control plane reads that user with GET `/user` once, when the `GITHUB_TOKEN` member is written, and stores it with the set. It refuses the write when GitHub refuses the token. Nobody enters a git identity.
 
 The clone runs within the image's `cloneSeconds`, 120 s. A clone that fails or runs out of time arrives as `TurnRepositoryCloneFailed`, with what git reported and a cause: `Refused`, `TimedOut`, `DirectoryNotEmpty` or `Other`. The turn then fails `RepositoryCloneFailed`. EDD-002 times the first line from `TurnRepositoryReady`.
 
@@ -52,11 +52,11 @@ A fresh host fetches the supervisor binary with `curl -fL <origin>/v1/releases/s
 
 ## Running host
 
-A supervisor that fails restarts after 5 s. Exit codes 3 (NotEnrolled) and 5 (HostRevoked) stop it for good. Exit code 6 (ProtocolError) means the supervisor needs an update, so the unit waits 60 s before each restart. The supervisor does not update itself yet.
+A supervisor that fails restarts after 5 s. Exit codes 3 (NotEnrolled) and 5 (HostRevoked) stop it for good. Exit code 6 (ProtocolError) means the supervisor needs an update, so the unit waits 60 s before each restart.
 
 `install` without `--endpoint` and `--token-file` only sets up the host, and restarts the unit when the host is enrolled. `tumpel-supervisor enrol` re-enrols a host. It takes `-` for stdin too and keeps an existing runtime config.
 
-`boxCapacity` sits in `runtime.json`, between 1 and 256, 8 by default. A small host gets a lower one at install. Firecracker runs without its jailer, because the jailer needs root. The installer pins Firecracker for x86_64 only for now.
+`boxCapacity` sits in `runtime.json`, between 1 and 256, 8 by default. A small host gets a lower one at install. Firecracker runs without its jailer, because the jailer needs root. The installer pins Firecracker for x86_64 only.
 
 ## Networking and isolation
 
@@ -72,7 +72,7 @@ The host masquerades the box's traffic to the internet. The guest filter drops f
 
 ## Appendix of measured numbers
 
-Measured on 2026-11-14 on the reference host: a nested KVM guest with 4 vCPU and 8 GiB.
+Measured on the reference host: a nested KVM guest with 4 vCPU and 8 GiB.
 
 | Step                                   | Time   |
 | -------------------------------------- | ------ |
@@ -81,7 +81,7 @@ Measured on 2026-11-14 on the reference host: a nested KVM guest with 4 vCPU and
 | vsock round trip, median               | 8 ms   |
 | Cold boot plus one turn, Shell harness | 2.6 s  |
 
-Guest random reads at 4 KiB and queue depth 1 reach about 11,000 IOPS, 50 percent of the host filesystem. The guest block path sets that cap. Bare metal is not measured yet.
+Guest random reads at 4 KiB and queue depth 1 reach about 11,000 IOPS, 50 percent of the host filesystem. The guest block path sets that cap. Bare metal is not measured.
 
 ## Appendix of installer steps
 

@@ -3,8 +3,6 @@
 | Field   | Value                                                                                                                                                                                                                                                                               |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Status  | Proposed                                                                                                                                                                                                                                                                            |
-| Author  | Matthijs van Henten                                                                                                                                                                                                                                                                 |
-| Date    | 2026-11-14                                                                                                                                                                                                                                                                          |
 | Related | [ADR-001](../adr/001-control-plane-on-cloudflare.md), [ADR-002](../adr/002-multi-harness-provider-keys.md), [ADR-003](../adr/003-host-channel-dials-out-provider-agnostic.md), [ADR-004](../adr/004-typespec-to-rust-via-secondary-tooling.md), [ADR-005](../adr/005-hosted-mcp.md) |
 
 ## Summary
@@ -58,7 +56,7 @@ Besides the GitHub App token for the session's repository, a persona's secret se
 
 ### Proof
 
-Agents sign in, enrol the host, run real turns on a real harness and restore a session from its snapshots, with no person in a browser. The proof passed all twelve steps against `dev` on `tumpel-host`.
+Agents sign in, enrol the host, run real turns on a real harness and restore a session from its snapshots, with no person in a browser.
 
 ## Requirements
 
@@ -90,7 +88,7 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 - **FR-11 Credentials.** A secret set holds variables and one credential per provider, an API key or a subscription token with its expiry. A replaced value reaches the next turn and never a running one. A credential of a kind the harness does not take is refused `CredentialKindUnsupported`. An expired subscription token is refused `CredentialExpired` at start and send, and it fails a turn `CredentialExpired` at the offer. (BR-3)
 - **FR-12 Snapshots.** After a completed turn and a quiet delay, the session's changed files land in object storage. A burst of turns yields one snapshot. A failed snapshot shows on the session with its reason. (BR-1)
 - **FR-13 Config as code.** `tumpel config validate`, `plan` and `apply` keep a tenant's personas, secret sets, pins and host labels in one schema-checked file. A persona in the file names its harness and lists its files by local path. The file names environment variables for secret values and holds no value. A persona keeps the harness it was created with, and `apply` stops when a live persona runs another harness than the file names. A delete of a persona that a session ran on, or of a secret set a persona names, is refused with 409. (BR-2)
-- **FR-21 Apply replaces the whole config.** "If you do a Tumpel config apply, you probably know what you're doing and you probably intend to override the complete config. It's an atomic nuke." (Matthijs van Henten). `apply` writes everything the file describes, gives every secret set fresh values from the variables it names, and deletes what the file leaves out. It commits in one transaction of the tenant's database, so a refused change leaves the tenant as it was. Host labels live in the central database and are written after that commit. (BR-2)
+- **FR-21 Apply replaces the whole config.** `apply` writes everything the file describes, gives every secret set fresh values from the variables it names, and deletes what the file leaves out. It commits in one transaction of the tenant's database, so a refused change leaves the tenant as it was. Host labels live in the central database and are written after that commit. (BR-2)
 - **FR-14 Bring your own super harness.** A tenant plugs its own super harness in through the hosted MCP server and the channel into each box. Every other requirement holds with none plugged in. (BR-4)
 
 ### Functional requirements for guest layers
@@ -112,13 +110,13 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 - **NFR-6 Events.** No job runs on a timer across a set of resources. A timer belongs to one resource and ends with it.
 - **NFR-7 No silent turn.** Every phase has a budget and a named failure. Each failure carries the tail of the harness's standard error.
 - **NFR-8 One versioned schema.** Every API operation, MCP tool, CLI argument and config file comes from the TypeSpec source and carries a version.
-- **NFR-9 Wrapped primitives.** The channel, object storage, databases, the key store and timers are interfaces first. Cloudflare is the first backend for each. The key store wraps each tenant data key with a Workers secret, and that key has no rotation path yet.
+- **NFR-9 Wrapped primitives.** The channel, object storage, databases, the key store and timers are interfaces first. Cloudflare is the first backend for each. The key store wraps each tenant data key with a Workers secret, and that key has no rotation path.
 - **NFR-10 Plain failures.** Every error states what failed and what fixes it. An expired sign-in reads as signed out, never as empty data.
 
 ### Operational requirements
 
 - **OR-1 Install once.** One command installs a host with admin rights. The supervisor never escalates afterwards, and one command updates it. (BR-1)
-- **OR-2 Static binaries.** The installer, the supervisor and the CLI ship as static binaries for Linux on x86_64 only for now. (BR-1)
+- **OR-2 Static binaries.** The installer, the supervisor and the CLI ship as static binaries for Linux on x86_64 only. (BR-1)
 - **OR-3 Audit.** Every credential handover records the turn, host, box and secret names. (BR-3)
 - **OR-4 Agents prove each stage.** Agents run the proof on a real host against every stage after its deploy. (BR-2)
 - **OR-5 CLI on crates.io.** A `v*` tag publishes the CLI to crates.io. (BR-2)
@@ -127,27 +125,15 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 
 ## Decisions
 
-Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with personas, secret sets and per-session dispatch credentials (ADR-002). The host channel dials out and is defined before any backend (ADR-003). TypeSpec reaches Rust through secondary tooling (ADR-004). The MCP server is hosted (ADR-005). On 2026-11-14 the remaining rulings followed:
-
-> To store creds per persona, use envelope encryption.
-
-> The most important part is the workers are isolated from the internal network.
-
-> Warm pooling is a logical thing to do, at least keep it warm for a little while.
-
-On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#decisions)).
+Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with personas, secret sets and per-session dispatch credentials (ADR-002). The host channel dials out and is defined before any backend (ADR-003). TypeSpec reaches Rust through secondary tooling (ADR-004). The MCP server is hosted (ADR-005). Tumpel is open source under Apache-2.0 ([RFC: Prebuilds](RFC-TUM-Prebuilds.md#decisions)).
 
 ### Domain and stages
 
-**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record. On 2026-11-15 the ruling read:
-
-> tumpel.dev for everything
+**The domain for everything is `tumpel.dev`.** It serves the API, the hosted MCP server, the dashboard, and the installer and image downloads. `api.<stage>.tumpel.dev` serves the control plane. The dashboard serves on `<stage>.tumpel.dev`, and `app.<stage>.tumpel.dev` redirects to it. The OIDC issuer gets `id.<stage>.tumpel.dev`. Stage `prod` drops the stage label: `api.tumpel.dev`, `id.tumpel.dev`, and the dashboard on the apex `tumpel.dev`. OpenTofu manages every record.
 
 ### Credentials and storage
 
 **The provider credential is an environment variable.** For each turn, the box exports the provider credential into the harness's environment. A host-side gateway issuing per-session virtual keys is a non-goal for v1.
-
-> I would follow industry.
 
 **Each secret set member has a kind.** The kind is variable, API key or subscription token. The harness catalog lists the credential kinds each harness takes and the variable it reads for each, such as `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` for Claude Code. One secret set serves personas for any harness.
 
@@ -159,19 +145,15 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 **Snapshots are chunked and packed.** Only the chunks the tenant lacks leave the host. The host cuts each changed file into content-defined chunks and concatenates the new ones into packs of about 8 MiB. An archive deletes the packs that hold no remaining chunk and never repacks (EDD-004). The cost is a host chunk cache with no eviction, and packs that a failed snapshot leaves in storage.
 
-> the duplicity model
-
 ### Runtime and surface
 
-**Budgets.** A host claims a turn within 60 s, writes its first line within 120 s of the box holding the repository, and finishes within 3,600 s. The clone gets its own 120 s, the image's `cloneSeconds`, which the host sends on the claim. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
+**Budgets.** A host claims a turn within 60 s, writes its first line within 120 s of the box holding the repository, and finishes within 3,600 s. The clone gets its own 120 s, the image's `cloneSeconds`. A snapshot follows 30 s of quiet. A host gets 300 s to hand a credential to its box.
 
 **Channel ordering and reconnect.** Every message carries a sequence number and an acknowledgement. After a reconnect, each side resends what the other has not acknowledged, and the receiver drops duplicates.
 
-**Repository access is a GitHub App installation token.** Every self-hosted control plane registers one GitHub App per stage at its `/github/app/setup` page (ruling of 2026-11-15). Each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN` (EDD-003).
+**Repository access is a GitHub App installation token.** Every self-hosted control plane registers one GitHub App per stage at its `/github/app/setup` page. Each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN` (EDD-003).
 
-**MCP and CLI parity is a build check.** Every tenant operation is one MCP tool and one CLI command on the same handler, and the build fails on a gap. Only the OAuth, browser-only, host channel and release endpoints stay off MCP, and secret values never pass through it. On 2026-11-15 the ruling read:
-
-> the mcp should allow it all
+**MCP and CLI parity is a build check.** Every tenant operation is one MCP tool and one CLI command on the same handler, and the build fails on a gap. Only the OAuth, browser-only, host channel and release endpoints stay off MCP, and secret values never pass through it.
 
 **A transcript read is the live poll.** A caller reads the transcript page by page until a page reads `finished`. A compact read of a Claude Code turn keeps the assistant's text and one line per tool call.
 
@@ -183,19 +165,13 @@ On 2026-11-15 Tumpel became open source under Apache-2.0 ([RFC: Prebuilds](RFC-T
 
 ### Guest layers
 
-**Squashfs drives on virtio-blk carry the harness layers and the guest drive, and CI builds the layers (EDD-007).** On 2026-11-15 the rulings read:
-
-> we don't want to ship an image for every harness
-
-> tumpel can go onto crates
+**Squashfs drives on virtio-blk carry the harness layers and the guest drive, and CI builds the layers (EDD-007).**
 
 ### Placement
 
 **Placement after a host loss.** When a session's host is offline, its next turn boots on another of the tenant's online hosts, provided the snapshots cover the last completed turn. Otherwise the refusal names the host and the missing turns.
 
 **Placement on capacity.** Each host reports its `boxCapacity` and its usage over the channel, and the tenant places each new session by them (EDD-001).
-
-> we're going to hook up different sized boxes, right? a Raspberry Pi, an older Pentium, whatever
 
 A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns fill its `boxCapacity`. A start goes to an Online host that is not Full, whose architecture has a base and the session's harness layer in the release. The tenant ranks those hosts by free slots, then by available memory. When every host is Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A placed session keeps its host.
 

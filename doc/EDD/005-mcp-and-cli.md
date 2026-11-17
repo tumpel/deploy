@@ -43,7 +43,7 @@ Reusing a spent code or refresh token revokes every token of that client and pri
 
 ## Parity
 
-An operation `Group_op` becomes the tool `tumpel_<noun>_<verb>` and the command `tumpel <noun> <verb>`. The owner ruled on 2026-11-15 that the MCP allows it all, so an MCP session sets up and runs a whole tenant. `npm run surface:check` fails when an operation outside its allowlist lacks either one, or when the published surface list ([doc/surface.md](../surface.md)) is stale. Each entry gives a one-line reason, and only operations that are not tenant operations qualify: browser-only pages, the OAuth, OpenID and device-code wire, the host channel's enrolment, release downloads and the build job wire. An entry that names no operation, or one that has a tool, fails the check too.
+An operation `Group_op` becomes the tool `tumpel_<noun>_<verb>` and the command `tumpel <noun> <verb>`. The MCP allows every tenant operation, so an MCP session sets up and runs a whole tenant. `npm run surface:check` fails when an operation outside its allowlist lacks either one, or when the published surface list ([doc/surface.md](../surface.md)) is stale. Each entry gives a one-line reason, and only operations that are not tenant operations qualify: browser-only pages, the OAuth, OpenID and device-code wire, the host channel's enrolment, release downloads and the build job wire. An entry that names no operation, or one that has a tool, fails the check too.
 
 `EnrolmentTokens_list` lists the tenant's unused, unexpired enrolment tokens without their values, `EnrolmentTokens_revoke` deletes one, and `OAuthGrants_revoke` deletes every token of one of the caller's own grants; `/oauth/revoke` stays the clients' RFC 7009 route.
 

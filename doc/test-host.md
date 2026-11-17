@@ -20,7 +20,7 @@ qemu-img resize /mnt/nvme/vms/tumpel-host.qcow2 40G
 $V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V start tumpel-host && $V domifaddr tumpel-host
 ```
 
-`virsh undefine --remove-all-storage` cannot delete the disk and the seed under `/mnt/nvme/vms`, because libvirt does not manage them. Remove them by hand. Each host gets its IP from a DHCP lease on the network `default`. A rebuild of `tumpel-host-2` with the same MAC got 192.168.122.217 back.
+`virsh undefine --remove-all-storage` cannot delete the disk and the seed under `/mnt/nvme/vms`, because libvirt does not manage them. Remove them by hand. Each host gets its IP from a DHCP lease on the network `default`.
 
 On a fresh host, drop the old host key on `sandbox` with `ssh-keygen -R <address>`, then wait for the seed with `cloud-init status --wait` on the host. Then download the supervisor from the release and install it with the token on stdin, as Host setup below shows. The host reads Online in about 10 s.
 
@@ -28,7 +28,7 @@ On a fresh host, drop the old host key on `sandbox` with `ssh-keygen -R <address
 
 `tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. `ssh tumpel-host-2` from `sandbox` reaches it (192.168.122.218, user `mvhenten`, network `default`).
 
-It was made with the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `tumpel-host-2.qcow2` beside the first one, from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `tumpel-host-2.xml` in that seed directory and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
+It follows the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `tumpel-host-2.qcow2` beside the first one, from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `tumpel-host-2.xml` in that seed directory and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
 
 It runs the same `tumpel-supervisor install` as the first host and fetches its guest images from the release.
 
@@ -54,17 +54,17 @@ runcmd:
 
 Keep the `printf` line in single quotes: unquoted, its `: ` makes cloud-init reject the file with "Nested mappings are not allowed".
 
-After `cloud-init status --wait`, reboot it once, then check that `systemctl is-active systemd-networkd` is `inactive` and `nmcli general status` answers. NetworkManager asks for a new DHCP lease, which can hand out another address: `tumpel-host-2` moved from 192.168.122.217 to 192.168.122.218. Read the address again with `$V domifaddr tumpel-host-2` on box, point `ssh tumpel-host-2` on `sandbox` at it and drop its old host key with `ssh-keygen -R <address>`. Then install as Host setup below shows.
+After `cloud-init status --wait`, reboot it once, then check that `systemctl is-active systemd-networkd` is `inactive` and `nmcli general status` answers. NetworkManager asks for a new DHCP lease, which can hand out another address. Read the address again with `$V domifaddr tumpel-host-2` on box, point `ssh tumpel-host-2` on `sandbox` at it and drop its old host key with `ssh-keygen -R <address>`. Then install as Host setup below shows.
 
 ## Release builds
 
-GitHub Actions runs the image build of `.github/workflows/images.yml` on the runner that the repository variable `BUILD_RUNNER` names, now the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
+GitHub Actions runs the image build of `.github/workflows/images.yml` on the runner that the repository variable `BUILD_RUNNER` names, the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
 
 The self-hosted runner is a second runner instance on the VM `github-actions-runner` on `box`. It lives in `/home/runner/actions-runner-tumpel` as a service, registered to `mvhenten/tumpel` as `github-actions-runner-tumpel`. Leave the other project's runners there alone. The VM does not autostart. When it spins a vCPU, run `virsh destroy`, then `virsh start`. Never reboot it.
 
 `runner@` accepts only devbox's key. From `sandbox`: `ssh -J box,homelab devbox`, then `ssh -J box runner@192.168.122.50`.
 
-On 2026-11-15 `box` has 16 threads and 58.7 GiB. `sandbox` takes 8 vCPU and 16 GiB, each test host 4 and 8, `github-actions-runner` 12 and 24, and `lab` 4 and 16 (off by default). A third 8 GiB host does not fit while the runner runs.
+`box` has 16 threads and 58.7 GiB. `sandbox` takes 8 vCPU and 16 GiB, each test host 4 and 8, `github-actions-runner` 12 and 24, and `lab` 4 and 16 (off by default). A third 8 GiB host does not fit while the runner runs.
 
 ## Host setup
 

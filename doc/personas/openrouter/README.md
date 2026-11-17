@@ -2,10 +2,10 @@
 
 Two OpenCode personas that run on one secret set, `openrouter`, whose only member is the `OPENROUTER_API_KEY` that Connect OpenRouter mints. Nobody copies a key by hand. The catalog maps OpenCode to provider `OpenRouter` and that variable, so a session on either persona needs nothing else from the set.
 
-| Persona           | Model (`opencode.json`)                             | Price on 2026-11-15                                                    |
-| ----------------- | --------------------------------------------------- | ---------------------------------------------------------------------- |
-| `openrouter-free` | `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` | free: 20 requests a minute, 50 a day, 1,000 a day after $10 of credits |
-| `openrouter-glm`  | `openrouter/z-ai/glm-5.3`                           | $0.084 per million input tokens, $3.60 per million output tokens       |
+| Persona           | Model (`opencode.json`)                             |
+| ----------------- | --------------------------------------------------- |
+| `openrouter-free` | `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free` |
+| `openrouter-glm`  | `openrouter/z-ai/glm-5.3`                           |
 
 The model lives in the persona's `.config/opencode/opencode.json`, as `openrouter/<OpenRouter model id>`; [`https://openrouter.ai/api/v1/models`](https://openrouter.ai/api/v1/models) lists the ids. To compare models, copy a file, change its `model` line and update the persona with it. `AGENTS.md` holds the ticket rules of [`ticket-worker`](../ticket-worker/CLAUDE.md).
 

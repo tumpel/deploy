@@ -57,9 +57,7 @@ The installer writes the user unit with `ExecStart=<binary> run` and the rollbac
 
 ## Release order
 
-A new host message, such as a new SupervisorUpdateFailureReason, must reach the control plane before any supervisor sends it. Workers Builds deploys the control plane from main. `release.yml` publishes the supervisor from the same push. So a change that adds a host message lands in one commit, and that commit's Workers Builds deploy must finish before `release.yml` publishes. Until then the control plane closes the channel with ProtocolError on the unknown message, and the host reconnects and sends it again.
-
-The release notice follows the same order. Workers Builds deploys the queue consumer and its ReleasePublished sender before `release.yml` writes `current.json`, so the event of each release reaches a consumer that handles it. `npm run deploy:infra` creates the queue and the bucket's event notification, and the Workers Builds deploy applies them too.
+A tag `v*` runs `release.yml`, which publishes the supervisor, writes `current.json` and then fast-forwards the branch `release`. Workers Builds deploys the control plane from `release` ([deploy.md](../deploy.md)). So a supervisor publishes before the control plane it talks to deploys, and EDD-009 keeps that order safe. `npm run deploy:infra` creates the release queue and the bucket's event notification, and the Workers Builds deploy applies them too.
 
 ## FAQ
 

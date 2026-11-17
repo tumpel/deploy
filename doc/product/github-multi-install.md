@@ -42,4 +42,4 @@ Every state is one story of `Dashboard/Connections/ConnectionList`.
 
 ## CircleCI
 
-CircleCI's OAuth App gets one user token that reaches every org granted on GitHub's one consent screen. Tumpel's tenets rule that out: that token lives for months and reaches every repository the user can reach. A GitHub App with one install per account stays the right route, and GitHub's own picker makes those installs one flow.
+CircleCI's OAuth App gets one user token that reaches every org granted on GitHub's one consent screen. Tumpel's tenets rule that out: that token lives for months and reaches every repository the user can reach. A GitHub App with one install per account is the right route, and GitHub's own picker makes those installs one flow.

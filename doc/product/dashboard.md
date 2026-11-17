@@ -6,7 +6,7 @@ The dashboard is the browser cockpit for one Tumpel tenant. A person signs in an
 
 ## Users and jobs
 
-One operator runs a tenant today. Later a small team of owners and members shares it.
+A small team of owners and members shares a tenant.
 
 1. Start a session on a repository and one of its issues, and watch the turn live.
 2. Steer a running session with the next prompt, then stop or archive it.
@@ -94,7 +94,7 @@ A later service adds its own operation group with `get`, `start` and `delete`, a
 
 ### Build providers
 
-A build provider is a connection kind that runs prebuilds on the tenant's own account and bills the tenant ([RFC: Prebuilds](../RFC/RFC-TUM-Prebuilds.md)). Phase 1 has two. Each card shows its state, the billing account and the trust material, each value with a copy control:
+A build provider is a connection kind that runs prebuilds on the tenant's own account and bills the tenant ([RFC: Prebuilds](../RFC/RFC-TUM-Prebuilds.md)). Each card shows its state, the billing account and the trust material, each value with a copy control:
 
 | Provider       | Connect                                                                                                           | Billing account            | Trust material                                                                                                                                  |
 | -------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -109,7 +109,7 @@ A row shows only the latest prebuild, so a Failed one leaves the row once a newe
 
 ## Fleet overview
 
-The overview shows numbers the API returns today:
+The overview shows these numbers:
 
 - Hosts by state: Enrolled, Online, Offline, Revoked.
 - Per host: the `ReportedHostUsage` fields, free slots (capacity minus running minus warm) and the last report time.
@@ -131,7 +131,7 @@ A compact toggle passes `compact` for a Claude Code turn and is hidden for other
 
 Every refusal is a `Problem`. The dashboard shows its `title`, `detail` and `fix`, plus a prefilled link that reports an issue. A 401 switches the whole app to a signed-out state: a persistent notice and a sign-in control that returns to the same URL. On a 403 the view shows Forbidden with its fix. Neither ever renders as an empty list. An empty list names the way to add the first item. An unreachable control plane shows a retry control.
 
-## API gaps
+## Dashboard operations
 
 Each signed-in addition also gets an MCP tool and a CLI command.
 
@@ -143,7 +143,7 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 6. G6 `GitHubConnections_delete`.
 7. G10 `GitHubConnections_start` takes a return URL on the dashboard's origin.
 8. G13 `Turns_listForTenant`, filtered by state and start time.
-9. G14 The supervisor version the stage serves. The supervisor has no update command yet (OR-1).
+9. G14 The supervisor version the stage serves.
 10. G15 `Connections_list` holds the build providers with their billing account.
 11. G16 `GitHubActionsConnections_get`, `_start` and `_delete`, with the caller workflow to copy.
 12. G17 `NamespaceConnections_get`, `_start` and `_delete`. `get` answers the issuer, subject pattern and audience.
@@ -160,8 +160,7 @@ Each signed-in addition also gets an MCP tool and a CLI command.
 
 1. Does the dashboard register through `OAuth_register` like an MCP client, or ship as a fixed client (#2)?
 2. Where does the model list come from? The catalog names a provider and no models (#5).
-3. Which actions does a Member role lose against an Owner? Starting and deleting connections, and managing members and invitations.
-4. How does Tumpel learn that Namespace Support registered the issuer for a workspace?
+3. How does Tumpel learn that Namespace Support registered the issuer for a workspace?
 
 ## FAQ
 

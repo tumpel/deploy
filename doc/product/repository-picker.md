@@ -103,17 +103,9 @@ The four overlay states (Loading, Results, Filtering, No match) and Listing refu
 
 An empty read shows No match with the copy "Your GitHub connections cover no repository".
 
-## Call sites
+## CircleCI binding
 
-| File and lines                                                | Asks for                                                                               | Picker sends                |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------- |
-| `packages/dashboard/src/screens/rebuild-prebuild.tsx:143-157` | Build a prebuild: a pasted repository URL, with its URL-shape message at `:96`         | `htmlUrl`, Use row allowed  |
-| `packages/dashboard/src/screens/start-session.tsx:466-479`    | Start a session, Write a prompt: a pasted Repository URL in `?url=`                    | `htmlUrl`, Use row allowed  |
-| `packages/dashboard/src/screens/start-session.tsx:358-400`    | Start a session, From an issue: the generic `Picker` with no groups and no connect row | `owner`, `name`, no Use row |
-| `packages/dashboard/src/screens/start-session.tsx:220`        | The not-connected card tells the reader to give the repository URL                     | The Not connected state     |
-| `packages/dashboard/src/screens/prebuilds.tsx:368`            | The empty Prebuilds list says Build now takes any GitHub repository                    | Copy follows the picker     |
-
-The CircleCI project binding has no dashboard form; `tumpel circleci project add` binds a repository, and the connect toast at `packages/dashboard/src/screens/connection-dialogs.tsx:208` names that command. A binding form takes the picker and sends `htmlUrl` as `CircleCIProjectAdd.repository`. No dashboard screen asks for a prebuild fixture.
+The CircleCI project binding has no dashboard form; `tumpel circleci project add` binds a repository, and the connect toast names that command. A binding form takes the picker and sends `htmlUrl` as `CircleCIProjectAdd.repository`. No dashboard screen asks for a prebuild fixture.
 
 ## Stories
 

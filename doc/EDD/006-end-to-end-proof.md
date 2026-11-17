@@ -48,49 +48,6 @@ Step 13 makes every call as a JSON-RPC `tools/call` on `/mcp`, with the bearer t
 
 A run passes when all seventeen steps pass with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
 
-## Result
-
-`npm run proof:e2e` passed all twelve steps against `dev` on `tumpel-host`. The run signed in with the service token. Its persona file of 69,653 bytes went up through the presigned upload, and its credential was a subscription token.
-
-| Measure                                  | Time         |
-| ---------------------------------------- | ------------ |
-| First line, cold box                     | 25 to 35 s   |
-| First line, warm box                     | 0.6 to 0.8 s |
-| Snapshot stored after the turn           | about 31 s   |
-| Snapshot capture and upload              | about 1 s    |
-| `session stop`, then first line restored | 5.6, 19 s    |
-
-The session also restored on a fresh box after its warm window ran out. Step 9 ran its probe in a Claude Code box, because the Shell harness stays out of the catalog. Step 10 found zero copies of the credential.
-
-## Release run
-
-On 2026-11-15 both test hosts ran the proof on the published release 0.0.0-3d5b8e9. The supervisor came from the control plane's release redirect (sha256 `85a682fa...`).
-
-| Step               | `tumpel-host` (s) | `tumpel-host-2` (s) |
-| ------------------ | ----------------- | ------------------- |
-| Sign in            | 5.8               | 5.8                 |
-| Enrol              | 4.2               | 4.3                 |
-| Configure          | 2.2               | 1.7                 |
-| First turn         | 69.6              | 30.6                |
-| Warm turn          | 2.4               | 2.1                 |
-| Snapshot           | 31.3              | 30.4                |
-| Restore            | 26.8              | 27.6                |
-| Concurrency        | 23.8              | 23.6                |
-| Isolation          | 177.2             | 180.7               |
-| Secrecy            | 254.3             | 150.3               |
-| Refused credential | 118.2             | 81.0                |
-| Connector          | 1.5               | 1.1                 |
-| Connector session  | 32.5              | 43.6                |
-| Issuer             | 0.5               | 0.4                 |
-| Prebuild refused   | failed            | failed              |
-| Revoke             | 5.7               | 5.6                 |
-
-The first turn on `tumpel-host` includes fetching the guest images by digest. Prebuild refused failed because the proof's CLI predates a connection kind that main added during the run. That CLI cannot parse the new kind. The proof now runs the CLI of the release it tests. A full run takes about sixteen minutes. The script cannot run a range of steps.
-
-## Ticket run
-
-A cloud agent in a box worked a real issue of this repository and opened a draft pull request. It started with `npm run ticket -- <issue url> --persona ticket-worker --model <model> --endpoint <url>`. The box cloned the private repository with the persona's `GITHUB_TOKEN`, and the transcript held no copy of the token. Its turn took 203 s, about 31 s of it before the harness started.
-
 ## FAQ
 
 **Does a person approve anything?** No. The service token approves the device code and the connector's consent.
