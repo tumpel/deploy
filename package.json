@@ -28,6 +28,7 @@
     "test": "npm test --workspaces --if-present && node --test --test-timeout=30000 ${TEST_SHARD:+--test-shard=$TEST_SHARD} npm-scripts/*.test.mjs",
     "deploy": "node npm-scripts/deploy.mjs",
     "deploy:infra": "node npm-scripts/deploy.mjs infra",
+    "deploy:code": "node npm-scripts/deploy.mjs code",
     "deploy:migrate": "node npm-scripts/deploy.mjs migrate",
     "proof": "node npm-scripts/proof-env.mjs",
     "ticket": "node npm-scripts/ticket-run.mjs",
