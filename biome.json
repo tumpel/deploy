@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!target"]
+    "includes": ["**", "!target", "!packages/api/channel-wire"]
   },
   "formatter": {
     "enabled": true,
