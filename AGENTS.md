@@ -1,5 +1,7 @@
 # Agent rules
 
+Read `doc/adr/000-tenets.md` first. Its tenets bind every change.
+
 Always follow `rules/errors.md`, `rules/coding-standards.md` and `rules/architecture.md`.
 
 - When writing TypeScript, follow `rules/typescript.md`.

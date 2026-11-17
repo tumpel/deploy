@@ -86,7 +86,7 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 ### Functional requirements for credentials and configuration
 
 - **FR-11 Credentials.** A secret set holds variables and one credential per provider, an API key or a subscription token with its expiry. A replaced value reaches the next turn and never a running one. A credential of a kind the harness does not take is refused `CredentialKindUnsupported`. An expired subscription token is refused `CredentialExpired` at start and send, and it fails a turn `CredentialExpired` at the offer. (BR-3)
-- **FR-12 Snapshots.** After a completed turn and a quiet delay, the session's changed files land in object storage. A burst of turns yields one snapshot. A failed snapshot shows on the session with its reason. (BR-1)
+- **FR-12 Snapshots.** After every turn, whatever its outcome, and a quiet delay, the session's changed files land in object storage. A burst of turns yields one snapshot. A failed snapshot shows on the session with its reason. (BR-1)
 - **FR-13 Config as code.** `tumpel config validate`, `plan` and `apply` keep a tenant's personas, secret sets, pins and host labels in one schema-checked file. A persona in the file names its harness and lists its files by local path. The file names environment variables for secret values and holds no value. A persona keeps the harness it was created with, and `apply` stops when a live persona runs another harness than the file names. A delete of a persona that a session ran on, or of a secret set a persona names, is refused with 409. (BR-2)
 - **FR-21 Apply replaces the whole config.** `apply` writes everything the file describes, gives every secret set fresh values from the variables it names, and deletes what the file leaves out. It commits in one transaction of the tenant's database, so a refused change leaves the tenant as it was. Host labels live in the central database and are written after that commit. (BR-2)
 - **FR-14 Bring your own super harness.** A tenant plugs its own super harness in through the hosted MCP server and the channel into each box. Every other requirement holds with none plugged in. (BR-4)
@@ -151,7 +151,7 @@ Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with pers
 
 **Channel ordering and reconnect.** Every message carries a sequence number and an acknowledgement. After a reconnect, each side resends what the other has not acknowledged, and the receiver drops duplicates.
 
-**Repository access is a GitHub App installation token.** Every self-hosted control plane registers one GitHub App per stage at its `/github/app/setup` page. Each tenant installs it. Each turn gets a token scoped to the session's repository as `GITHUB_TOKEN` and `GH_TOKEN` (EDD-003).
+**Repository access is a GitHub App installation token.** Every self-hosted control plane registers one GitHub App per stage at its `/github/app/setup` page. Each tenant installs it. Each turn gets an unscoped token for every installation the tenant holds, and the guest routes each token by repository owner ([ADR-009](../adr/009-turn-token-reaches-every-installation.md)).
 
 **MCP and CLI parity is a build check.** Every tenant operation is one MCP tool and one CLI command on the same handler, and the build fails on a gap. Only the OAuth, browser-only, host channel and release endpoints stay off MCP, and secret values never pass through it.
 
