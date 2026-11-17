@@ -160,6 +160,26 @@ test("a repository without devcontainer.json or an npm lockfile runs no command,
   );
 });
 
+test("run in a box without guest.json takes the environment tumpel-guest starts it with", () => {
+  const { root } = fixture("box", () => '{ "onCreateCommand": "env > env.txt" }\n');
+  rmSync(join(root, "etc", "tumpel"), { recursive: true });
+  const layerBin = "/opt/harness/claude-code/2.1.0/bin";
+  const result = spawnSync(process.execPath, [SCRIPT, "run"], {
+    env: {
+      PATH: `${layerBin}:${dirname(process.execPath)}:/usr/bin:/bin`,
+      HOME: join(root, "root"),
+      LANG: "C.UTF-8",
+      TUMPEL_PREBUILD_ROOT: root,
+    },
+    encoding: "utf8",
+    timeout: 20000,
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const env = readFileSync(join(root, "root", "workspace", "env.txt"), "utf8").split("\n");
+  assert.ok(env.includes(`PATH=${layerBin}:${dirname(process.execPath)}:/usr/bin:/bin`), env.join(", "));
+  assert.ok(!env.some((line) => line.startsWith("TUMPEL_PREBUILD_ROOT=")), env.join(", "));
+});
+
 test("features are refused with a named failure", () => {
   const { root, out } = fixture("features", () => '{ "features": { "ghcr.io/devcontainers/features/node:1": {} } }\n');
   const result = prebuild(root, out);

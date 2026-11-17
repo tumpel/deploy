@@ -35,8 +35,10 @@ const USAGE = `usage:
     mounts but the workspace: a command can read the runner's environment from /proc/$PPID/environ.
   prebuild.mjs run
     Runs in a tumpel box with the repository cloned at /root/workspace: reads the config and runs
-    its lifecycle commands as build does, and writes no layer, since the box's snapshot holds the
-    result. Leaves .git/config as the clone wrote it.
+    its lifecycle commands as build does, with the PATH, HOME and LANG tumpel-guest starts it with
+    in place of guest.json, since a box booted from the base image and a harness layer has none.
+    Writes no layer, since the box's snapshot holds the result. Leaves .git/config as the clone
+    wrote it.
   prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>
     Runs in a job that runs no repository code. Takes the job's OIDC token from TUMPEL_JOB_TOKEN
     when set, as the CircleCI orb mints it with aud <api origin>; otherwise, in a GitHub Actions step
@@ -166,6 +168,17 @@ const imageEnvironment = (root) => {
   if (!existsSync(path))
     die(`NotAGuestImage: ${path} is missing; run the prebuild in a tumpel guest image built by npm run guest:image`);
   return JSON.parse(readFileSync(path, "utf8")).environment;
+};
+
+const GUEST_VARIABLES = ["PATH", "HOME", "LANG"];
+
+const guestEnvironment = (env) => {
+  const missing = GUEST_VARIABLES.filter((name) => !env[name]);
+  if (missing.length > 0)
+    die(
+      `NotAGuestBox: ${missing.join(", ")} is not set; prebuild.mjs run takes the harness environment from tumpel-guest, so start it through a prebuild turn`,
+    );
+  return Object.fromEntries(GUEST_VARIABLES.map((name) => [name, env[name]]));
 };
 
 const CONTAINER_ENV_REFERENCE = /\$\{containerEnv:([^}:]+)(?::([^}]*))?\}/g;
@@ -479,7 +492,7 @@ const run = async () => {
   checkout(workspace);
   console.log(`prebuild: running the setup step of ${workspace}`);
   const devcontainer = readDevcontainer(workspace);
-  await runLifecycle(workspace, commandEnvironment(imageEnvironment(root), devcontainer), devcontainer);
+  await runLifecycle(workspace, commandEnvironment(guestEnvironment(process.env), devcontainer), devcontainer);
 };
 
 const [command, ...args] = process.argv.slice(2);
