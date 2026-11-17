@@ -48,7 +48,7 @@
     "predeploy": "make generate",
     "deploy": "node npm-scripts/deploy.mjs",
     "deploy:infra": "node npm-scripts/deploy.mjs infra",
-    "predeploy:code": "make generate",
+    "predeploy:code": "make generate-ts",
     "deploy:code": "node npm-scripts/deploy.mjs code",
     "deploy:migrate": "node npm-scripts/deploy.mjs migrate",
     "proof": "node npm-scripts/proof-env.mjs",
