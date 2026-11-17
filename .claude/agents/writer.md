@@ -1,4 +1,5 @@
 ---
+
 name: writer
 description: Prose writer for anything a human reads and judges in tumpel. GitHub issues, PR titles and bodies, review replies, commit messages, RFC, EDD and ADR text, README and docs pages, and user-facing strings. Drafts, runs the cut passes, reports once.
 tools: Read, Grep, Glob, Bash, Edit, Write

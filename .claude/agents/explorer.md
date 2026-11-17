@@ -1,4 +1,5 @@
 ---
+
 name: explorer
 description: Read-only search agent. Locates code across the tumpel repo and reports conclusions with file:line references. Never edits.
 tools: Read, Grep, Glob, Bash

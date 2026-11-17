@@ -1,4 +1,5 @@
 ---
+
 name: architect
 description: Planning agent. Turns a rough goal into a dependency-ordered breakdown of stages, one PR each, ready to file as GitHub issues. Never implements.
 tools: Read, Grep, Glob, Bash

@@ -1,4 +1,5 @@
 ---
+
 name: reviewer
 description: Principal reviewer. Reviews a PR for patterns over nits (domain rules in the wrong layer, optional fields and sentinels, overfetching, comments, swallowed errors, hotfix layers, mock-heavy and ghost tests, fixture weight) and reports ranked findings once.
 tools: Read, Grep, Glob, Bash
