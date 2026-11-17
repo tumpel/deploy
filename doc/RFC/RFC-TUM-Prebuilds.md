@@ -103,7 +103,7 @@ Namespace trusts a custom issuer only after Namespace Support registers it, once
 - **NFR-3 No cross-tenant `sub`.** No token's `sub` matches a rule written for another tenant.
 - **NFR-4 Budgets.** Dispatch, build, upload and conversion each have a budget and a named failure.
 - **NFR-5 Token life.** An issuer token lives 300 s.
-- **NFR-6 Key overlap.** A key stays in the JWKS for 24 h after its successor starts signing.
+- **NFR-6 One key.** The issuer signs with one key, the only key in its JWKS, and never rotates it.
 - **NFR-7 Algorithm.** The issuer signs RS256.
 
 ## Decisions
@@ -126,7 +126,9 @@ On 2026-11-15 the following rulings were made:
 
 **Tumpel is open source under Apache-2.0.** The repository stays private for now. Anyone can fetch the reusable workflow, the installer and the images. Self-hosting the control plane is supported next to the hosted `tumpel.dev`. Nothing proprietary or secret lives in the repository. Secrets stay in tofu and the key-store port.
 
-**The issuer defaults stand: 300 s token life, 24 h key overlap and RS256.** His ruling: safe default, 2026-11-15.
+**The issuer defaults stand: 300 s token life and RS256.** His ruling: safe default, 2026-11-15.
+
+**The issuer has no key rotation.** It signs with one key. His ruling, 2026-11-16.
 
 **The BuildKit client and the conversion of an OCI layer to packs run in the supervisor, on a tenant host that carries a builder role.** No new runtime is added. Ruled under the tenets, 2026-11-15.
 
@@ -136,7 +138,7 @@ On 2026-11-15 the following rulings were made:
 
 ### Issuer
 
-The Worker generates each RS256 key itself, at 2048 bits, and a key's `kid` is its RFC 7638 thumbprint. The central table `issuer_keys` holds each private key, sealed under a data key that `SECRETS_KEK` wraps, with the time it starts signing in `signs_from`. A token carries `iss`, `sub`, `aud`, `iat`, `nbf`, `exp` and `jti`. The prebuild `sub` is `tenant:<tenantId>:persona:<name>:job:prebuild`. The Worker var `ISSUER_HOSTNAME` names the issuer's hostname.
+The Worker generates its one RS256 key itself, at 2048 bits, and the key's `kid` is its RFC 7638 thumbprint. The central table `issuer_keys` holds the private key, sealed under a data key that `SECRETS_KEK` wraps. A token carries `iss`, `sub`, `aud`, `iat`, `nbf`, `exp` and `jti`. The prebuild `sub` is `tenant:<tenantId>:persona:<name>:job:prebuild`. The Worker var `ISSUER_HOSTNAME` names the issuer's hostname.
 
 ### Prebuilds
 
