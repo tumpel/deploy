@@ -21,6 +21,13 @@ const die = (message) => {
   process.exit(1);
 };
 
+const deployedCommit = () => {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: ROOT, encoding: "utf8" });
+  if (result.status !== 0)
+    die(`git rev-parse HEAD failed: ${result.stderr.trim()}; deploy from a checkout of the repository`);
+  return result.stdout.trim();
+};
+
 const mode = process.argv[2] ?? "all";
 if (!MODES.includes(mode)) die(`unknown mode ${mode}; pass one of ${MODES.join(", ")}`);
 if (!/^[a-z][a-z0-9]{1,15}$/.test(STAGE)) die(`TUMPEL_STAGE ${STAGE} must be 2 to 16 lower-case letters and digits`);
@@ -333,6 +340,8 @@ const deployCode = async (handoff) => {
     `DASHBOARD_ORIGIN:https://${handoff.dashboard_hostname}`,
     "--var",
     `API_ORIGIN:https://${handoff.hostname}`,
+    "--var",
+    `DEPLOYED_COMMIT:${deployedCommit()}`,
   ]);
   console.log(`deploy: https://${handoff.hostname} and https://${handoff.dashboard_hostname}`);
 };
