@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, renameSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { GuestHarnessSchema } from "@tumpel/schemas";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
 import {
@@ -84,6 +84,7 @@ const installOf = (entry, run, arch) => {
     digest: archive.sha256,
     stripComponents: recipe.stripComponents,
     binaryPath: archive.binaryPath,
+    siblingBinaryPaths: archive.siblingBinaryPaths,
     version: entry.harnessVersion,
     binary: run.binary,
   };
@@ -97,12 +98,16 @@ export const extractArchive = (archive, bin, install) => {
   );
   if (result.status !== 0)
     throw new Error(`tar could not unpack ${install.url}; it exited with ${result.status ?? result.signal}`);
-  const unpacked = join(bin, install.binaryPath);
-  if (!existsSync(unpacked))
-    throw new Error(`${install.url} holds no ${install.binaryPath}; check the install recipe in harness-catalog.ts`);
-  const installed = join(bin, install.binary);
-  if (unpacked !== installed) renameSync(unpacked, installed);
-  chmodSync(installed, 0o755);
+  const place = (path, name) => {
+    const unpacked = join(bin, path);
+    if (!existsSync(unpacked))
+      throw new Error(`${install.url} holds no ${path}; check the install recipe in harness-catalog.ts`);
+    const installed = join(bin, name);
+    if (unpacked !== installed) renameSync(unpacked, installed);
+    chmodSync(installed, 0o755);
+  };
+  place(install.binaryPath, install.binary);
+  for (const path of install.siblingBinaryPaths) place(path, basename(path));
 };
 
 export const layerRecipe = (name, arch) => {
