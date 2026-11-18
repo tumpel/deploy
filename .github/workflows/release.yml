@@ -52,8 +52,9 @@ jobs:
 
       - name: Install squashfs-tools
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends squashfs-tools
+          command -v mksquashfs >/dev/null && exit 0
+          sudo apt-get -o DPkg::Lock::Timeout=600 update
+          sudo apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends squashfs-tools
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund

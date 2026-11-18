@@ -8,6 +8,9 @@ fi
 
 here=$(dirname "$0")
 
+apt-get -o DPkg::Lock::Timeout=600 update
+apt-get -o DPkg::Lock::Timeout=600 install -y --no-install-recommends squashfs-tools
+
 install -m 0755 "$here/runner-prune.sh" /usr/local/bin/runner-prune
 install -m 0644 "$here/runner-prune.service" /etc/systemd/system/runner-prune.service
 install -m 0644 "$here/runner-prune.timer" /etc/systemd/system/runner-prune.timer
