@@ -47,7 +47,7 @@ The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId
 | Screen      | Shows and does                                                                     | Operations                                                                                                                                                                               |
 | ----------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Overview    | Host states, box slots, sessions by state, expiring tokens, connection state       | `Hosts_list`, `Hosts_listUsage`, `Sessions_list`, `SecretSets_list`, G5, G13                                                                                                             |
-| Sessions    | Sessions filtered by state and host; start, stop, archive                          | `Sessions_list`, `Sessions_start`, `Sessions_startFromIssue`, `Sessions_stop`, `Sessions_archive`, `Personas_list`, `GitHubConnections_listRepositories`, `GitHubConnections_listIssues` |
+| Sessions    | Sessions filtered by state and host; start, stop, archive one or many              | `Sessions_list`, `Sessions_start`, `Sessions_startFromIssue`, `Sessions_stop`, `Sessions_archive`, `Personas_list`, `GitHubConnections_listRepositories`, `GitHubConnections_listIssues` |
 | Session     | Turns, live transcript, next prompt, failures, snapshots, handovers, stop failures | `Sessions_get`, `Turns_list`, `Turns_get`, `Turns_send`, `Turns_getFailure`, `Transcripts_read`, `Snapshots_list`, `Sessions_listCredentialHandovers`, `Sessions_listStopFailures`       |
 | Hosts       | Hosts with state, version, labels and usage; enrol, relabel, revoke                | `Hosts_list`, `Hosts_get`, `Hosts_listUsage`, `EnrolmentTokens_mint`, `Hosts_setLabels`, `Hosts_revoke`, G14                                                                             |
 | Harnesses   | The catalog and the tenant's pins; pin and unpin                                   | `HarnessCatalog_list`, `HarnessCatalog_listPins`, `HarnessCatalog_pin`, `HarnessCatalog_unpin`                                                                                           |
@@ -61,6 +61,8 @@ The tenant id leads every URL: `/t/<tenantId>/sessions/<sessionId>/turns/<turnId
 ## Screen rules
 
 Start a session reads GitHub as not connected from the `GitHubNotConnected` refusal of `GitHubConnections_listRepositories`, and shows Connect GitHub in place of the pickers. A start from an issue that does not exist is refused 404 `IssueNotFound`, and the form shows the refusal under the Issue field. Enrolment shows the minted token and its install command once, with the expiry. The persona file editor lists only the paths the catalog lists for the persona's harness. Per-harness config is the persona's files.
+
+Archive sits next to Stop, and Stop and archive calls `Sessions_archive` for each selected session.
 
 Secret values go into a password field and travel once, in the create or update call. The API holds every value back. Editing a set shows each member's value as stored. A value is sent only for a member whose value changes. A renamed member keeps its stored value, and a removed member loses its value alone. A subscription token past its `expiresAt` reads Expired and names the fix.
 
