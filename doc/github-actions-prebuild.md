@@ -68,7 +68,7 @@ A run that is not picked up within `prebuildDispatchBudgetSeconds` (600) fails t
 The reusable workflow `tumpel/workflows/.github/workflows/prebuild.yml` runs three jobs:
 
 - `inputs` holds `id-token: write` and runs no repository code. It requests the job's OIDC token for `apiOrigin`, calls `POST /v1/prebuild-inputs` and hands the answer to the other jobs.
-- `build` holds `contents: read` and no `id-token`. A repository without a devcontainer.json builds with the default config. It imports the root filesystem tar as a local `linux/amd64` image, checks the repository out without credentials, bind-mounts it at `/root/workspace`, runs `/opt/tumpel/prebuild.mjs build /out` in the container and keeps `/out` as a job artifact.
+- `build` holds `contents: read` and no `id-token`. A repository without a devcontainer.json fails the build with DevcontainerMissing. It imports the root filesystem tar as a local `linux/amd64` image, checks the repository out without credentials, bind-mounts it at `/root/workspace`, runs `/opt/tumpel/prebuild.mjs build /out` in the container and keeps `/out` as a job artifact.
 - `upload` holds `id-token: write` and runs no repository code. It extracts `/opt/tumpel/prebuild.mjs` and the image's Node.js from the same root filesystem tar, never from the artifact, and runs `prebuild.mjs upload` with the artifact.
 
 Every token the run presents must carry a `job_workflow_ref` of `tumpel/workflows/.github/workflows/prebuild.yml` at tag `v2` or at a release tag `v2.x.y`, and an `event_name` of `push` or `workflow_dispatch`; any other is refused `JobTokenMismatch`. A caller that pins a commit SHA is refused too, because its `job_workflow_ref` names no tag.

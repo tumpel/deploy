@@ -18,7 +18,6 @@ import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import {
-  checkDevcontainer,
   DEVCONTAINER_PATHS,
   describeFinding,
   readDevcontainer,
@@ -29,10 +28,8 @@ import {
 const USAGE = `usage:
   prebuild.mjs build <out dir>
     Runs in the guest image with the repository checked out at /root/workspace, a directory and
-    not a symlink. Reads .devcontainer/devcontainer.json or .devcontainer.json; with neither, runs
-    the default config: npm ci as onCreateCommand when package-lock.json or npm-shrinkwrap.json is
-    at the workspace root, and nothing otherwise, since npm is the one package manager the guest
-    image carries. Scans the image's files just before the commands run, then runs onCreateCommand, updateContentCommand and
+    not a symlink. Reads .devcontainer/devcontainer.json or .devcontainer.json; with neither, fails
+    DevcontainerMissing. Scans the image's files just before the commands run, then runs onCreateCommand, updateContentCommand and
     postCreateCommand in the workspace with exactly the environment /etc/tumpel/guest.json names
     plus containerEnv (remoteEnv is ignored). Replaces .git/config with core settings and an origin
     URL without user info before the commands run, then writes <out dir>/layer.tar, one
@@ -50,7 +47,8 @@ const USAGE = `usage:
   prebuild.mjs start
     Runs in a tumpel box restored from a prebuild, right after tumpel-guest pulls the branch at the
     session's first turn: runs postStartCommand the way run runs the lifecycle commands, so the
-    repository can bring what the prebuild generated up to the pulled commit.
+    repository can bring what the prebuild generated up to the pulled commit. Runs nothing when
+    the workspace holds no devcontainer.json.
   prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>
     Runs in a job that runs no repository code. Takes the job's OIDC token from TUMPEL_JOB_TOKEN
     when set, as the CircleCI orb mints it with aud <api origin>; otherwise, in a GitHub Actions step
@@ -70,40 +68,23 @@ const die = (message) => {
   process.exit(1);
 };
 
-const DEFAULT_INSTALLS = [
-  ["package-lock.json", "npm ci"],
-  ["npm-shrinkwrap.json", "npm ci"],
-];
-
-const defaultConfig = (workspace) => {
-  const found = DEFAULT_INSTALLS.find(([file]) => existsSync(join(workspace, file)));
-  return found === undefined ? {} : { onCreateCommand: found[1] };
-};
-
-const DEFAULT_SOURCE = "the default config, as no devcontainer.json exists";
-
-const fixOf = (devcontainer, name) =>
-  devcontainer.kind === "RepositoryFile"
-    ? `fix ${name} in ${devcontainer.path}`
-    : "fix what it names in package.json or the npm lockfile, or commit a .devcontainer/devcontainer.json whose onCreateCommand installs the dependencies";
-
 const checked = (devcontainer) => {
   if (devcontainer.findings.length > 0) die(devcontainer.findings.map(describeFinding).join("\nprebuild: "));
   return devcontainer;
 };
 
-const loadDevcontainer = (workspace) => {
-  const path = DEVCONTAINER_PATHS.map((candidate) => join(workspace, candidate)).find((candidate) =>
-    existsSync(candidate),
-  );
-  if (!path) {
-    const config = defaultConfig(workspace);
-    console.log(
-      `prebuild: ${workspace} holds no devcontainer.json, so the prebuild runs the default: ${JSON.stringify(config)}`,
+const devcontainerPath = (workspace) =>
+  DEVCONTAINER_PATHS.map((candidate) => join(workspace, candidate)).find((candidate) => existsSync(candidate));
+
+const loadDevcontainer = (path) => ({ path, ...checked(readDevcontainer(readFileSync(path, "utf8"), path)) });
+
+const requiredDevcontainer = (workspace) => {
+  const path = devcontainerPath(workspace);
+  if (path === undefined)
+    die(
+      `DevcontainerMissing: ${workspace} holds neither .devcontainer/devcontainer.json nor .devcontainer.json; commit one, such as a tumpel prebuild template, then start the prebuild again`,
     );
-    return { kind: "Default", ...checked(checkDevcontainer(config, DEFAULT_SOURCE)) };
-  }
-  return { kind: "RepositoryFile", path, ...checked(readDevcontainer(readFileSync(path, "utf8"), path)) };
+  return loadDevcontainer(path);
 };
 
 const imageEnvironment = (root) => {
@@ -166,7 +147,7 @@ const runLifecycle = async (workspace, env, devcontainer, names = SETUP_COMMANDS
           .map((command) => runCommand(command, workspace, env, deadline)),
       )
     ).filter(Boolean);
-    if (failures.length > 0) die(`${prefix}: ${failures.join("; ")}; ${fixOf(devcontainer, name)}`);
+    if (failures.length > 0) die(`${prefix}: ${failures.join("; ")}; fix ${name} in ${devcontainer.path}`);
   }
 };
 
@@ -268,7 +249,7 @@ const build = async (outDir) => {
   const outRelative = relative(root, out);
   const pruned = new Set(PRUNED);
   const skip = (path) => pruned.has(path) || path === outRelative || path === WORKSPACE;
-  const devcontainer = loadDevcontainer(workspace);
+  const devcontainer = requiredDevcontainer(workspace);
   const env = resolveContainerEnv(imageEnvironment(root), devcontainer.containerEnv);
   resetGitConfig(workspace);
   const before = walk(root, skip);
@@ -404,7 +385,7 @@ const run = async () => {
   const workspace = join(root, WORKSPACE);
   checkout(workspace);
   console.log(`prebuild: running the setup step of ${workspace}`);
-  const devcontainer = loadDevcontainer(workspace);
+  const devcontainer = requiredDevcontainer(workspace);
   await runLifecycle(
     workspace,
     resolveContainerEnv(guestEnvironment(process.env), devcontainer.containerEnv),
@@ -415,7 +396,12 @@ const run = async () => {
 const start = async () => {
   const workspace = join(resolve(process.env.TUMPEL_PREBUILD_ROOT ?? "/"), WORKSPACE);
   checkout(workspace);
-  const devcontainer = loadDevcontainer(workspace);
+  const path = devcontainerPath(workspace);
+  if (path === undefined) {
+    console.log(`prebuild: ${workspace} holds no devcontainer.json, so the restored box runs no postStartCommand`);
+    return;
+  }
+  const devcontainer = loadDevcontainer(path);
   await runLifecycle(
     workspace,
     resolveContainerEnv(guestEnvironment(process.env), devcontainer.containerEnv),

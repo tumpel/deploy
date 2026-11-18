@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { after, test } from "node:test";
@@ -116,48 +116,41 @@ test("the layer holds the workspace, the changed base paths and a whiteout for e
   });
 });
 
-test("a repository without devcontainer.json runs npm ci for its npm lockfile and nothing else", () => {
-  const { root, out } = fixture("default", null);
+test("build and run refuse a repository without devcontainer.json and run no command", () => {
+  const { root, out } = fixture("missing", null);
   const workspace = join(root, "root", "workspace");
   const bin = join(root, "usr", "local", "bin");
   write(join(bin, "npm"), `#!/bin/sh\necho "$@" >> ${join(workspace, "npm-args")}\n`);
   execFileSync("chmod", ["+x", join(bin, "npm")]);
-  write(
-    join(root, "etc", "tumpel", "guest.json"),
-    JSON.stringify({ environment: { PATH: `${bin}:/usr/bin:/bin`, HOME: join(root, "root"), LANG: "C.UTF-8" } }),
-  );
   write(join(workspace, "package-lock.json"), "{}\n");
-  write(join(workspace, "npm-shrinkwrap.json"), "{}\n");
-  write(join(workspace, "Cargo.toml"), "[package]\n");
-  const result = prebuild(root, out);
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(readFileSync(join(workspace, "npm-args"), "utf8"), "ci\n");
-  assert.match(result.stdout, /runs the default: {"onCreateCommand":"npm ci"}/);
+  const built = prebuild(root, out);
+  assert.equal(built.status, 1);
+  assert.match(
+    built.stderr,
+    /DevcontainerMissing: .* holds neither \.devcontainer\/devcontainer\.json nor \.devcontainer\.json/,
+  );
+  const ran = spawnSync(process.execPath, [SCRIPT, "run"], {
+    env: { PATH: `${bin}:/usr/bin:/bin`, HOME: join(root, "root"), LANG: "C.UTF-8", TUMPEL_PREBUILD_ROOT: root },
+    encoding: "utf8",
+    timeout: 20000,
+  });
+  assert.equal(ran.status, 1);
+  assert.match(ran.stderr, /DevcontainerMissing/);
+  assert.equal(existsSync(join(workspace, "npm-args")), false);
 });
 
-test("a repository without devcontainer.json or an npm lockfile runs no command, and a failing npm ci names the default config's fix", () => {
-  const bare = fixture("bare", null);
-  const ran = prebuild(bare.root, bare.out);
-  assert.equal(ran.status, 0, ran.stderr);
-  assert.match(ran.stdout, /runs the default: {}/);
-  const failing = fixture("failing", null);
-  const workspace = join(failing.root, "root", "workspace");
-  const bin = join(failing.root, "usr", "local", "bin");
-  write(join(bin, "npm"), "#!/bin/sh\nexit 3\n");
+test("start without devcontainer.json exits 0 and runs nothing", () => {
+  const { root } = fixture("restored", null);
+  const workspace = join(root, "root", "workspace");
+  const bin = join(root, "usr", "local", "bin");
+  write(join(bin, "npm"), `#!/bin/sh\necho "$@" >> ${join(workspace, "npm-args")}\n`);
   execFileSync("chmod", ["+x", join(bin, "npm")]);
-  write(
-    join(failing.root, "etc", "tumpel", "guest.json"),
-    JSON.stringify({
-      environment: { PATH: `${bin}:/usr/bin:/bin`, HOME: join(failing.root, "root"), LANG: "C.UTF-8" },
-    }),
-  );
   write(join(workspace, "package-lock.json"), "{}\n");
-  const result = prebuild(failing.root, failing.out);
-  assert.equal(result.status, 1);
-  assert.match(
-    result.stderr,
-    /BuildFailed: onCreateCommand exited with 3; fix what it names in package\.json or the npm lockfile/,
-  );
+  const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: join(root, "root"), LANG: "C.UTF-8", TUMPEL_PREBUILD_ROOT: root };
+  const result = spawnSync(process.execPath, [SCRIPT, "start"], { env, encoding: "utf8", timeout: 20000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /holds no devcontainer\.json, so the restored box runs no postStartCommand/);
+  assert.equal(existsSync(join(workspace, "npm-args")), false);
 });
 
 test("run in a box without guest.json takes the environment tumpel-guest starts it with", () => {
