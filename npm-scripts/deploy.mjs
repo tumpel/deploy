@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PACKAGE = join(ROOT, "packages", "control-plane");
-const DASHBOARD = join(ROOT, "packages", "dashboard");
+const DASHBOARD = join(ROOT, "packages", "dashboard-site");
 const INFRA = join(PACKAGE, "infra");
 const WORK = join(ROOT, ".tmp", "deploy");
 const ENV_FILE = process.env.TUMPEL_CF_ENV ?? join(homedir(), ".config", "tumpel", "cf-env");
@@ -308,10 +308,7 @@ const deployInfra = async () => {
 
 const deployCode = async (handoff) => {
   checkDatabase(handoff.d1_database_id);
-  run("npm", ["run", "build", "-w", "@tumpel/dashboard"], {
-    env: { VITE_TUMPEL_API_ORIGIN: `https://${handoff.hostname}` },
-  });
-  wrangler(["deploy"], {
+  wrangler(["deploy", "--var", `API_ORIGIN:https://${handoff.hostname}`], {
     cwd: DASHBOARD,
     baseEnv: withoutBuildsName,
   });

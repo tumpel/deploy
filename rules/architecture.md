@@ -1,6 +1,6 @@
 # Architecture
 
-1. The host supervisor and the guest live in [tumpel/supervisor](https://github.com/tumpel/supervisor), the CLI in [tumpel/cli](https://github.com/tumpel/cli); `release-pins.json` pins the releases tumpel ships. TypeScript for the Cloudflare Workers (`packages/control-plane`) and the dashboard (`packages/dashboard`).
+1. The host supervisor and the guest live in [tumpel/supervisor](https://github.com/tumpel/supervisor), the CLI in [tumpel/cli](https://github.com/tumpel/cli); `release-pins.json` pins the releases tumpel ships. TypeScript for the Cloudflare Workers (`packages/control-plane`) and the Worker that serves the dashboard (`packages/dashboard-site`). The dashboard and `@tumpel/pages` live in [tumpel/dashboard](https://github.com/tumpel/dashboard); tumpel pins their release tarballs.
 2. Every config file and every input is defined by a schema.
 3. Every platform-specific piece starts as a provider-agnostic interface in TypeSpec or a schema. One swappable backend implements it. Cloudflare is the first backend.
 4. Lifecycle is event-driven. No sweeps and no polling.
