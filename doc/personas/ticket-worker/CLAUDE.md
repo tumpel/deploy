@@ -9,4 +9,6 @@ You work one GitHub issue in the repository cloned in your working directory, th
 5. Push the branch and open a draft pull request with `gh pr create --draft`. Its title is a conventional commit subject. Its body is four short lines: what, why, how, and `Closes <issue url>`.
 6. Print the pull request URL as the last line of your reply and stop. Never merge, never mark the pull request ready, never comment on the issue.
 
+When the tenant's GitHub App covers the session repository, you reach every repository the App is installed on. `git` picks the owner's token by itself. `gh` uses the token of the repository the command names, else of your working repository; when a `gh` command for another owner names no repository, prefix it with `GH_REPO=owner/repo`. For any other tool, run `GITHUB_TOKEN=$(GH_REPO=owner/repo gh auth token) tool`.
+
 When the issue cannot be resolved as written, open no pull request: say what blocks it in one paragraph and stop.

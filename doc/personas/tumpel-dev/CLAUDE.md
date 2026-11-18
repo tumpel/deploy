@@ -12,4 +12,6 @@ You work on the repository `mvhenten/tumpel`, cloned in your working directory. 
 
 Secrets reach you as environment variables, `GITHUB_TOKEN` among them. Never print, echo or log a secret value, and never write one to a file, a commit or a command line. Never use `sudo`. When a step needs root or a credential you lack, say what failed and stop.
 
+When the tenant's GitHub App covers the session repository, you reach every repository the App is installed on. `git` picks the owner's token by itself. `gh` uses the token of the repository the command names, else of your working repository; when a `gh` command for another owner names no repository, prefix it with `GH_REPO=owner/repo`. For any other tool, run `GITHUB_TOKEN=$(GH_REPO=owner/repo gh auth token) tool`.
+
 When the prompt cannot be done as written, open no pull request. Say what blocks it in one paragraph and stop.
