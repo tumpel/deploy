@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  createReadStream,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { request } from "node:https";
 import { basename, dirname, join } from "node:path";
 import {
@@ -22,12 +30,16 @@ import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.m
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
 const ENABLED = new Set(RELEASE_ARCHITECTURES.map((arch) => ARCHITECTURES[arch]));
 const CURRENT = "current.json";
+const SUPERVISOR_SOURCE = "crates/tumpel-supervisor";
 const IMAGE_RELEASE = "images.json";
 const IMAGE_RELEASE_TAG = /^images-v\d+\.\d+\.\d+$/;
 const REQUEST_SECONDS = 900;
 const SIGNED_SECONDS = 3600;
 
-const BinaryFragmentSchema = ReleaseManifestSchema.pick({ supervisors: true, clis: true });
+const BinaryFragmentSchema = ReleaseManifestSchema.pick({ supervisors: true, clis: true }).partial({
+  supervisors: true,
+});
+const CliFragmentSchema = ReleaseManifestSchema.pick({ clis: true });
 const ImageFragmentSchema = ReleaseManifestSchema.pick({ images: true });
 const BaseFragmentSchema = ImageReleaseSchema.pick({ bases: true });
 const PublishedImagesSchema = ImageReleaseSchema.pick({
@@ -42,6 +54,7 @@ const LayerPlanSchema = LayerFragmentSchema.extend({
   missing: ReleaseHarnessLayerSchema.shape.harness.array(),
 });
 const PublishedCommitSchema = ReleaseManifestSchema.pick({ commit: true });
+const PublishedSupervisorsSchema = ReleaseManifestSchema.pick({ channelProtocolVersion: true, supervisors: true });
 
 const die = (message) => {
   console.error(`release:publish: ${message}`);
@@ -213,7 +226,46 @@ const uploadBinaries = async (arch, supervisorPath, cliPath, fragmentPath) => {
     uploadBinary("supervisor", supervisorPath),
     uploadBinary("cli", cliPath),
   ]);
-  writeFragment(fragmentPath, BinaryFragmentSchema.parse({ supervisors: [supervisor], clis: [cli] }));
+  writeFragment(
+    fragmentPath,
+    BinaryFragmentSchema.parse({
+      supervisors: [{ ...supervisor, guestProtocolVersion: GuestProtocol.Version }],
+      clis: [cli],
+    }),
+  );
+};
+
+const uploadCli = async (arch, cliPath, fragmentPath) => {
+  const architecture = architectureOf(arch);
+  const digest = await sha256(cliPath);
+  const uploaded = await uploadFile(storage(), `cli/${arch}/${digest}`, cliPath);
+  writeFragment(
+    fragmentPath,
+    CliFragmentSchema.parse({ clis: [{ architecture, sha256: uploaded.digest, sizeBytes: uploaded.size }] }),
+  );
+};
+
+const REBUILD = "run the release workflow by hand with supervisor=true";
+
+const keptSupervisors = (current) => {
+  if (current === undefined) die(`${bucket}/${CURRENT} does not exist, so there is no supervisor to keep; ${REBUILD}`);
+  const parsed = PublishedSupervisorsSchema.safeParse(current);
+  if (!parsed.success)
+    die(
+      `the supervisors ${bucket}/${CURRENT} names do not record their protocols (${parsed.error.message}); ${REBUILD}`,
+    );
+  const { channelProtocolVersion, supervisors } = parsed.data;
+  if (channelProtocolVersion < ChannelProtocol.Oldest || channelProtocolVersion > ChannelProtocol.Version)
+    die(
+      `the supervisor ${bucket}/${CURRENT} names speaks channel protocol ${channelProtocolVersion}, and this commit accepts ${ChannelProtocol.Oldest} to ${ChannelProtocol.Version}; ${REBUILD}`,
+    );
+  for (const { architecture, guestProtocolVersion } of supervisors) {
+    if (guestProtocolVersion < GuestProtocol.Oldest || guestProtocolVersion > GuestProtocol.Version)
+      die(
+        `the ${architecture} supervisor ${bucket}/${CURRENT} names speaks guest protocol ${guestProtocolVersion}, and this commit speaks ${GuestProtocol.Oldest} to ${GuestProtocol.Version}; ${REBUILD}`,
+      );
+  }
+  return parsed.data;
 };
 
 const uploadImages = async (arch, imageDir, fragmentPath) => {
@@ -444,14 +496,12 @@ const publishRelease = async (fragmentDir, layerFragmentDir) => {
   const harnessLayers = readFragments(layerFragmentDir, LayerFragmentSchema, "layers").flatMap(
     (fragment) => fragment.harnessLayers,
   );
-  const supervisors = fragments.flatMap((fragment) => fragment.supervisors);
+  const built = fragments.flatMap((fragment) => fragment.supervisors ?? []);
   const clis = fragments.flatMap((fragment) => fragment.clis);
-  for (const architecture of new Set([...supervisors, ...clis].map((binary) => binary.architecture))) {
+  for (const architecture of new Set([...built, ...clis].map((binary) => binary.architecture))) {
     if (!ENABLED.has(architecture)) die(disabledReason(architecture.toLowerCase()));
   }
   for (const architecture of ENABLED) {
-    if (!supervisors.some((supervisor) => supervisor.architecture === architecture))
-      die(`the fragments hold no ${architecture} supervisor; run release:publish binaries first`);
     if (!clis.some((cli) => cli.architecture === architecture))
       die(`the fragments hold no ${architecture} CLI; run release:publish binaries first`);
     for (const name of layerHarnesses()) {
@@ -472,6 +522,18 @@ const publishRelease = async (fragmentDir, layerFragmentDir) => {
     );
   const commit = headCommit();
   const current = await readJson(store, CURRENT);
+  const { channelProtocolVersion, supervisors } =
+    built.length > 0
+      ? { channelProtocolVersion: ChannelProtocol.Version, supervisors: built }
+      : keptSupervisors(current);
+  for (const architecture of ENABLED) {
+    if (!supervisors.some((supervisor) => supervisor.architecture === architecture))
+      die(
+        built.length > 0
+          ? `the fragments hold no ${architecture} supervisor; run release:publish binaries first`
+          : `${bucket}/${CURRENT} holds no ${architecture} supervisor to keep; run the release workflow by hand with supervisor=true`,
+      );
+  }
   if (current !== undefined) {
     const published = PublishedCommitSchema.parse(current).commit;
     if (supersededBy(commit, published)) {
@@ -486,7 +548,7 @@ const publishRelease = async (fragmentDir, layerFragmentDir) => {
   const manifest = ReleaseManifestSchema.parse({
     releaseVersion,
     commit,
-    channelProtocolVersion: ChannelProtocol.Version,
+    channelProtocolVersion,
     supervisors,
     clis,
     images,
@@ -494,11 +556,36 @@ const publishRelease = async (fragmentDir, layerFragmentDir) => {
     bases,
   });
   await putJson(store, CURRENT, manifest);
-  console.log(`published ${bucket}/${CURRENT} for ${releaseVersion} with the images of ${imageReleaseVersion}`);
+  console.log(
+    `published ${bucket}/${CURRENT} for ${releaseVersion} with the images of ${imageReleaseVersion}${built.length > 0 ? "" : " and the supervisor it already named"}`,
+  );
+};
+
+const planSupervisor = async (outputPath) => {
+  const current = await readJson(storage(), CURRENT);
+  const decide = (supervisor, reason) => {
+    console.log(`build the supervisor: ${supervisor} (${reason})`);
+    appendFileSync(outputPath, `supervisor=${supervisor}\n`);
+  };
+  if (current === undefined) return decide(true, `${bucket}/${CURRENT} does not exist`);
+  const published = PublishedCommitSchema.parse(current).commit;
+  if (git("cat-file", "-e", `${published}^{commit}`).status !== 0)
+    return die(
+      `${bucket}/${CURRENT} holds commit ${published}, which this checkout does not know; check out the full history (fetch-depth 0), or ${REBUILD}`,
+    );
+  const commit = headCommit();
+  const diff = git("diff", "--quiet", published, commit, "--", SUPERVISOR_SOURCE);
+  if (diff.status === 0) return decide(false, `${SUPERVISOR_SOURCE} is unchanged since ${published}`);
+  if (diff.status === 1) return decide(true, `${SUPERVISOR_SOURCE} changed since ${published}`);
+  return die(
+    `git diff ${published} ${commit} failed: ${diff.stderr.trim()}; check out the full history (fetch-depth 0)`,
+  );
 };
 
 const [command, ...args] = process.argv.slice(2);
 if (command === "binaries" && args.length === 4) await uploadBinaries(...args);
+else if (command === "cli" && args.length === 3) await uploadCli(...args);
+else if (command === "supervisor-plan" && args.length === 1) await planSupervisor(...args);
 else if (command === "images" && args.length === 3) await uploadImages(...args);
 else if (command === "base" && args.length === 3) await uploadBase(...args);
 else if (command === "image-release" && args.length === 2) await publishImageRelease(...args);
@@ -507,5 +594,5 @@ else if (command === "layers" && args.length === 4) await uploadLayers(...args);
 else if (command === "manifest" && args.length === 2) await publishRelease(...args);
 else
   die(
-    `usage: ${basename(process.argv[1])} binaries <amd64|arm64> <supervisor binary> <cli binary> <fragment.json> | images <amd64|arm64> <image dir> <fragment.json> | base <amd64|arm64> <base dir> <fragment.json> | image-release <image fragment dir> <base fragment dir> | layer-plan <amd64|arm64> <plan.json> | layers <amd64|arm64> <plan.json> <layer dir> <fragment.json> | manifest <binary fragment dir> <layer fragment dir>`,
+    `usage: ${basename(process.argv[1])} binaries <amd64|arm64> <supervisor binary> <cli binary> <fragment.json> | cli <amd64|arm64> <cli binary> <fragment.json> | images <amd64|arm64> <image dir> <fragment.json> | base <amd64|arm64> <base dir> <fragment.json> | image-release <image fragment dir> <base fragment dir> | layer-plan <amd64|arm64> <plan.json> | layers <amd64|arm64> <plan.json> <layer dir> <fragment.json> | manifest <binary fragment dir> <layer fragment dir> | supervisor-plan <github output>`,
   );

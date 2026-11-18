@@ -10,6 +10,10 @@ on:
         description: Stage whose releases bucket receives the build
         default: dev
         type: string
+      supervisor:
+        description: Build and publish the supervisor even when crates/tumpel-supervisor is unchanged
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -21,11 +25,47 @@ env:
 
 jobs:
   plan:
+    needs: generate
     runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 5
+    timeout-minutes: 10
     outputs:
       include: ${{ steps.matrix.outputs.include }}
+      supervisor: ${{ steps.supervisor.outputs.supervisor }}
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: build
+          path: build
+
+      - name: Mark the downloaded build/ as current
+        run: touch build/.typespec && touch build/.rust
+
+      - name: Install npm workspaces
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - id: supervisor
+        name: Decide whether this run builds the supervisor
+        env:
+          REQUESTED: ${{ inputs.supervisor }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+        run: |
+          if [ "$REQUESTED" = true ]; then
+            echo "supervisor=true" >> "$GITHUB_OUTPUT"
+          else
+            npm run release:publish -- supervisor-plan "$GITHUB_OUTPUT"
+          fi
+
       - id: matrix
         env:
           AMD64: '{"arch": "amd64", "target": "x86_64-unknown-linux-gnu", "packages": ""}'
@@ -136,10 +176,12 @@ jobs:
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Build the supervisor and the CLI
+      - if: needs.plan.outputs.supervisor == 'true'
+        name: Build the supervisor and the CLI
         run: npm run release:build
 
-      - name: Upload the supervisor and the CLI
+      - if: needs.plan.outputs.supervisor == 'true'
+        name: Upload the supervisor and the CLI
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
@@ -147,6 +189,21 @@ jobs:
         run: >-
           npm run release:publish -- binaries ${{ matrix.arch }}
           "target/${{ matrix.target }}/release/tumpel-supervisor"
+          "target/${{ matrix.target }}/release/tumpel"
+          ".tmp/fragments/${{ matrix.arch }}.json"
+
+      - if: needs.plan.outputs.supervisor != 'true'
+        name: Build the CLI
+        run: npm run release:build:cli
+
+      - if: needs.plan.outputs.supervisor != 'true'
+        name: Upload the CLI and keep the published supervisor
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
+          R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
+        run: >-
+          npm run release:publish -- cli ${{ matrix.arch }}
           "target/${{ matrix.target }}/release/tumpel"
           ".tmp/fragments/${{ matrix.arch }}.json"
 
