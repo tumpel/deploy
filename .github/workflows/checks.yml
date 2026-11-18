@@ -13,7 +13,26 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: [self-hosted, tumpel-build]
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Detect a docs-only pull request
+        id: changes
+        run: |
+          changed=$(git diff --name-only HEAD^1 HEAD)
+          code=true
+          grep -qvE '^(docs?/.*|.*\.md|LICENSE|\.github/ISSUE_TEMPLATE/.*)$' <<<"$changed" || code=false
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   check:
+    needs: changes
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
@@ -30,7 +49,12 @@ jobs:
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Run the checks
+      - if: needs.changes.outputs.code == 'false'
+        name: Run the docs, prose and format checks
+        run: npm run lint && npm run comments:check && npm run secrets:check && npm run prose:check && npm run surface:check
+
+      - if: needs.changes.outputs.code == 'true'
+        name: Run the checks
         run: npm run check
 
       - if: failure()
@@ -42,7 +66,8 @@ jobs:
           "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
 
   test:
-    needs: check
+    needs: [changes, check]
+    if: needs.changes.outputs.code == 'true'
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
@@ -72,6 +97,8 @@ jobs:
           "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
 
   integration:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
