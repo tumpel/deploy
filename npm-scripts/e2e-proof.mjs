@@ -26,6 +26,7 @@ const REVOKE_DIR = "development/.tmp/tumpel-proof-revoke";
 const MARKER = `tumpel-proof-${randomBytes(4).toString("hex")}`;
 const MARKER_FILE = "/root/proof-marker.txt";
 const TMPFS_MARKER_FILE = "/dev/shm/proof-marker.txt";
+const GOAL_FILE = "/root/proof-goal.txt";
 const BUILD_PROVIDERS = ["GitHubActions", "CircleCI", "Namespace"];
 
 const die = (message) => {
@@ -285,6 +286,17 @@ const pollConnectorTurn = async (client, sessionId, turnId, t0) => {
     turnMs: Date.now() - t0,
     polls,
   };
+};
+
+const rawConnectorLines = async (client, sessionId, turnId) => {
+  const lines = [];
+  let cursor = 0;
+  while (true) {
+    const page = await client.call("tumpel_transcript_read", { sessionId, turnId, after: cursor, limit: 1000 });
+    lines.push(...page.lines.map((line) => line.text));
+    if (page.lines.length === 0) return lines;
+    cursor = page.cursor;
+  }
 };
 
 const state = {};
@@ -743,6 +755,31 @@ const steps = [
   },
   {
     id: 14,
+    name: "Goal turn",
+    needs: [7, 12],
+    run: async () => {
+      const client = state.connector;
+      const sessionId = state.first.sessionId;
+      const goal = "that command has printed 3";
+      const t0 = Date.now();
+      const sent = await client.call("tumpel_turn_send", {
+        sessionId,
+        prompt: `Use the Bash tool to run: echo tick >> ${GOAL_FILE} && wc -l < ${GOAL_FILE}`,
+        goal,
+      });
+      const { turn, turnMs } = await pollConnectorTurn(client, sessionId, sent.turnId, t0);
+      if (turn.goal !== goal) fail(`turn ${turn.turnId} reads back the goal ${turn.goal}, not ${goal}`);
+      const lines = await rawConnectorLines(client, sessionId, turn.turnId);
+      const types = lines.map((line) => JSON.parse(line).type);
+      const results = types.filter((type) => type === "result").length;
+      if (results !== 1) fail(`the goal turn wrote ${results} result lines, not exactly one`);
+      if (types.at(-1) !== "result") fail("a line follows the goal turn's result line");
+      if (!/^3$/m.test(toolResults(lines))) fail("the goal turn ended before the goal held: no run printed 3");
+      return `goal held and read back, ${lines.length} lines with one result line last, finished ${turnMs} ms`;
+    },
+  },
+  {
+    id: 15,
     name: "Issuer",
     needs: [3],
     run: async () => {
@@ -763,7 +800,7 @@ const steps = [
     },
   },
   {
-    id: 15,
+    id: 16,
     name: "Prebuild refused",
     needs: [3],
     run: async () => {
@@ -792,7 +829,7 @@ const steps = [
     },
   },
   {
-    id: 16,
+    id: 17,
     name: "Prebuild GitHub Actions",
     needs: [3],
     skip: () =>
@@ -828,7 +865,7 @@ const steps = [
     },
   },
   {
-    id: 17,
+    id: 18,
     name: "Revoke",
     needs: [2],
     run: async () => {
