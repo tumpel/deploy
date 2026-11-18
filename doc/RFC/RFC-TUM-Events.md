@@ -10,7 +10,7 @@
 
 An event is a record that something happened in a tenant: a turn completed, a session went idle, a host went offline. Today no client learns of a change until it reads again. This RFC gives each tenant one durable, ordered event log in the tenant Durable Object. The control plane appends an event in the same transaction that changes the state it reports. Each event has an increasing `eventId`, so a client resumes from the last id it saw and misses nothing.
 
-One operation, `Events_list`, reads the log. It answers JSON to a long poll and Server-Sent Events to a stream, and its MCP tool `tumpel_events_wait` blocks for up to 50 s. Webhooks and Web Push carry events to clients that hold no connection.
+One operation, `Events_list`, reads the log. It answers JSON to a long poll and upgrades to a WebSocket for a stream, and its MCP tool `tumpel_events_wait` blocks for up to 50 s. An `EventChannel` Durable Object holds the WebSockets through the Hibernation API, so a waiting client keeps no Durable Object active (tenet 8). Webhooks and Web Push carry events to clients that hold no connection.
 
 The client docs set the limits. No Claude app, Codex or Pi honours a pushed MCP resource update from a remote server today. MCP clients therefore get events when the model calls `tumpel_events_wait`, Claude Code gets them through a plugin monitor, and a phone gets them through Web Push from the dashboard.
 
@@ -65,34 +65,36 @@ Tumpel derives every event from control-plane state. It never reads a transcript
 
 ## The log
 
-Decision D2: a tenant SQLite migration adds `events (event_id INTEGER PRIMARY KEY AUTOINCREMENT, event TEXT, payload TEXT, created_at INTEGER)`. SQLite assigns ids in commit order inside the single-threaded Durable Object, so the id is the total order of the tenant's events.
+Decision D2: a tenant SQLite migration adds `events (event_id INTEGER PRIMARY KEY AUTOINCREMENT, payload TEXT, created_at INTEGER)` and the junction `event_sessions (event_id, session_id)` for events of a session. The payload holds the event as JSON, its type included. SQLite assigns ids in commit order inside the single-threaded Durable Object, so the id is the total order of the tenant's events.
 
 The code that changes a state appends its event in the same `transactionSync`. A turn's `endTurn` record, `setSessionState`, `hostPresence` and each prebuild transition gain one insert. The state row and its event commit together, or neither commits.
 
 The log keeps 7 days. Each insert deletes rows older than that in the same transaction, through an index on `created_at`. A read with an `afterEventId` older than the oldest row fails 410 `EventCursorExpired`. Its fix tells the client to read current state and continue from the `lastEventId` that read returns.
 
-After each commit, the Durable Object wakes every waiter, as `turnEnded` does today. `waitTurns` moves onto that wake and keeps its contract.
+After a Tenant API request that appended an event, the tenant Durable Object wakes the tenant's `EventChannel` (D4). `waitTurns` keeps its in-memory waiters until a later slice moves it onto the channel.
 
 ## Reading the log
 
-Decision D3: one public operation reads the log, `Events_list` at `GET /v1/events`. It takes `afterEventId`, a repeatable `event` filter, an optional `sessionId` filter and `waitSeconds` from 0 to 50. It returns `EventPage { events, lastEventId }` with at most 100 events. With no `afterEventId`, it starts at the current end of the log. When no event matches, it waits up to `waitSeconds` for one.
+Decision D3: one public operation reads the log, `Events_list` at `GET /v1/events`. It takes `afterEventId`, a repeatable `event` filter, an optional `sessionId` filter and `waitSeconds` from 0 to 50. It returns `EventPage { events, lastEventId }` with at most 100 events. With no `afterEventId`, it starts at the current end of the log. When no event matches, the Worker waits up to `waitSeconds` for one on the tenant's `EventChannel`, then reads the page again.
 
-The same handler answers `Accept: text/event-stream` with a stream. Each event is one SSE message whose `id` is its `eventId`. A browser `EventSource` resends `Last-Event-ID` on reconnect, and the handler resumes after it ([HTML Living Standard](https://html.spec.whatwg.org/multipage/server-sent-events.html#the-last-event-id-header)). Cloudflare sets no duration limit on an HTTP Worker while the client stays connected ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/#duration)).
+The same handler answers a WebSocket upgrade with a stream. Each event is one text message, the event as JSON. A client that reconnects passes the last `eventId` it saw as `afterEventId`, and the stream replays from there. Cloudflare sets no duration limit on an HTTP Worker while the client stays connected ([Workers limits](https://developers.cloudflare.com/workers/platform/limits/#duration)).
 
-| Surface | Name                   | Use                                                |
-| ------- | ---------------------- | -------------------------------------------------- |
-| REST    | `GET /v1/events`       | Long poll, or SSE with `Accept: text/event-stream` |
-| MCP     | `tumpel_events_wait`   | Long poll, 50 s at most                            |
-| CLI     | `tumpel events wait`   | One page as JSON                                   |
-| CLI     | `tumpel events follow` | The stream, one JSON line per event                |
+| Surface | Name                   | Use                                              |
+| ------- | ---------------------- | ------------------------------------------------ |
+| REST    | `GET /v1/events`       | Long poll, or a WebSocket stream on upgrade      |
+| MCP     | `tumpel_events_wait`   | Long poll, 50 s at most                          |
+| CLI     | `tumpel events wait`   | The first matching event, optionally of one turn |
+| CLI     | `tumpel events follow` | The stream, one JSON line per event              |
 
 The 50 s cap fits every client's tool timeout: 240 s on claude.ai and Claude Desktop ([Claude connector docs](https://claude.com/docs/connectors/building)) and 60 s by default in Codex ([Codex MCP docs](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)). Every member reads every event of the tenant, the same rows `Sessions_list` and `Hosts_list` return.
 
 ## Tenant API
 
-Decision D4: the Tenant API gains two operations, `ListEvents` and `WaitEvents`, an additive change ([RFC: Tenant API](RFC-TUM-TenantApi.md) D3). Both take and return plain JSON. `WaitEvents` blocks for at most its `waitSeconds`, as `waitTurns` does.
+Decision D4: the Tenant API gains one operation, `listEvents`, an additive change ([RFC: Tenant API](RFC-TUM-TenantApi.md) D3). It takes and returns plain JSON and answers at once. Its `waitSeconds` input must be 0, and the tenant Durable Object fails any other value, because it never waits (tenet 8).
 
-The Worker builds the SSE stream. It calls `WaitEvents` in a loop and writes each page as frames, so no stream crosses the Durable Object boundary. When a deploy answers `TenantApiVersionUnsupported` or `TenantOperationUnknown`, the Worker sends an SSE `retry` of 5 s and closes the stream. The client reconnects with `Last-Event-ID` and loses no event.
+A new `EventChannel` Durable Object, one per tenant, holds the tenant's WebSockets through the Hibernation API. Each socket's attachment keeps its filters and cursor. After a request that appended events, the tenant Durable Object calls the channel's `wake`, which carries no payload. The channel then reads `listEvents` after the lowest cursor through the Tenant API and sends each socket the events that match. Only the Tenant API carries an event shape across the boundary, so a deploy skew answers the same retryable refusals as any other call. A socket that drops reconnects with its last `eventId` and loses no event.
+
+The long poll waits in the Worker. The Worker opens a socket to the channel and waits for its first message or the timeout. The channel hibernates meanwhile, and no Durable Object stays active.
 
 ## What each client can receive
 
@@ -104,9 +106,9 @@ Decision D5: Tumpel delivers through the paths each client documents. Revision 2
 | Claude Code                    | It refreshes on `list_changed` and holds a listen stream for it on the v2 runtime ([MCP docs](https://code.claude.com/docs/en/mcp#dynamic-tool-updates)). Its docs are silent on `notifications/resources/updated`. Channels push into a session, but only from a local stdio server on an allowlist, in research preview, and never from a server on 2026-07-28 ([channels reference](https://code.claude.com/docs/en/channels-reference)). A plugin monitor runs for the whole session and feeds each output line to Claude ([plugin monitors](https://code.claude.com/docs/en/plugins/components#monitors)). An `asyncRewake` hook wakes an idle session on exit code 2 ([hooks](https://code.claude.com/docs/en/hooks)) | A plugin monitor running `tumpel events follow`. `tumpel_events_wait` |
 | Codex                          | The docs list stdio and Streamable HTTP and are silent on notifications ([Codex MCP docs](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)). Source at commit `0e011c0` refreshes on `tools/list_changed` behind a flag and opens event streams only to its own apps server ([connection manager](https://github.com/openai/codex/blob/0e011c00928a16579b0bda47473cee986628cb51/codex-rs/codex-mcp/src/connection_manager.rs))                                                                                                                                                                                                                                                                                        | `tumpel_events_wait`                                                  |
 | Pi 1.5.2                       | Source handles `tools/list_changed`, `notifications/message` and progress, and no resource update ([MCP runtime](https://github.com/earendil-works/pi/blob/v1.5.2/packages/coding-agent/src/extensions/mcp/runtime.ts))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | `tumpel_events_wait`                                                  |
-| Agent SDK app                  | Streaming input sends further messages into a running session ([streaming input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | The app follows the SSE stream and yields a message per event         |
-| tumpel CLI and TUI             | Tumpel's own client                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | The SSE stream                                                        |
-| Dashboard                      | A browser `EventSource` while open. Web Push when closed, on iOS 16.4 and later only from a Home Screen web app ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | SSE, then Web Push                                                    |
+| Agent SDK app                  | Streaming input sends further messages into a running session ([streaming input](https://code.claude.com/docs/en/agent-sdk/streaming-vs-single-mode))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | The app follows the WebSocket stream and yields a message per event   |
+| tumpel CLI and TUI             | Tumpel's own client                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | The WebSocket stream                                                  |
+| Dashboard                      | A browser WebSocket while open. Web Push when closed, on iOS 16.4 and later only from a Home Screen web app ([WebKit](https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | WebSocket, then Web Push                                              |
 
 ## Claude Code
 
@@ -132,23 +134,24 @@ The notification names the session and the outcome, for example "Turn completed 
 
 ## MCP subscriptions
 
-Decision D9: Tumpel exposes `tumpel://events` as an MCP resource and serves `subscriptions/listen` for it only once one target client documents support for resource updates. Until then the work buys no delivery. When it lands, the Worker holds the listen stream, calls `WaitEvents` in a loop and sends `notifications/resources/updated` per page. The client then reads the resource with its cursor.
+Decision D9: Tumpel exposes `tumpel://events` as an MCP resource and serves `subscriptions/listen` for it only once one target client documents support for resource updates. Until then the work buys no delivery. When it lands, the Worker holds the listen stream on the tenant's `EventChannel` and sends `notifications/resources/updated` per page. The client then reads the resource with its cursor.
 
 ## Delivery
 
 Decision D10: each slice is one PR. Protocol slices land and release first, and the tumpel PR bumps the three tarball URLs (`rules/typespec.md` 2).
 
-| Slice | Repository       | Change                                                                                                                                                      |
-| ----- | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P1    | tumpel/protocol  | Event models, `TenantEvent`, `EventPage`, `Events_list`, Tenant API `ListEvents` and `WaitEvents`                                                           |
-| E1    | tumpel           | The `events` table, appends in every transition, the Tenant API operations, `GET /v1/events` with SSE, `tumpel_events_wait`, `waitTurns` on the shared wake |
-| C1    | tumpel/cli       | `tumpel events wait` and `follow`, and the Claude Code plugin with its monitor                                                                              |
-| D1    | tumpel/dashboard | One `EventSource` per tenant that invalidates the matching queries                                                                                          |
-| P2    | tumpel/protocol  | Webhook endpoint and push subscription models and operations                                                                                                |
-| E2    | tumpel           | `WebhookSender`, signing key, webhook operations                                                                                                            |
-| E3    | tumpel           | Push delivery and the VAPID tofu resource                                                                                                                   |
-| D2    | tumpel/dashboard | Manifest, service worker, per-device opt-in                                                                                                                 |
-| E4    | tumpel           | MCP resource and `subscriptions/listen`, once a client supports it (D9)                                                                                     |
+| Slice | Repository       | Change                                                                                                                                       |
+| ----- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1    | tumpel/protocol  | Event models, `TenantEvent`, `EventPage`, `Events_list`, Tenant API `listEvents`, the `EventCursorExpired` problem code                      |
+| C1    | tumpel/cli       | `tumpel events wait` and `follow`, released before E1, because the surface check reads the pinned CLI                                        |
+| E1    | tumpel           | The `events` table, appends in every transition, `listEvents`, the `EventChannel`, `GET /v1/events` with its WebSocket, `tumpel_events_wait` |
+| C2    | tumpel/cli       | The Claude Code plugin with its monitor                                                                                                      |
+| D1    | tumpel/dashboard | One WebSocket per tenant that invalidates the matching queries                                                                               |
+| P2    | tumpel/protocol  | Webhook endpoint and push subscription models and operations                                                                                 |
+| E2    | tumpel           | `WebhookSender`, signing key, webhook operations                                                                                             |
+| E3    | tumpel           | Push delivery and the VAPID tofu resource                                                                                                    |
+| D2    | tumpel/dashboard | Manifest, service worker, per-device opt-in                                                                                                  |
+| E4    | tumpel           | MCP resource and `subscriptions/listen`, once a client supports it (D9)                                                                      |
 
 Tests stay low in the stack. One unit test per transition checks that the state row and its event commit together. One test drives `Events_list` past an expired cursor. The proof in EDD-006 gains a step that follows the stream across one turn.
 
@@ -158,7 +161,7 @@ Out of scope: events from transcript content, per-member event visibility, MCP T
 
 ### Why one operation for long poll and stream?
 
-`rules/api.md` 2 forbids a second operation for the same read. SSE is a representation of the same page, picked by `Accept` (D3).
+`rules/api.md` 2 forbids a second operation for the same read. The stream is the same read over a WebSocket upgrade (D3).
 
 ### Can a Claude phone conversation get pushed a turn result?
 
@@ -170,7 +173,7 @@ Claude's connector docs list them as unsupported, and Codex and Pi source handle
 
 ### What happens to events during a deploy?
 
-They stay in the log. A stream closes with a 5 s retry, and the client resumes from its last `eventId` (D4).
+They stay in the log. A dropped socket reconnects with its last `eventId` and loses no event (D4).
 
 ### Does an event ever start a turn?
 
