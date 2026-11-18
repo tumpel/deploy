@@ -80,7 +80,7 @@ Agents sign in, enrol the host, run real turns on a real harness and restore a s
 - **FR-6 Send.** A send to an idle session answers with the new turn id. While a turn runs, a send is refused, and the refusal quotes the running turn's id. (BR-2)
 - **FR-7 Concurrency.** A tenant runs any number of sessions across its hosts, with more than one box per host. Each session runs one turn at a time. (BR-4)
 - **FR-8 Read.** A read returns harness-native lines after a cursor, for the session or for one turn. The cursor stays valid across snapshots, fresh boxes and host moves. (BR-2)
-- **FR-9 Stop and archive.** A stop snapshots the session at once, then tears its box down and leaves the session Stopped. A failed or unanswered stop returns the session to Idle and records a stop failure, which `tumpel session stop-failures` lists. An archive takes a Stopped session only. It deletes the snapshots, keeps the transcript readable and refuses later sends with `SessionArchived`. (BR-4)
+- **FR-9 Stop and archive.** A stop snapshots the session at once, then tears its box down and leaves the session Stopped. A stop with `cancelTurn` first ends the turn in flight, which fails `Cancelled`. A failed or unanswered stop returns the session to Idle and records a stop failure, which `tumpel session stop-failures` lists. An archive takes a Stopped session only. It deletes the snapshots, keeps the transcript readable and refuses later sends with `SessionArchived`. (BR-4)
 - **FR-10 Warm window.** After each turn the box stays paused for a warm window, 15 minutes by default and set per host. A turn inside the window resumes the paused box. (BR-2)
 
 ### Functional requirements for credentials and configuration
