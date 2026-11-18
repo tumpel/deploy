@@ -1,3 +1,5 @@
+<p align="center"><img src="doc/assets/mascot.svg" alt="The tumpel salamander" width="160"></p>
+
 # tumpel
 
 Harnesses on any hardware, driven over MCP.
