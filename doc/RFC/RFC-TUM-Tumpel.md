@@ -173,7 +173,7 @@ Cloudflare hosts the control plane (ADR-001). Tumpel is multi-harness, with pers
 
 **Placement on capacity.** Each host reports its `boxCapacity` and its usage over the channel, and the tenant places each new session by them (EDD-001).
 
-A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns fill its `boxCapacity`. A start goes to an Online host that is not Full, whose architecture has a base and the session's harness layer in the release. The tenant ranks those hosts by free slots, then by available memory. When every host is Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A placed session keeps its host.
+A host's free slots are its `boxCapacity`, minus the tenant's `Offered` and `Running` turns on it, minus its warm boxes. A host is Full when those turns fill its `boxCapacity`. A start goes to an Online host that is not Full, whose architecture has a base and the session's harness layer in the release. The tenant picks the least busy of those hosts, by the sum of held boxes over `boxCapacity`, load over CPUs and used memory over total memory, then the one with the most free slots. When every host is Full, the tenant refuses the start `PoolExhausted` and lists each host's reason. A placed session keeps its host.
 
 **Box capacity is set at install.** The installer makes a fixed pool of network devices, one per box. Its size, the host's `boxCapacity`, is 8 by default.
 

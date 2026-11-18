@@ -63,7 +63,7 @@ A tag `v*` runs `release.yml`, which publishes the supervisor, writes `current.j
 
 **Why not test the new binary after the swap?** A broken binary then drops the host's boxes and its channel. The dry run costs one extra start and keeps the old binary serving.
 
-**Does an update kill a running turn?** No. The lifecycle grants the idle claim only with no box. A turn already on its way when the host claims idle is refused HostUpdating and offered to another host, or held Offered until the host is back.
+**Does an update kill a running turn?** No. The lifecycle grants the idle claim only with no box. A turn already on its way when the host claims idle is refused HostUpdating and offered to another host, or held Offered until the host is back. A claimed turn whose box a handover stops before its harness starts ends HandoverTimedOut, reported HostUpdating, and goes back to Offered the same way, in a new box. The old supervisor saves that failure before it exits and the new one sends it right after Welcome, so it arrives before the first Heartbeat that would call the box lost. A turn whose harness already printed a line is never offered twice, so HostUpdating fails it by name.
 
 **Why does the check stop before Hello?** A Welcome replaces the host's open connection, and the check shares the host's channel state.
 
