@@ -74,7 +74,7 @@ A persona carries files, each a row in the tenant's database with its path, size
 | OpenCode    | `.config/opencode/opencode.json`, `.config/opencode/AGENTS.md`            |
 | Pi.dev      | `.pi/agent/settings.json`, `.pi/agent/models.json`, `.pi/agent/AGENTS.md` |
 
-`PersonaFileLimit` caps a file sent inline at 65,536 bytes and a persona's files at 262,144 bytes. A larger file goes up through a presigned upload URL and is then named by digest. The control plane checks the stored object with a HEAD before it accepts the write.
+`PersonaFileLimit` caps a file sent inline at 65,536 bytes and a persona's files at 262,144 bytes. A larger file goes up through a presigned upload URL and is then named by digest. The control plane checks the stored object with a HEAD before it accepts the write. Every persona read returns each file's bytes: base64 inline for a file of at most 65,536 bytes, and a presigned download URL for a larger one. Each file reads as the matching persona file write with the fields the server adds, so a persona read without those fields is a valid persona create, and a large file copies by digest without an upload.
 
 ## Tickets
 

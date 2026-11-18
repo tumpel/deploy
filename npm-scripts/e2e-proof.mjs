@@ -237,7 +237,7 @@ const TOOL_CALL_LINE = /^\[[^\]\s]+\]/;
 const pollConnectorTurn = async (client, sessionId, turnId, t0) => {
   const firstLineLimit =
     (settings.turnImageFetchBudgetSeconds +
-      settings.turnClaimBudgetSeconds +
+      settings.turnOfferTtlSeconds +
       CLONE_SECONDS +
       settings.turnFirstLineBudgetSeconds) *
     1000;
