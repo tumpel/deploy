@@ -58,59 +58,6 @@ jobs:
           curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
           "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
 
-  binaries:
-    needs: generate
-    runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 30
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-binaries
-      cancel-in-progress: true
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - name: Put the runner rustup on PATH and keep a target dir per runner and job
-        run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "CARGO_TARGET_DIR=$HOME/cargo-target/$RUNNER_NAME-${{ github.job }}" >> "$GITHUB_ENV"
-
-      - name: Install the toolchain rust-toolchain.toml pins
-        run: rustup toolchain install
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: build-typespec
-          path: build
-
-      - name: Mark the downloaded build/ as current
-        run: touch build/.typespec
-
-      - name: Generate the Rust API crate into build/
-        run: make generate-rust
-
-      - name: Build the CLI the integration tests drive
-        run: cargo build -p tumpel
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: rust-binaries
-          path: |
-            ${{ env.CARGO_TARGET_DIR }}/debug/tumpel
-          if-no-files-found: error
-          retention-days: 1
-
-      - if: failure()
-        name: Cancel the rest of the run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
-          "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
-
   rust:
     needs: generate
     runs-on: [self-hosted, tumpel-build]
@@ -235,15 +182,13 @@ jobs:
           "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
 
   integration:
-    needs: binaries
+    needs: generate
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}-integration
       cancel-in-progress: true
     name: integration tests
-    env:
-      TUMPEL_PREBUILT_BINARIES: "1"
     steps:
       - uses: actions/checkout@v7
 
@@ -260,24 +205,11 @@ jobs:
       - name: Mark the downloaded build/ as current
         run: touch build/.typespec
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: rust-binaries
-          path: target/debug
-
-      - name: Make the downloaded CLI executable
-        run: chmod +x target/debug/tumpel
-
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Fetch the released supervisor, checked against its sha256 and cached per version
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: TUMPEL_SUPERVISOR_CACHE="$HOME/supervisor-releases" npm run supervisor:fetch
-
-      - name: Run the integration tests against the built CLI and the released supervisor
-        run: npm run test:integration -w @tumpel/control-plane
+      - name: Run the integration tests against the supervisor and CLI release-pins.json names
+        run: TUMPEL_RELEASE_CACHE="$HOME/tumpel-releases" npm run test:integration -w @tumpel/control-plane
 
       - if: failure()
         name: Cancel the rest of the run

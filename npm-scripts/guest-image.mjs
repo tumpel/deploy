@@ -610,7 +610,9 @@ const main = async () => {
     return;
   }
   if (!existsSync(pins.guestBin))
-    die(`${pins.guestBin} is missing; build it with TUMPEL_TARGET=${PINS[arch].target} npm run guest:build`);
+    die(
+      `${pins.guestBin} is missing; fetch the pinned guest with npm run release:fetch -- guest and set TUMPEL_GUEST_BIN=.tmp/release-binaries/tumpel-guest`,
+    );
   for (const harness of name === "all" ? layerHarnesses() : [name]) await buildImage(harness, pins);
 };
 

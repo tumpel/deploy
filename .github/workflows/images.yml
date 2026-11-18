@@ -15,7 +15,6 @@ permissions:
 
 env:
   TUMPEL_STAGE: ${{ inputs.stage || 'dev' }}
-  CARGO_TERM_COLOR: never
   BUILD_ARM64: "false"
 
 jobs:
@@ -46,11 +45,8 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.include) }}
     env:
-      TUMPEL_TARGET: ${{ matrix.target }}
       TUMPEL_IMAGE_DIR: ${{ github.workspace }}/.tmp/images-${{ matrix.arch }}
-      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.arch == 'arm64' && 'aarch64-linux-gnu-gcc' || '' }}
-      CC_aarch64_unknown_linux_gnu: ${{ matrix.arch == 'arm64' && 'aarch64-linux-gnu-gcc' || '' }}
-      AR_aarch64_unknown_linux_gnu: ${{ matrix.arch == 'arm64' && 'aarch64-linux-gnu-ar' || '' }}
+      TUMPEL_GUEST_BIN: ${{ github.workspace }}/.tmp/release-binaries/tumpel-guest
     steps:
       - uses: actions/checkout@v7
 
@@ -59,33 +55,19 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Put the runner rustup on PATH
-        run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-
-      - name: Install the toolchain rust-toolchain.toml pins
-        run: |
-          rustup toolchain install
-          rustup target add ${{ matrix.target }}
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          cache-bin: "false"
-          shared-key: release-${{ matrix.target }}
-          save-if: false
-
       - name: Install image tools
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
 
       - name: Generate the TypeSpec output into build/
-        run: npm run generate
+        run: npm run generate:typespec
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Build the guest
-        run: npm run guest:build
+      - name: Fetch the guest of the supervisor release-pins.json names
+        run: npm run release:fetch -- guest
 
       - name: Build the guest images
         run: npm run guest:image -- all ${{ matrix.arch }}
