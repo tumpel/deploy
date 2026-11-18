@@ -170,6 +170,8 @@ Each base image carries the build script at `/opt/tumpel/prebuild.mjs`, so the b
 
 `prebuild.mjs build <out dir>` runs with a git checkout of the repository at `/root/workspace`, which must be a real directory. Before the lifecycle commands run, it replaces `.git/config` with the core settings and an origin URL without user info. Right before the commands run, it scans the image's files as a baseline. It runs `onCreateCommand`, `updateContentCommand` and `postCreateCommand` with exactly the environment that `guest.json` names, plus `containerEnv`. On timeout it kills the whole process group. It writes `layer.tar` and `layer.json` to the out directory, and a layer over 5 GiB fails `LayerTooLarge`.
 
+`prebuild.mjs start` runs `postStartCommand` once a session's first turn on a restored prebuild has pulled the branch, so a repository can regenerate what the prebuild generated at an older commit. It shares the image's `cloneSeconds` with the pull, and a failure ends that turn `RepositoryCloneFailed` with a detail that starts `PostStartFailed` and keeps the prebuild marked, so the next turn pulls and runs it again.
+
 `prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>` takes the job's OIDC token from `TUMPEL_JOB_TOKEN` when the orb sets it, and otherwise asks `ACTIONS_ID_TOKEN_REQUEST_URL` for it with the API origin as `aud`. It exchanges the token, PUTs the layer and calls `complete`.
 
 ### Release

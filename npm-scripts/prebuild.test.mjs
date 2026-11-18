@@ -180,6 +180,17 @@ test("run in a box without guest.json takes the environment tumpel-guest starts 
   assert.ok(!env.some((line) => line.startsWith("TUMPEL_PREBUILD_ROOT=")), env.join(", "));
 });
 
+test("start runs postStartCommand alone", () => {
+  const { root } = fixture(
+    "start",
+    () => '{ "onCreateCommand": "echo on-create >> order", "postStartCommand": "echo post-start >> order" }\n',
+  );
+  const env = { PATH: "/usr/bin:/bin", HOME: join(root, "root"), LANG: "C.UTF-8", TUMPEL_PREBUILD_ROOT: root };
+  const result = spawnSync(process.execPath, [SCRIPT, "start"], { env, encoding: "utf8", timeout: 20000 });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(readFileSync(join(root, "root", "workspace", "order"), "utf8"), "post-start\n");
+});
+
 test("features are refused with a named failure", () => {
   const { root, out } = fixture("features", () => '{ "features": { "ghcr.io/devcontainers/features/node:1": {} } }\n');
   const result = prebuild(root, out);

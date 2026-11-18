@@ -39,6 +39,10 @@ const USAGE = `usage:
     in place of guest.json, since a box booted from the base image and a harness layer has none.
     Writes no layer, since the box's snapshot holds the result. Leaves .git/config as the clone
     wrote it.
+  prebuild.mjs start
+    Runs in a tumpel box restored from a prebuild, right after tumpel-guest pulls the branch at the
+    session's first turn: runs postStartCommand the way run runs the lifecycle commands, so the
+    repository can bring what the prebuild generated up to the pulled commit.
   prebuild.mjs upload <out dir> <api origin> <tenant id> <prebuild id>
     Runs in a job that runs no repository code. Takes the job's OIDC token from TUMPEL_JOB_TOKEN
     when set, as the CircleCI orb mints it with aud <api origin>; otherwise, in a GitHub Actions step
@@ -243,9 +247,9 @@ const runCommand = (command, cwd, env, deadline) =>
     });
   });
 
-const runLifecycle = async (workspace, env, devcontainer) => {
+const runLifecycle = async (workspace, env, devcontainer, names = LIFECYCLE, prefix = "BuildFailed") => {
   const deadline = Date.now() + BUILD_SECONDS * 1000;
-  for (const name of LIFECYCLE) {
+  for (const name of names) {
     const failures = (
       await Promise.all(
         commandsOf(name, devcontainer.config[name], sourceOf(devcontainer)).map((command) =>
@@ -253,7 +257,7 @@ const runLifecycle = async (workspace, env, devcontainer) => {
         ),
       )
     ).filter(Boolean);
-    if (failures.length > 0) die(`BuildFailed: ${failures.join("; ")}; ${fixOf(devcontainer, name)}`);
+    if (failures.length > 0) die(`${prefix}: ${failures.join("; ")}; ${fixOf(devcontainer, name)}`);
   }
 };
 
@@ -495,8 +499,22 @@ const run = async () => {
   await runLifecycle(workspace, commandEnvironment(guestEnvironment(process.env), devcontainer), devcontainer);
 };
 
+const start = async () => {
+  const workspace = join(resolve(process.env.TUMPEL_PREBUILD_ROOT ?? "/"), WORKSPACE);
+  checkout(workspace);
+  const devcontainer = readDevcontainer(workspace);
+  await runLifecycle(
+    workspace,
+    commandEnvironment(guestEnvironment(process.env), devcontainer),
+    devcontainer,
+    ["postStartCommand"],
+    "PostStartFailed",
+  );
+};
+
 const [command, ...args] = process.argv.slice(2);
 if (command === "build" && args.length === 1) await build(args[0]);
 else if (command === "run" && args.length === 0) await run();
+else if (command === "start" && args.length === 0) await start();
 else if (command === "upload" && args.length === 4) await upload(...args);
 else die(USAGE);
