@@ -12,102 +12,8 @@ permissions:
   actions: write
   contents: read
 
-env:
-  CARGO_TERM_COLOR: never
-
 jobs:
-  generate:
-    runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/cache@v4
-        id: build-cache
-        with:
-          path: build
-          key: build-typespec-${{ hashFiles('typespec/**', '!typespec/node_modules/**', 'Makefile') }}
-
-      - if: steps.build-cache.outputs.cache-hit != 'true'
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - if: steps.build-cache.outputs.cache-hit != 'true'
-        name: Generate the TypeSpec output into build/
-        run: make generate-ts
-
-      - if: steps.build-cache.outputs.cache-hit != 'true'
-        name: Fail on an uncommitted rewrite of the channel wire lock
-        run: git diff --exit-code typespec/channel-wire
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: build-typespec
-          path: build
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
-      - if: failure()
-        name: Cancel the rest of the run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
-          "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
-
-  rust:
-    needs: generate
-    runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 30
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-rust
-      cancel-in-progress: true
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - name: Put the runner rustup on PATH and keep a target dir per runner and job
-        run: |
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
-          echo "CARGO_TARGET_DIR=$HOME/cargo-target/$RUNNER_NAME-${{ github.job }}" >> "$GITHUB_ENV"
-
-      - name: Install the toolchain rust-toolchain.toml pins
-        run: rustup toolchain install
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: build-typespec
-          path: build
-
-      - name: Mark the downloaded build/ as current
-        run: touch build/.typespec
-
-      - name: Generate the Rust API crate into build/
-        run: make generate-rust
-
-      - name: Run clippy and the rustfmt check
-        run: npm run check:rust
-
-      - name: Run the cargo tests
-        run: cargo test --workspace
-
-      - if: failure()
-        name: Cancel the rest of the run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
-          "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
-
   check:
-    needs: generate
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
@@ -121,19 +27,11 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: build-typespec
-          path: build
-
-      - name: Mark the downloaded build/ as current
-        run: touch build/.typespec
-
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Run the TypeScript checks
-        run: npm run check:ts
+      - name: Run the checks
+        run: npm run check
 
       - if: failure()
         name: Cancel the rest of the run
@@ -159,14 +57,6 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: build-typespec
-          path: build
-
-      - name: Mark the downloaded build/ as current
-        run: touch build/.typespec
-
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
@@ -182,7 +72,6 @@ jobs:
           "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
 
   integration:
-    needs: generate
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
@@ -196,14 +85,6 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: build-typespec
-          path: build
-
-      - name: Mark the downloaded build/ as current
-        run: touch build/.typespec
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund

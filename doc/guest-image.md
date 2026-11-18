@@ -1,6 +1,6 @@
 # Guest image
 
-`npm run guest:build` builds `tumpel-guest` as a static binary for `TUMPEL_TARGET`, by default `x86_64-unknown-linux-gnu`. `npm run guest:image -- <harness> [amd64|arm64]` then builds a read-only ext4 rootfs without root, for `ClaudeCode` from the harness catalog, `Shell` for tests, or `all` for both, for the given architecture, by default the build machine's. It refuses arm64 unless `BUILD_ARM64=true`. It writes `<digest>.ext4`, `<digest>.json` (`GuestImageManifest`) and `<kernelDigest>.vmlinux` to `$TUMPEL_IMAGE_DIR`, by default `~/development/.tmp/tumpel-images`.
+`npm run release:fetch -- guest` puts the `tumpel-guest` of the supervisor release that `release-pins.json` names at `.tmp/release-binaries/tumpel-guest`, and `TUMPEL_GUEST_BIN` names another. `npm run guest:image -- <harness> [amd64|arm64]` then builds a read-only ext4 rootfs without root, for `ClaudeCode` from the harness catalog, `Shell` for tests, or `all` for both, for the given architecture, by default the build machine's. It refuses arm64 unless `BUILD_ARM64=true`. It writes `<digest>.ext4`, `<digest>.json` (`GuestImageManifest`) and `<kernelDigest>.vmlinux` to `$TUMPEL_IMAGE_DIR`, by default `~/development/.tmp/tumpel-images`.
 
 The build:
 
@@ -34,7 +34,7 @@ Building an image needs `unzip` on the build machine besides the tools under Hos
 
 ## Guest drive
 
-`npm run guest:drive` packs the built `tumpel-guest`, its systemd unit, the guest drive's `init` and `base-layout` (`BaseLayout.Version`) into `.tmp/guest-drive/<TUMPEL_TARGET>.squashfs` with `mksquashfs -comp zstd -all-root -all-time 0 -mkfs-time 0`, so one guest binary yields one digest. `npm run supervisor:build` builds the guest, pack the drive and embed it in the supervisor through `TUMPEL_GUEST_DRIVE`; a release build without it fails. A debug build carries no drive. At start the supervisor writes its drive to `<imageCacheDir>/guest/<sha256>.squashfs`, deletes every other file there, and exits `GuestDriveUnwritable`, code 8, when it cannot within 60 seconds.
+The supervisor release of tumpel/supervisor embeds the guest drive: `tumpel-guest`, its systemd unit, the guest drive's `init` and `base-layout` (`BaseLayout.Version`) in one squashfs. At start the supervisor writes its drive to `<imageCacheDir>/guest/<sha256>.squashfs`, deletes every other file there, and exits `GuestDriveUnwritable`, code 8, when it cannot within 60 seconds.
 
 The guest drive's `init` runs from the base's stub init, with the drive mounted at `/opt/tumpel/guest`. It fails `base-layout` unless the base's `/etc/tumpel/base-layout` holds the drive's `base-layout`, then mounts the stack of EDD-007. It reads the harness mount point from `tumpel.harness=<harness>/<version>` on the kernel command line, needs `/opt/harness`, `/opt/tumpel/guest`, `/run`, `/mnt`, `/rom` and `/overlay` in the base, and enables the unit from a tmpfs at `/run/systemd/system`.
 
@@ -44,10 +44,6 @@ The vsock protocol is length-prefixed JSON: a 4-byte big-endian length, then one
 
 - `/dev/kvm` readable by the supervisor's user (group `kvm`), and Firecracker v1.18.0 at `firecrackerPath` in `runtime.json` (`SupervisorRuntime`). Firecracker runs unjailed as that user.
 - A pool of `boxCapacity` TAP devices owned by that user, made once by `tumpel-supervisor install` (see `test-host.md`). Device `tumpel<k>` is a TAP with host address 172.16.<k>.1/30 and IPv4 masquerade, made by systemd-networkd or, without networkd, by `tumpel-tap-pool.service`, and its guest takes 172.16.<k>.2/30. The supervisor never needs `CAP_NET_ADMIN`. Egress is open to the internet; private and link-local destinations are dropped.
-- `unsquashfs`, `mkfs.ext4`, `debugfs`, `e2fsck` and `dpkg-deb` on the machine that builds images, and `mksquashfs` 4.6 on the machine that builds the supervisor.
+- `unsquashfs`, `mkfs.ext4`, `debugfs`, `e2fsck` and `dpkg-deb` on the machine that builds images.
 
-The host test runs a Shell box through boot, a turn, a snapshot, resume and a second turn:
-
-```sh
-TUMPEL_KVM=1 TUMPEL_IMAGE_MANIFEST=<cache>/<digest>.json cargo test -p tumpel-supervisor --features host-tests -- --nocapture
-```
+The host test that runs a Shell box through boot, a turn, a snapshot, resume and a second turn lives in tumpel/supervisor.

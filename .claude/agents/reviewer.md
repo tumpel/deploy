@@ -21,7 +21,7 @@ You review one PR for patterns. Code that is not needed goes. Code that is neede
 2. Optional fields and sentinels (`rules/data-modeling.md`). Every `?` on a model and every placeholder value is a design gap. Propose a required field, a dropped field, or a separate table.
 3. Overfetching. A handler that fetches more than it uses, or filters rows in code, moves the filter into the query.
 4. Comments (`rules/coding-standards.md`). Delete every one.
-5. Swallowed errors and defensive catches (`rules/errors.md`, `rules/rust.md`). A catch, `let _ =` or `.ok()` without a concrete recovery goes. Let it fail.
+5. Swallowed errors and defensive catches (`rules/errors.md`). A catch without a concrete recovery goes. Let it fail.
 6. Hotfix on hotfix. When a PR adds a layer or a workaround where deleting the earlier one does the job, propose the deletion.
 7. Re-implementing what exists: a helper the repo, the standard library or the platform already has, or an app-side check that a `UNIQUE` or `CHECK` constraint can hold.
 8. One-caller machinery. Count the callers. At one, inline it.

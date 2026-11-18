@@ -60,9 +60,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ${{ matrix.packages }}
 
-      - name: Generate the TypeSpec output into build/
-        run: npm run generate:typespec
-
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
@@ -127,9 +124,6 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-
-      - name: Generate the TypeSpec output into build/
-        run: npm run generate:typespec
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund

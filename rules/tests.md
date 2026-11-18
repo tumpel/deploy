@@ -1,6 +1,6 @@
 # Tests
 
-1. TypeScript tests use `node:test` in each package's `test/*.test.ts`. Rust tests run with `cargo test --workspace`. `npm test` runs the TypeScript and script tests, and `npm run test:integration` runs the control-plane integration tests.
+1. TypeScript tests use `node:test` in each package's `test/*.test.ts`. `npm test` runs the TypeScript and script tests, and `npm run test:integration` runs the control-plane integration tests.
 2. Before pushing, run the test files your change touches. CI runs the full suite on the self-hosted runner `tumpel-build`.
 3. A test proves behaviour that is hard to get right without it: a parser, a limit, an ordering, a state machine.
 4. Every bug fix ships with a regression test that fails before the fix and passes after it.

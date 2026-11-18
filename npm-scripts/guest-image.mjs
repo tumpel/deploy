@@ -87,7 +87,7 @@ const pinsFor = (arch) => {
   return {
     arch,
     target: pins.target,
-    guestBin: process.env.TUMPEL_GUEST_BIN ?? join(ROOT, "target", pins.target, "release", "tumpel-guest"),
+    guestBin: process.env.TUMPEL_GUEST_BIN ?? join(ROOT, ".tmp", "release-binaries", "tumpel-guest"),
     kernel: { url: `${ci}/vmlinux-6.18.62`, digest: pins.kernel },
     rootfs: { url: `${ci}/ubuntu-24.04.squashfs`, digest: pins.rootfs },
     git: {
@@ -611,7 +611,7 @@ const main = async () => {
   }
   if (!existsSync(pins.guestBin))
     die(
-      `${pins.guestBin} is missing; fetch the pinned guest with npm run release:fetch -- guest and set TUMPEL_GUEST_BIN=.tmp/release-binaries/tumpel-guest`,
+      `${pins.guestBin} is missing; fetch the pinned guest with npm run release:fetch -- guest, or set TUMPEL_GUEST_BIN to a tumpel-guest binary`,
     );
   for (const harness of name === "all" ? layerHarnesses() : [name]) await buildImage(harness, pins);
 };

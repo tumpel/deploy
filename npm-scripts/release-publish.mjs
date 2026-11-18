@@ -16,18 +16,16 @@ import {
   ReleaseManifestSchema,
 } from "@tumpel/schemas";
 import { CHECKSUM_HEADER, checksumOf, presignUrl } from "../packages/control-plane/src/presign.ts";
-import {
-  CLI_REPOSITORY,
-  cliAsset,
-  SUPERVISOR_REPOSITORY,
-  supervisorAsset,
-} from "../packages/control-plane/src/release-assets.ts";
 import { layerHarnesses, layerPrefix, layerRecipe, recipeKey } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 import {
+  CLI_REPOSITORY,
+  cliAsset,
   downloadAsset,
   RELEASE_CACHE,
   releasePins,
+  SUPERVISOR_REPOSITORY,
+  supervisorAsset,
   supervisorRefusal,
   supervisorRelease,
 } from "./release-download.mjs";
@@ -441,7 +439,6 @@ const pinnedBinaries = async (imageGuestProtocolVersion) => {
   const release = await supervisorRelease(pins.supervisor).catch((error) => die(error.message));
   const refusal = supervisorRefusal(release, ChannelProtocol, GuestProtocol, imageGuestProtocolVersion);
   if (refusal !== undefined) die(refusal);
-  const store = storage();
   const pinned = async (architecture) => {
     const listed = release.binaries.find((binary) => binary.architecture === architecture);
     if (!listed) die(`supervisor ${pins.supervisor} carries no ${architecture} binary; pin a release that does`);
@@ -456,20 +453,16 @@ const pinnedBinaries = async (imageGuestProtocolVersion) => {
     console.log(
       `supervisor ${pins.supervisor} ${architecture} ${supervisor.digest}, CLI ${pins.cli} ${architecture} ${cli.digest}`,
     );
-    const arch = architecture.toLowerCase();
-    await Promise.all([
-      uploadFile(store, `supervisor/${arch}/${supervisor.digest}`, supervisor.path),
-      uploadFile(store, `cli/${arch}/${cli.digest}`, cli.path),
-    ]);
     return {
       supervisor: {
         architecture,
         sha256: supervisor.digest,
         sizeBytes: supervisor.sizeBytes,
         supervisorVersion: pins.supervisor,
+        downloadUrl: supervisor.url,
         guestProtocolVersion: release.guestProtocolVersion,
       },
-      cli: { architecture, sha256: cli.digest, sizeBytes: cli.sizeBytes, cliVersion: pins.cli },
+      cli: { architecture, sha256: cli.digest, sizeBytes: cli.sizeBytes, cliVersion: pins.cli, downloadUrl: cli.url },
     };
   };
   const binaries = await Promise.all([...ENABLED].map(pinned));

@@ -30,42 +30,8 @@ jobs:
           if [ "$BUILD_ARM64" = true ]; then include='[{"arch": "amd64"}, {"arch": "arm64"}]'; else include='[{"arch": "amd64"}]'; fi
           echo "include=$include" >> "$GITHUB_OUTPUT"
 
-  generate:
-    runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/cache@v4
-        id: build-cache
-        with:
-          path: build
-          key: build-typespec-${{ hashFiles('typespec/**', '!typespec/node_modules/**', 'Makefile') }}
-
-      - if: steps.build-cache.outputs.cache-hit != 'true'
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - if: steps.build-cache.outputs.cache-hit != 'true'
-        name: Generate the TypeSpec output into build/
-        run: make generate-ts
-
-      - if: steps.build-cache.outputs.cache-hit != 'true'
-        name: Fail on an uncommitted rewrite of the channel wire lock
-        run: git diff --exit-code typespec/channel-wire
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: build
-          path: build
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 1
-
   layers:
-    needs: [plan, generate]
+    needs: plan
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 20
     concurrency:
@@ -88,14 +54,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends squashfs-tools
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: build
-          path: build
-
-      - name: Mark the downloaded build/ as current
-        run: touch build/.typespec
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
@@ -142,7 +100,7 @@ jobs:
         run: rm -rf "$TUMPEL_LAYER_DIR"
 
   publish:
-    needs: [generate, layers]
+    needs: layers
     runs-on: [self-hosted, tumpel-build]
     timeout-minutes: 10
     concurrency:
@@ -157,14 +115,6 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-
-      - uses: actions/download-artifact@v8
-        with:
-          name: build
-          path: build
-
-      - name: Mark the downloaded build/ as current
-        run: touch build/.typespec
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
