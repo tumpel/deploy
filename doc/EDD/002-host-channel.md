@@ -31,6 +31,8 @@ Every frame carries `seq` and `ack`. Both counters survive a supervisor restart.
 
 The host sends a Heartbeat with its usage every 10 s after Welcome, and the tenant updates its `host_usage` row. After 10 s of silence, the control plane sends its own Heartbeat. After 30 s of silence, a side closes with 4408. The supervisor reconnects with a backoff from 1 s to 30 s.
 
+Each Heartbeat also names every session the host holds a box for. The supervisor reads that list, then sends every message its boxes queued before it, and only then the Heartbeat. So the first Heartbeat after Welcome follows the host's resent frames. On that Heartbeat the control plane fails each Running turn on the host whose session the list does not name with BoxLost, and the session goes Idle and takes its next turn. It compares inside the same blocking section as a frame, so no frame lands halfway. A turn the host finished while disconnected reaches the control plane first and keeps its own outcome. A host on channel protocol 18 to 21 sends no list and reports nothing.
+
 ## Budgets and named failures
 
 Each budget runs as one timer of its session and ends with the turn.
