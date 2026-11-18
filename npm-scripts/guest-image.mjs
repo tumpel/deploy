@@ -26,6 +26,7 @@ import {
   LTS_NODE_VERSION,
   NODE_ARCH,
   PYTHON_VERSION,
+  RUST_VERSION,
   UV_PYTHON_DIR,
   WORKING_DIRECTORY,
 } from "./guest-image-settings.mjs";
@@ -44,7 +45,6 @@ const GH_VERSION = "2.103.3";
 const FNM_VERSION = "1.39.0";
 const UV_VERSION = "0.13.8";
 const RUSTUP_VERSION = "1.29.3";
-const RUST_VERSION = "1.100.0";
 const RUST_CHANNEL_DIGEST = "3051e859570f64a8c5acb9d09e87425db52c7d97287c67e8f6d57d7d34ef9258";
 const PYTHON_BUILD = "20261110";
 const NODE_HOME = "/opt/tumpel/node";

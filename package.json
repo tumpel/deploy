@@ -18,7 +18,8 @@
     "comments:check": "node npm-scripts/comments-check.mjs",
     "secrets:check": "node npm-scripts/secrets-check.mjs",
     "prose:check": "node npm-scripts/prose-check.mjs",
-    "check": "npm run lint && npm run comments:check && npm run secrets:check && npm run prose:check && npm run typecheck && npm run surface:check",
+    "templates:check": "node npm-scripts/templates-check.mjs",
+    "check": "npm run lint && npm run comments:check && npm run secrets:check && npm run prose:check && npm run templates:check && npm run typecheck && npm run surface:check",
     "prepare": "git config core.hooksPath .githooks",
     "test": "npm test --workspaces --if-present && node --test --test-timeout=30000 npm-scripts/*.test.mjs",
     "test:integration": "npm run test:integration -w @tumpel/control-plane",
@@ -49,8 +50,8 @@
     "workerd@1.20261113.1": true
   },
   "dependencies": {
-    "@tumpel/openapi": "https://github.com/tumpel/protocol/releases/download/v0.3.0/tumpel-openapi-0.3.0.tgz",
-    "@tumpel/schemas": "https://github.com/tumpel/protocol/releases/download/v0.3.0/tumpel-schemas-0.3.0.tgz",
+    "@tumpel/openapi": "https://github.com/tumpel/protocol/releases/download/v0.4.0/tumpel-openapi-0.4.0.tgz",
+    "@tumpel/schemas": "https://github.com/tumpel/protocol/releases/download/v0.4.0/tumpel-schemas-0.4.0.tgz",
     "zod": "^4.6.7"
   }
 }

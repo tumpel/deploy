@@ -1,9 +1,11 @@
+import { GUEST_TOOLCHAINS } from "../packages/control-plane/src/guest-toolchains.ts";
 import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
 
 export const CLONE_SECONDS = 120;
 export const WORKING_DIRECTORY = "/root/workspace";
-export const LTS_NODE_VERSION = "26.13.1";
-export const PYTHON_VERSION = "3.15.2";
+export const LTS_NODE_VERSION = GUEST_TOOLCHAINS.Node;
+export const PYTHON_VERSION = GUEST_TOOLCHAINS.Python;
+export const RUST_VERSION = GUEST_TOOLCHAINS.Rust;
 export const FNM_DIR = "/root/.local/share/fnm";
 export const UV_PYTHON_DIR = "/root/.local/share/uv/python";
 export const ENVIRONMENT = {
