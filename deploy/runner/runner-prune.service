@@ -1,0 +1,7 @@
+[Unit]
+Description=Prune build caches and scratch on the CI runner VM
+
+[Service]
+Type=oneshot
+User=runner
+ExecStart=/usr/local/bin/runner-prune
