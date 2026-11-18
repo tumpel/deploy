@@ -60,7 +60,7 @@ const compileRule = (rule) => ({
 
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-const loadLiterals = (path) => {
+export const loadLiterals = (path) => {
   if (!path || !existsSync(expand(path))) return [];
   const entries = JSON.parse(readFileSync(expand(path), "utf8"));
   return entries.map((entry, index) =>
@@ -273,7 +273,7 @@ const localParts = (time, zone) => {
   };
 };
 
-const inWorkingHours = (time, zone) => {
+export const inWorkingHours = (time, zone) => {
   const { weekday, second } = localParts(time, zone);
   return weekday >= 1 && weekday <= 5 && second >= WORK_START && second < WORK_END;
 };
@@ -540,7 +540,7 @@ const listBlobs = (repo) => {
 const introducingCommit = (repo, object) =>
   git(repo, ["log", "--all", "--reverse", "--format=%h", `--find-object=${object}`]).split("\n")[0] || "unknown";
 
-const scanRepo = async ({ repo, rules, literals, isPublic }) => {
+export const scanRepo = async ({ repo, rules, literals, isPublic }) => {
   const findings = [];
   const detectors = isPublic ? [...literals, ...rules.blobRules].map((rule) => [rule.name, rule.detector]) : [];
   const allowed = rules.scanAllowedEmailDomains ?? [];
@@ -617,7 +617,7 @@ const gitleaksScan = (repo) => {
   };
 };
 
-const histogram = (repo) => {
+export const histogram = (repo) => {
   const rows = git(repo, ["log", "--all", "--format=%at %ai|%ct %ci"]).split("\n").filter(Boolean);
   const grid = Array.from({ length: 7 }, () => Array(24).fill(0));
   let working = 0;
@@ -730,16 +730,20 @@ const renderReport = ({ config, results, sourceCommits, generatedAt }) => {
   return lines.join("\n");
 };
 
-const main = async () => {
-  const args = parseArgs(process.argv.slice(2));
-  const config = JSON.parse(readFileSync(args.config, "utf8"));
-  const rawRules = JSON.parse(readFileSync(args.rules, "utf8"));
-  const rules = {
+export const loadRules = (path) => {
+  const rawRules = JSON.parse(readFileSync(path, "utf8"));
+  return {
     ...rawRules,
     blobRules: rawRules.blobRules.map(compileRule),
     messageRules: rawRules.messageRules.map(compileRule),
     attributionRules: (rawRules.attributionRules ?? []).map(compileRule),
   };
+};
+
+const main = async () => {
+  const args = parseArgs(process.argv.slice(2));
+  const config = JSON.parse(readFileSync(args.config, "utf8"));
+  const rules = loadRules(args.rules);
   const literals = loadLiterals(config.literalsFile);
   const output = expand(args.output ?? config.output);
   const work = join(output, ".work");
@@ -792,4 +796,4 @@ const main = async () => {
   }
 };
 
-await main();
+if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
