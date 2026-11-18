@@ -71,7 +71,7 @@ The code that changes a state appends its event in the same `transactionSync`. A
 
 The log keeps 7 days. Each insert deletes rows older than that in the same transaction, through an index on `created_at`. A read with an `afterEventId` older than the oldest row fails 410 `EventCursorExpired`. Its fix tells the client to read current state and continue from the `lastEventId` that read returns.
 
-After a Tenant API request that appended an event, the tenant Durable Object wakes the tenant's `EventChannel` (D4). `waitTurns` keeps its in-memory waiters until a later slice moves it onto the channel.
+After a Tenant API request that appended an event, the tenant Durable Object wakes the tenant's `EventChannel` (D4). The turn wait waits the same way as the long poll: the Worker notes the end of the log, reads the turns at once through the Tenant API, and waits on the channel for a `TurnCompleted` or `TurnFailed` of one of them.
 
 ## Reading the log
 
