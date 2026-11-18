@@ -1,13 +1,13 @@
 # Test hosts
 
-`tumpel-host` is a libvirt domain on the hypervisor `box` with nested KVM, for running the MicroVM runtime. Reach it from `sandbox` with `ssh tumpel-host` (192.168.122.188, user `mvhenten`, network `default`).
+`tumpel-host` is a libvirt domain on the hypervisor `box` with nested KVM, for running the MicroVM runtime. Reach it from `sandbox` with `ssh tumpel-host` (192.168.122.216, user `mvhenten`, network `default`). It is the dedicated host of the dev stage and runs the supervisor all the time.
 
 Test hosts are amd64, and releases build amd64 only: the flag `BUILD_ARM64` in `.github/workflows/release.yml` and `.github/workflows/images.yml` stays `false`. Nothing claims arm64 host support until a real arm64 host passes the proof.
 
-- 4 vCPU, 8 GiB, q35, `<cpu mode='host-passthrough'>`, so `/dev/kvm` exists in the guest.
-- Disk `/mnt/nvme/vms/tumpel-host.qcow2`, 40 G, standalone qcow2 converted from `~/vm-staging/noble-server-cloudimg-amd64-20261017.img` (Ubuntu 24.04, sha256 `04e8f246...5b6c94`, checked against Ubuntu's SHA256SUMS).
-- Cloud-init NoCloud seed `tumpel-host-seed.iso` in the same directory, built from `~/vm-staging/tumpel-host-seed/{meta-data,user-data}`: passwordless sudo, the group `kvm`, sandbox's key, no password login, `qemu-guest-agent`, 2 G swapfile.
-- Domain XML: `~/vm-config/tumpel-host.xml` on box. Autostart is off.
+- 14 vCPU, 44 GiB, q35, `<cpu mode='host-passthrough'>`, so `/dev/kvm` exists in the guest. The memory is oversubscribed on purpose.
+- Disk `/mnt/nvme/vms/tumpel-host.qcow2`, 400 G sparse, standalone qcow2 converted from `~/vm-staging/noble-server-cloudimg-amd64-20261017.img` (Ubuntu 24.04, sha256 `04e8f246...5b6c94`, checked against Ubuntu's SHA256SUMS).
+- Cloud-init NoCloud seed `tumpel-host-seed.iso` in the same directory, built from `~/vm-staging/tumpel-host-seed/{meta-data,user-data}`: passwordless sudo, the group `kvm`, sandbox's key, no password login, `qemu-guest-agent`, 4 G swapfile.
+- Domain XML: `~/vm-config/tumpel-host.xml` on box, MAC `52:54:00:ac:16:41`. Autostart is on.
 
 Rebuild, on box as `mvhenten` (no sudo needed):
 
@@ -16,8 +16,8 @@ V="virsh -c qemu:///system"; $V destroy tumpel-host; $V undefine tumpel-host
 cd ~/vm-staging/tumpel-host-seed
 xorriso -as mkisofs -output /mnt/nvme/vms/tumpel-host-seed.iso -volid cidata -joliet -rock meta-data user-data
 qemu-img convert -O qcow2 ~/vm-staging/noble-server-cloudimg-amd64-20261017.img /mnt/nvme/vms/tumpel-host.qcow2
-qemu-img resize /mnt/nvme/vms/tumpel-host.qcow2 40G
-$V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V start tumpel-host && $V domifaddr tumpel-host
+qemu-img resize /mnt/nvme/vms/tumpel-host.qcow2 400G
+$V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V autostart tumpel-host && $V start tumpel-host && $V domifaddr tumpel-host
 ```
 
 `virsh undefine --remove-all-storage` cannot delete the disk and the seed under `/mnt/nvme/vms`, because libvirt does not manage them. Remove them by hand. Each host gets its IP from a DHCP lease on the network `default`.
@@ -26,7 +26,7 @@ On a fresh host, drop the old host key on `sandbox` with `ssh-keygen -R <address
 
 ## Second host
 
-`tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. `ssh tumpel-host-2` from `sandbox` reaches it (192.168.122.218, user `mvhenten`, network `default`).
+`tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. `ssh tumpel-host-2` from `sandbox` reaches it (192.168.122.218, user `mvhenten`, network `default`). It is not defined on box now; rebuild it when a test needs it.
 
 It follows the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `tumpel-host-2.qcow2` beside the first one, from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `tumpel-host-2.xml` in that seed directory and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
 
@@ -64,7 +64,7 @@ The self-hosted runner is a second runner instance on the VM `github-actions-run
 
 `runner@` accepts only devbox's key. From `sandbox`: `ssh -J box,homelab devbox`, then `ssh -J box runner@192.168.122.50`.
 
-`box` has 16 threads and 58.7 GiB. `sandbox` takes 8 vCPU and 16 GiB, each test host 4 and 8, `github-actions-runner` 12 and 24, and `lab` 4 and 16 (off by default). A third 8 GiB host does not fit while the runner runs.
+`box` has 16 threads and 58.7 GiB. `sandbox` takes 8 vCPU and 16 GiB, `tumpel-host` 14 and 44, `github-actions-runner` 8 and 16, and `lab` 4 and 16 (off by default). Memory is oversubscribed while all three run, so `tumpel-host-2` and `lab` stay off.
 
 ## Host setup
 
