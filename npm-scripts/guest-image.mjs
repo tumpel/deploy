@@ -31,6 +31,7 @@ import {
 } from "./guest-image-settings.mjs";
 import { UBUNTU_PACKAGES } from "./guest-packages.mjs";
 import { extractArchive, layerHarnesses, layerRecipe } from "./harness-recipes.mjs";
+import { bundlePrebuild } from "./prebuild-bundle.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -487,8 +488,7 @@ const relinkIntoGuest = (tree, dir) => {
 
 const installDevTools = async (tree, pins, work) => {
   mkdirSync(join(tree, "opt/tumpel"), { recursive: true });
-  copyFileSync(join(ROOT, "npm-scripts/prebuild.mjs"), join(tree, "opt/tumpel/prebuild.mjs"));
-  chmodSync(join(tree, "opt/tumpel/prebuild.mjs"), 0o755);
+  await bundlePrebuild(join(tree, "opt/tumpel/prebuild.mjs"));
   rmSync(join(tree, "etc/resolv.conf"), { force: true });
   writeFileSync(join(tree, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 9.9.9.9\n");
   const host = hostPins();

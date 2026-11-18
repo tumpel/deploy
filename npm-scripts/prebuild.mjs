@@ -17,6 +17,14 @@ import {
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
 import { basename, dirname, join, relative, resolve } from "node:path";
+import {
+  checkDevcontainer,
+  DEVCONTAINER_PATHS,
+  describeFinding,
+  readDevcontainer,
+  resolveContainerEnv,
+  SETUP_COMMANDS,
+} from "../packages/control-plane/src/devcontainer.ts";
 
 const USAGE = `usage:
   prebuild.mjs build <out dir>
@@ -50,19 +58,6 @@ const USAGE = `usage:
     POST /v1/prebuilds/<prebuild id>/uploads for one presigned PUT of the layer, PUTs layer.tar
     before the grant expires, then calls POST /v1/prebuilds/<prebuild id>/uploads/complete.`;
 
-const LIFECYCLE = ["onCreateCommand", "updateContentCommand", "postCreateCommand"];
-const UNSUPPORTED = {
-  image:
-    "PrebuildImageUnsupported: devcontainer.json names an image; a prebuild builds on the tumpel guest image, so remove image (custom base images are a follow-up)",
-  build:
-    "PrebuildImageUnsupported: devcontainer.json names a build; a prebuild builds on the tumpel guest image, so remove build (Dockerfiles are a follow-up)",
-  dockerFile:
-    "PrebuildImageUnsupported: devcontainer.json names a dockerFile; a prebuild builds on the tumpel guest image, so remove dockerFile (Dockerfiles are a follow-up)",
-  dockerComposeFile:
-    "PrebuildImageUnsupported: devcontainer.json names a dockerComposeFile; a prebuild runs one container, so remove dockerComposeFile (Compose is a follow-up)",
-  features:
-    "PrebuildFeaturesUnsupported: devcontainer.json names features; install them from onCreateCommand instead (features are a follow-up)",
-};
 const PRUNED = ["run", "tmp", "var/tmp", "mnt", "rom", "overlay", "etc/hosts", "etc/hostname", "etc/resolv.conf"];
 const WORKSPACE = "root/workspace";
 const GUEST_CONFIG = "etc/tumpel/guest.json";
@@ -75,47 +70,6 @@ const die = (message) => {
   process.exit(1);
 };
 
-const outsideStrings = (text, step) => {
-  let out = "";
-  let index = 0;
-  while (index < text.length) {
-    if (text[index] === '"') {
-      let end = index + 1;
-      while (end < text.length && text[end] !== '"') end += text[end] === "\\" ? 2 : 1;
-      out += text.slice(index, end + 1);
-      index = end + 1;
-    } else {
-      const [emitted, next] = step(text, index);
-      out += emitted;
-      index = next;
-    }
-  }
-  return out;
-};
-
-const withoutComments = (text) =>
-  outsideStrings(text, (source, index) => {
-    if (source.startsWith("//", index)) {
-      const end = source.indexOf("\n", index);
-      return ["", end === -1 ? source.length : end];
-    }
-    if (source.startsWith("/*", index)) {
-      const end = source.indexOf("*/", index + 2);
-      return ["", end === -1 ? source.length : end + 2];
-    }
-    return [source[index], index + 1];
-  });
-
-const CLOSER_AHEAD = /\s*[}\]]/y;
-
-const withoutTrailingCommas = (text) =>
-  outsideStrings(text, (source, index) => {
-    CLOSER_AHEAD.lastIndex = index + 1;
-    return source[index] === "," && CLOSER_AHEAD.test(source) ? ["", index + 1] : [source[index], index + 1];
-  });
-
-const parseJsonc = (text) => JSON.parse(withoutTrailingCommas(withoutComments(text)));
-
 const DEFAULT_INSTALLS = [
   ["package-lock.json", "npm ci"],
   ["npm-shrinkwrap.json", "npm ci"],
@@ -126,46 +80,31 @@ const defaultConfig = (workspace) => {
   return found === undefined ? {} : { onCreateCommand: found[1] };
 };
 
-const sourceOf = (devcontainer) =>
-  devcontainer.kind === "RepositoryFile" ? devcontainer.path : "the default config, as no devcontainer.json exists";
+const DEFAULT_SOURCE = "the default config, as no devcontainer.json exists";
 
 const fixOf = (devcontainer, name) =>
   devcontainer.kind === "RepositoryFile"
     ? `fix ${name} in ${devcontainer.path}`
     : "fix what it names in package.json or the npm lockfile, or commit a .devcontainer/devcontainer.json whose onCreateCommand installs the dependencies";
 
-const readDevcontainer = (workspace) => {
-  const path = [join(workspace, ".devcontainer", "devcontainer.json"), join(workspace, ".devcontainer.json")].find(
-    (candidate) => existsSync(candidate),
+const checked = (devcontainer) => {
+  if (devcontainer.findings.length > 0) die(devcontainer.findings.map(describeFinding).join("\nprebuild: "));
+  return devcontainer;
+};
+
+const loadDevcontainer = (workspace) => {
+  const path = DEVCONTAINER_PATHS.map((candidate) => join(workspace, candidate)).find((candidate) =>
+    existsSync(candidate),
   );
   if (!path) {
     const config = defaultConfig(workspace);
     console.log(
       `prebuild: ${workspace} holds no devcontainer.json, so the prebuild runs the default: ${JSON.stringify(config)}`,
     );
-    return { kind: "Default", config };
+    return { kind: "Default", ...checked(checkDevcontainer(config, DEFAULT_SOURCE)) };
   }
-  let config;
-  try {
-    config = parseJsonc(readFileSync(path, "utf8"));
-  } catch (error) {
-    die(`DevcontainerInvalid: ${path} is not JSON with comments (${error.message}); fix the file`);
-  }
-  if (typeof config !== "object" || config === null || Array.isArray(config))
-    die(`DevcontainerInvalid: ${path} is not a JSON object; fix the file`);
-  for (const [field, message] of Object.entries(UNSUPPORTED)) {
-    const value = config[field];
-    const empty = value === undefined || (field === "features" && Object.keys(value ?? {}).length === 0);
-    if (!empty) die(`${message} (${path})`);
-  }
-  return { kind: "RepositoryFile", path, config };
+  return { kind: "RepositoryFile", path, ...checked(readDevcontainer(readFileSync(path, "utf8"), path)) };
 };
-
-const isStringMap = (value) =>
-  typeof value === "object" &&
-  value !== null &&
-  !Array.isArray(value) &&
-  Object.values(value).every((entry) => typeof entry === "string");
 
 const imageEnvironment = (root) => {
   const path = join(root, GUEST_CONFIG);
@@ -183,36 +122,6 @@ const guestEnvironment = (env) => {
       `NotAGuestBox: ${missing.join(", ")} is not set; prebuild.mjs run takes the harness environment from tumpel-guest, so start it through a prebuild turn`,
     );
   return Object.fromEntries(GUEST_VARIABLES.map((name) => [name, env[name]]));
-};
-
-const CONTAINER_ENV_REFERENCE = /\$\{containerEnv:([^}:]+)(?::([^}]*))?\}/g;
-
-const commandEnvironment = (image, devcontainer) => {
-  const { config } = devcontainer;
-  if (config.containerEnv === undefined) return image;
-  if (!isStringMap(config.containerEnv))
-    die(`DevcontainerInvalid: containerEnv in ${sourceOf(devcontainer)} is not an object of strings; fix the file`);
-  const added = Object.fromEntries(
-    Object.entries(config.containerEnv).map(([name, value]) => [
-      name,
-      value.replace(CONTAINER_ENV_REFERENCE, (_, referenced, fallback) => image[referenced] ?? fallback ?? ""),
-    ]),
-  );
-  return { ...image, ...added };
-};
-
-const commandsOf = (name, value, source) => {
-  if (value === undefined) return [];
-  if (typeof value === "string") return [{ label: name, file: "/bin/sh", args: ["-c", value] }];
-  if (Array.isArray(value) && value.length > 0 && value.every((part) => typeof part === "string"))
-    return [{ label: name, file: value[0], args: value.slice(1) }];
-  if (typeof value === "object" && value !== null && !Array.isArray(value))
-    return Object.entries(value).flatMap(([key, entry]) => {
-      if (typeof entry === "object" && !Array.isArray(entry))
-        die(`DevcontainerInvalid: ${name}.${key} in ${source} is neither a string nor an array; fix the file`);
-      return commandsOf(`${name}.${key}`, entry, source);
-    });
-  return die(`DevcontainerInvalid: ${name} in ${source} is neither a string, an array nor an object; fix the file`);
 };
 
 const killGroup = (pid) => {
@@ -247,14 +156,14 @@ const runCommand = (command, cwd, env, deadline) =>
     });
   });
 
-const runLifecycle = async (workspace, env, devcontainer, names = LIFECYCLE, prefix = "BuildFailed") => {
+const runLifecycle = async (workspace, env, devcontainer, names = SETUP_COMMANDS, prefix = "BuildFailed") => {
   const deadline = Date.now() + BUILD_SECONDS * 1000;
   for (const name of names) {
     const failures = (
       await Promise.all(
-        commandsOf(name, devcontainer.config[name], sourceOf(devcontainer)).map((command) =>
-          runCommand(command, workspace, env, deadline),
-        ),
+        devcontainer.commands
+          .filter((command) => command.lifecycle === name)
+          .map((command) => runCommand(command, workspace, env, deadline)),
       )
     ).filter(Boolean);
     if (failures.length > 0) die(`${prefix}: ${failures.join("; ")}; ${fixOf(devcontainer, name)}`);
@@ -359,8 +268,8 @@ const build = async (outDir) => {
   const outRelative = relative(root, out);
   const pruned = new Set(PRUNED);
   const skip = (path) => pruned.has(path) || path === outRelative || path === WORKSPACE;
-  const devcontainer = readDevcontainer(workspace);
-  const env = commandEnvironment(imageEnvironment(root), devcontainer);
+  const devcontainer = loadDevcontainer(workspace);
+  const env = resolveContainerEnv(imageEnvironment(root), devcontainer.containerEnv);
   resetGitConfig(workspace);
   const before = walk(root, skip);
   await runLifecycle(workspace, env, devcontainer);
@@ -495,17 +404,21 @@ const run = async () => {
   const workspace = join(root, WORKSPACE);
   checkout(workspace);
   console.log(`prebuild: running the setup step of ${workspace}`);
-  const devcontainer = readDevcontainer(workspace);
-  await runLifecycle(workspace, commandEnvironment(guestEnvironment(process.env), devcontainer), devcontainer);
+  const devcontainer = loadDevcontainer(workspace);
+  await runLifecycle(
+    workspace,
+    resolveContainerEnv(guestEnvironment(process.env), devcontainer.containerEnv),
+    devcontainer,
+  );
 };
 
 const start = async () => {
   const workspace = join(resolve(process.env.TUMPEL_PREBUILD_ROOT ?? "/"), WORKSPACE);
   checkout(workspace);
-  const devcontainer = readDevcontainer(workspace);
+  const devcontainer = loadDevcontainer(workspace);
   await runLifecycle(
     workspace,
-    commandEnvironment(guestEnvironment(process.env), devcontainer),
+    resolveContainerEnv(guestEnvironment(process.env), devcontainer.containerEnv),
     devcontainer,
     ["postStartCommand"],
     "PostStartFailed",
