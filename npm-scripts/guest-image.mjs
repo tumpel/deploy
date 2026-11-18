@@ -13,6 +13,7 @@ import {
   readlinkSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -548,6 +549,11 @@ const installDevTools = async (tree, pins, work) => {
   return components;
 };
 
+const stampUpdated = (tree) => {
+  const { mtimeNs } = statSync(join(tree, "usr"), { bigint: true });
+  for (const dir of ["etc", "var"]) writeFileSync(join(tree, dir, ".updated"), `TIMESTAMP_NSEC=${mtimeNs}\n`);
+};
+
 const packImage = async (work, tree, pins, out, ociConfig) => {
   const [mkfs, e2fsck] = [tool("mkfs.ext4"), tool("e2fsck")];
   run("chmod", ["-R", "u+rwX", tree]);
@@ -578,6 +584,7 @@ const buildBase = async (pins) => {
     writeFileSync(join(tree, "usr/local/sbin/tumpel-init"), STUB_INIT, { mode: 0o755 });
     writeFileSync(join(tree, "etc/tumpel/base-layout"), `${BaseLayout.Version}\n`);
     const components = await installDevTools(tree, pins, work);
+    stampUpdated(tree);
     const imageDigest = await packImage(work, tree, pins, out, {
       workingDirectory: WORKING_DIRECTORY,
       environment: ENVIRONMENT,
