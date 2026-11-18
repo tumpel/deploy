@@ -38,7 +38,8 @@
     "harness:layer": "node npm-scripts/harness-layer.mjs",
     "smoke:pi": "node npm-scripts/pi-smoke.mjs",
     "release:publish": "node npm-scripts/release-publish.mjs",
-    "release:secrets": "node npm-scripts/release-secrets.mjs"
+    "release:secrets": "node npm-scripts/release-secrets.mjs",
+    "history:split": "node npm-scripts/split/split.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.0",

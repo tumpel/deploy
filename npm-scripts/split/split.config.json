@@ -1,0 +1,108 @@
+{
+  "source": "https://github.com/mvhenten/tumpel.git",
+  "branch": "main",
+  "output": "~/development/.tmp/tumpel-split",
+  "seed": "tumpel-split-v1",
+  "literalsFile": "~/.config/tumpel-split/literals.json",
+  "dropEverywhere": [
+    "crates/",
+    "Cargo.toml",
+    "Cargo.lock",
+    "clippy.toml",
+    "rustfmt.toml",
+    "rust-toolchain.toml",
+    "Makefile",
+    "typespec/",
+    "packages/api/",
+    "packages/dashboard/",
+    "packages/pages/",
+    "npm-scripts/generate.sh",
+    "npm-scripts/generate-check.sh",
+    "npm-scripts/channel-wire.test.mjs",
+    "rules/rust.md"
+  ],
+  "repos": {
+    "backend": {
+      "public": true,
+      "tags": false,
+      "keep": {
+        "packages/control-plane/": "packages/control-plane/",
+        "packages/dashboard-site/": "packages/dashboard-site/",
+        "package.json": "package.json",
+        "package-lock.json": "package-lock.json",
+        "biome.json": "biome.json",
+        "LICENSE": "LICENSE",
+        "NOTICE": "NOTICE",
+        ".gitignore": ".gitignore",
+        "README.md": "README.md",
+        "AGENTS.md": "AGENTS.md",
+        "CLAUDE.md": "CLAUDE.md",
+        "rules/": "rules/",
+        "doc/adr/": "doc/adr/",
+        ".githooks/": ".githooks/",
+        ".claude/agents/": ".claude/agents/",
+        ".devcontainer/": ".devcontainer/",
+        "doc/surface.md": "doc/surface.md",
+        "npm-scripts/comments-check.mjs": "npm-scripts/comments-check.mjs",
+        "npm-scripts/secrets-check.mjs": "npm-scripts/secrets-check.mjs",
+        "npm-scripts/prose-check.mjs": "npm-scripts/prose-check.mjs",
+        "npm-scripts/templates-check.mjs": "npm-scripts/templates-check.mjs",
+        "npm-scripts/surface.mjs": "npm-scripts/surface.mjs",
+        "npm-scripts/release-fetch.mjs": "npm-scripts/release-fetch.mjs",
+        "npm-scripts/release-download.mjs": "npm-scripts/release-download.mjs",
+        "npm-scripts/release-download.test.mjs": "npm-scripts/release-download.test.mjs"
+      },
+      "exclude": ["packages/control-plane/infra/"]
+    },
+    "infra": {
+      "public": true,
+      "tags": false,
+      "keep": {
+        "packages/control-plane/infra/": "",
+        "packages/infra-worker/": "infra-worker/",
+        "LICENSE": "LICENSE",
+        "NOTICE": "NOTICE",
+        ".gitignore": ".gitignore"
+      },
+      "exclude": []
+    },
+    "deploy": {
+      "public": false,
+      "tags": true,
+      "rest": true,
+      "keep": {
+        "package.json": "package.json",
+        "package-lock.json": "package-lock.json",
+        "biome.json": "biome.json",
+        "LICENSE": "LICENSE",
+        "NOTICE": "NOTICE",
+        ".gitignore": ".gitignore",
+        "README.md": "README.md",
+        "AGENTS.md": "AGENTS.md",
+        "CLAUDE.md": "CLAUDE.md",
+        "rules/": "rules/",
+        "doc/adr/": "doc/adr/",
+        ".githooks/": ".githooks/",
+        ".claude/agents/": ".claude/agents/"
+      },
+      "exclude": []
+    }
+  },
+  "unsure": {
+    "package.json": "backend and deploy: carries the protocol pins and the build scripts, but also the deploy, proof and release scripts",
+    "package-lock.json": "backend and deploy: follows package.json",
+    "README.md": "backend and deploy: the public face of the project, but it describes release pins and deployment",
+    "AGENTS.md": "backend and deploy: agent rules apply to both",
+    "rules/": "backend and deploy: agent rules apply to both",
+    "doc/adr/": "backend and deploy: AGENTS.md points at the tenets ADR; the other ADRs mix product and deployment",
+    "packages/control-plane/wrangler.jsonc": "backend: wrangler dev and the tests need it, but it carries stage names and the dev D1 id (scrubbed); the stage RFC may move the stage parts to infra",
+    "packages/dashboard-site/": "backend: generic worker code, but its wrangler config names the dev and prod stages",
+    "npm-scripts/release-fetch.mjs": "backend: the integration tests fetch pinned releases with it, but it reads release-pins.json, which stays in deploy",
+    "npm-scripts/release-download.mjs": "backend: shared by release-fetch and surface, reads release-pins.json",
+    "npm-scripts/surface.mjs": "backend: writes doc/surface.md from the pinned CLI release",
+    ".devcontainer/": "backend: a contributor environment, but it may follow the deploy prebuild",
+    ".github/workflows/checks.yml": "deploy: the brief puts every workflow in deploy, but backend and infra need their own checks",
+    "packages/infra-worker/": "infra: its wrangler config names a dev worker",
+    "crates/, typespec/, packages/api/, packages/dashboard/, packages/pages/": "dropped everywhere: already extracted to tumpel/supervisor, tumpel/cli, tumpel/protocol and tumpel/dashboard"
+  }
+}
