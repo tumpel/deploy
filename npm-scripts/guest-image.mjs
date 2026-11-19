@@ -191,6 +191,22 @@ output=$(mount -t squashfs -o ro /dev/vdc /opt/tumpel/guest 2>&1) || fail guest 
 exec /opt/tumpel/guest/init
 `;
 
+const GITCONFIG = `[core]
+	bigFileThreshold = 64m
+	deltaBaseCacheLimit = 32m
+	packedGitLimit = 128m
+	packedGitWindowSize = 32m
+[pack]
+	threads = 1
+	windowMemory = 64m
+	deltaCacheSize = 32m
+[gc]
+	auto = 0
+	autoDetach = false
+[maintenance]
+	auto = false
+`;
+
 const UNIT = `[Unit]
 Description=tumpel guest agent
 DefaultDependencies=no
@@ -311,6 +327,7 @@ const recipeFor = (name, pins) => {
 const installGit = async (tree, pins) => {
   const dpkgDeb = tool("dpkg-deb");
   for (const deb of [pins.git, pins.libcurl]) run(dpkgDeb, ["-x", await download(deb), tree]);
+  writeFileSync(join(tree, "etc/gitconfig"), GITCONFIG);
   const local = join(tree, "usr", "local");
   run("tar", [
     "-xzf",
