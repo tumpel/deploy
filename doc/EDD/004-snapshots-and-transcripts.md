@@ -36,13 +36,7 @@ The exchange runs in lockstep parts of up to 500 chunks. The host sends a part o
 2. The host packs the rest. SnapshotPacks names the new packs and placements. SnapshotPackUploads answers with a presigned PUT for each pack the tenant lacks. Each URL signs `x-amz-checksum-sha256`, so object storage refuses bytes that do not match the pack's digest.
 3. The host uploads the packs, then the root, then sends SnapshotDone. Its `uploadedBytes` counts the packs plus the root.
 
-Once the root exists, the control plane reads the root and the manifest and records the snapshot and its placements. A root or manifest it cannot read fails the snapshot `UploadRejected`, naming what it could not read. A SnapshotDone that arrives after NotAnswered still records the placements, because the host builds its next snapshot on this one.
-
-## Deleting what no snapshot needs
-
-The control plane keeps only the latest stored snapshot of each session. The tenant's `session_placements` table counts references: each row is one session referencing one chunk placement. A session references the placements its latest manifest names, the placements SnapshotChunksHeld and SnapshotPacks hand it during an upload, and, on its first box, the placements of the prebuild layer it restores. When a snapshot lands, one transaction swaps the session's references to the new manifest's set, deletes the older snapshot records, deletes each chunk row that lost its last reference and each pack row with no chunk row left and no upload in flight, and returns the older roots and those packs. The control plane deletes them as the last step of the snapshot answer, and skips a pack that a new upload named again in the meantime. A delete that object storage refuses fails with `StoreDeleteFailed` and leaves those objects in storage with no record.
-
-A prebuild layer is the latest snapshot of its prebuild session. When a newer prebuild of the repository reads Done, or a session that booted from an older layer is archived, the control plane archives each older prebuild session that reads Idle, Stopped or Failed and that no live session booted from, which deletes its layer. A prebuild session in any other state keeps its layer until the next of these events.
+Once the root exists, the control plane records the snapshot and its placements. A SnapshotDone that arrives after NotAnswered still records them, because the host builds its next snapshot on this one.
 
 ## Restoring a session
 
@@ -70,7 +64,7 @@ The control plane refuses `tumpel session stop` while the session's host is offl
 
 ## Archive
 
-An archive takes a Stopped session only, and any other gets `SessionNotStopped`. In one transaction it deletes the session's snapshot records and references, and then deletes its roots, the packs of its unfinished uploads and every pack that lost its last reference, as a snapshot does. The control plane never repacks, because a stored manifest names each chunk by pack and offset, so a pack with one live chunk stays whole. The archive keeps the transcript chunks readable and sets the session Archived. Every later send and stop gets `SessionArchived`.
+An archive takes a Stopped session only, and any other gets `SessionNotStopped`. It deletes the session's snapshot roots and records. In one transaction it then deletes the chunk rows that no other session holds, the session's `session_chunks` rows and the pack rows that no chunk row points at. It then deletes those pack objects, so a failed delete leaves objects in storage and never a row for a deleted object. The control plane never repacks, so a pack with one live chunk stays whole. The archive keeps the transcript chunks readable and sets the session Archived. Every later send and stop gets `SessionArchived`.
 
 ## FAQ
 
