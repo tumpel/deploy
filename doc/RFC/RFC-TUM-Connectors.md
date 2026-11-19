@@ -1,265 +1,184 @@
-# RFC: MCP connectors on personas
+# RFC: Connectors
 
-| Field   | Value                                                                                                                                                                                                  |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Status  | Proposed                                                                                                                                                                                               |
-| Related | [RFC: Tumpel](RFC-TUM-Tumpel.md), [EDD-003](../EDD/003-credentials.md), [EDD-005](../EDD/005-mcp-and-cli.md), [EDD-007](../EDD/007-guest-layers.md), [Dashboard requirements](../product/dashboard.md) |
+| Field   | Value                                                                                                                                                                                                                                                                                                         |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status  | Draft                                                                                                                                                                                                                                                                                                         |
+| Scope   | Design only; MCP and API; no benchmarks                                                                                                                                                                                                                                                                       |
+| Related | [Credentials](../EDD/003-credentials.md), [MCP and CLI](../EDD/005-mcp-and-cli.md), [The proof](../EDD/006-end-to-end-proof.md), [Protocol compatibility](../EDD/009-protocol-compatibility.md), [ADR 007](../adr/007-connector-forwarder.md), [ADR 008](../adr/008-connector-dynamic-client-registration.md) |
 
 ## Summary
 
-A connector is a remote MCP server that a tenant registers once and attaches to personas. Every turn of every session on such a persona gets the server's tools, in whichever harness the persona runs. A connector signs in one of two ways. An OAuth connector walks the same flow claude.ai walks for a custom connector, and the sign-in belongs to the tenant or to one member. A token connector names a member of the persona's secret set. The supervisor runs an MCP relay beside each box and adds each connector's token on the host, so no connector token enters the box. A connector that fails at turn start fails the turn with a reason that names it, and one persona patch turns it off.
+A connector is a remote MCP server that a tenant connects once, with one credential. A persona lists its connectors. Each session copies that list when it starts. An Owner starts OAuth from chat, and the browser returns to the Worker's callback.
+
+Inside each box, a loopback forwarder in the guest adds the current access token to every upstream request. The forwarder fetches that token from the Worker over HTTPS. The tenant Durable Object holds the refresh token and refreshes it. A tool call keeps working after an access token expires, so a turn keeps its full 3,600 s budget. A failed upstream request fails that one tool call, and the turn goes on.
+
+The design extends the Worker, the tenant Durable Object, its encrypted storage, the dispatch grant and the guest in tumpel/supervisor. It adds one loopback listener to each running box.
+
+## Naming and scope
+
+Decision D1: "connector" means MCP access from a session. The GitHub App is a "repository integration". GitHub Actions, CircleCI and Namespace are "build integrations". Existing operations, tables and `Connections_list` keep their names, and the docs call that list infrastructure integrations. An inbound MCP client stays an OAuth grant. A GitHub MCP connector holds its own credential, apart from the repository integration.
+
+Decision D2: a connector is a public HTTPS server that speaks Streamable HTTP. It holds one of two credentials: an OAuth authorization-code grant, or one static token that the forwarder sends as `Authorization: Bearer`. Tumpel, Recall, Linear and Sentry use OAuth. A GitHub PAT uses a static token. Context7 takes either. A connector URL never carries a credential or a secret query parameter.
+
+Out of scope: the dashboard, a marketplace, managed MCP hosting, host or cloud relays, provider-specific adapters, tool aggregation and permissions, member credential overrides, unauthenticated servers, custom credential headers, stdio, private-network and desktop endpoints, legacy SSE and device-grant OAuth.
 
 ## Requirements
 
-### Business requirements
+1. R1: An Owner attaches "any remote MCP server" to a persona, "so every session on that persona gets it". Source: owner's brief, 2026-11-16.
+2. R2: Recall is the first connector. Source: ruled draft, 2026-11-16 (BR-2).
+3. R3: An Owner connects a server with OAuth "like claude.ai custom connectors" or with a token. Every operation is one MCP tool and one CLI command, so chat can start OAuth. Source: owner's brief and ruled draft (FR-4).
+4. R4: Owners manage connectors. A connected account serves every session in the tenant. Source: D12.
+5. R5: A tool call keeps working across access-token expiry in every catalog harness. The refresh token never leaves the tenant Durable Object. Source: ruling 3 of 2026-11-16 (mid-turn refresh) and `rules/architecture.md` 5.
+6. R6: No connector credential appears on a command line, in a snapshot, an API read, a log, a transcript or a channel ledger. Source: ruled draft (NFR-1, NFR-2).
+7. R7: Every phase has a time limit and a named failure that names the connector and the fix. Source: `rules/errors.md` 9.
+8. R8: Tumpel documents a connector path only after the end-to-end proof runs it. Source: ruled draft (NFR-6).
 
-- **BR-1 Any MCP server on a persona.** As a tenant, I want to attach any remote MCP server to a persona, so every session on that persona gets it.
-- **BR-2 Recall first.** Recall is the first connector.
+## Attachments
 
-### Functional requirements
+Decision D3: `Personas_create` and `Personas_update` take a required `connectorIds` list. Session start and start-from-issue copy the persona's list onto the session. A persona edit changes later sessions only. A member changes a session's tools by choosing a persona. The control plane rejects a duplicate id and a connector from another tenant.
 
-- **FR-1 Register.** An Owner registers a server by URL, with OAuth like claude.ai custom connectors or with a token in a secret set. (BR-1)
-- **FR-2 Attach.** A persona lists its connectors. Each turn of its sessions gets every one. (BR-1)
-- **FR-3 Every harness.** Claude Code, Codex, OpenCode and Pi.dev each get the relay endpoint in their own config. (BR-1)
-- **FR-4 Parity.** Every connector operation is one MCP tool and one CLI command, modelled in TypeSpec first. (BR-1)
-- **FR-5 Recall.** Recall attaches as an ordinary OAuth connector. Nothing Recall-specific enters the supervisor or the control plane. (BR-2)
+A tenant config persona lists its connectors by name. The tenant transaction resolves each name to an id, and an unknown name fails the plan. Config apply never writes a connector credential.
 
-### Non-functional requirements
+## API and MCP surface
 
-- **NFR-1 No secret on a command line.** Flags and arguments carry URLs and variable names only.
-- **NFR-2 Nothing in snapshots.** No connector token lands in the session overlay.
-- **NFR-3 Host only.** No connector token enters a box. The supervisor holds each turn's tokens in memory and never writes them to disk.
-- **NFR-4 Budgets.** Each phase below has a budget and a named failure.
-- **NFR-5 Events.** A token refreshes only when a turn needs it. Nothing polls a connector.
-- **NFR-6 Documented means proven.** Anything Tumpel documents as supported, Tumpel has built and the end-to-end proof has run.
+Decision D4: TypeSpec models every operation. `StaticConnector` and `OAuthConnector` are two variant models with no `kind` field (`rules/typespec.md` 6). Every write is conditional on `updatedAt`. Reads expose metadata, readiness, expiry and the sanitized failure.
 
-## OAuth sign-in
+| REST under `/v1`                                   | Operation                           | Input and result                                               |
+| -------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------- |
+| `GET /connectors`, `GET /connectors/{connectorId}` | `Connectors_list`, `Connectors_get` | Both variants with status                                      |
+| `POST /static-connectors`                          | `StaticConnectors_create`           | Name and URL                                                   |
+| `POST /oauth-connectors`                           | `OAuthConnectors_create`            | Name, URL and scopes                                           |
+| `PUT /connectors/{connectorId}`                    | `Connectors_update`                 | Name                                                           |
+| `DELETE /connectors/{connectorId}`                 | `Connectors_delete`                 | Deletes the connector and its credential (D5)                  |
+| `POST /oauth-connectors/{connectorId}/authorize`   | `OAuthConnectors_authorize`         | Authorize URL, attempt id and expiry                           |
+| `PUT /static-connectors/{connectorId}/token`       | `StaticConnectors_setToken`         | REST writes the token. The MCP tool returns stdin instructions |
+| `DELETE /connectors/{connectorId}/credential`      | `Connectors_clearCredential`        | Disconnects the connector for new turns (D13)                  |
 
-`tumpel oauth-connector start <name> <url>` (`OAuthConnectors_start`) answers an `authorizeUrl`, as `GitHubConnections_start` does. The control plane is the OAuth client:
+Each operation has one `tumpel_connector_*` MCP tool and one `tumpel connector` CLI command. A secret enters the CLI through `--stdin`. The URL and the auth configuration are immutable. A new endpoint means a new connector.
 
-| Phase         | Budget | Failure                       | Step                                                                                                                             |
-| ------------- | ------ | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Discovery     | 10 s   | ConnectorDiscoveryFailed      | POST `<url>` without a token, read `resource_metadata` off the 401 (RFC 9728), then the authorization server metadata (RFC 8414) |
-| Registration  | 10 s   | ConnectorRegistrationRefused  | Dynamic client registration (RFC 7591) with the redirect `<origin>/connectors/oauth/callback`                                    |
-| Authorization | 600 s  | ConnectorAuthorizationExpired | The person consents in the browser. The state is signed as the GitHub state is (EDD-003). PKCE S256, `resource` set to `<url>`   |
-| Exchange      | 10 s   | ConnectorTokenRefused         | The callback redeems the code                                                                                                    |
+`GET /connectors/oauth/callback` is browser OAuth wire outside MCP. It reports success or failure and sends the user back to chat. Chat reads completion through `Connectors_get`.
 
-A sign-in is a `TenantConnectorSignIn` or a `MemberConnectorSignIn` (Decision 1). The control plane seals the client registration, the refresh token and the access token with its expiry on the sign-in, under the tenant's data key, with the sign-in id as associated data. The sign-in then reads Connected.
+## Data and credentials
 
-When the control plane prepares an offer, it reuses the access token while it has more than `connectorTokenMinSeconds` (900 s) left. Otherwise it refreshes within 10 s, one refresh per sign-in at a time, so a server that rotates single-use refresh tokens never sees one twice. A refused or timed-out refresh fails the turn `ConnectorRefreshFailed`, quotes the server, and sets the sign-in NotConnected with the fix: connect again. A turn whose sign-in is NotConnected fails `ConnectorNotConnected`.
+Decision D5: numbered migrations add these tenant SQLite tables. Every column is mandatory. Mutable records carry timestamps and take conditional writes. The tables reuse [tenant data keys](../../packages/control-plane/src/tenant.ts), the [envelope and key-store code](../../packages/control-plane/src/envelope.ts) and `SECRETS_KEK`. Credentials seal under the context `connector/<connectorId>/credential`. Verifiers seal under a separate purpose.
 
-The supervisor refreshes a token that nears expiry mid-turn (Decision 3). How a rotated refresh token gets back to the control plane is open.
+| Table                                      | Fields beyond timestamps                                                                          |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `connector_names`                          | Connector id PK, name UNIQUE                                                                      |
+| `static_connectors`                        | Connector PK and FK, URL                                                                          |
+| `oauth_connectors`                         | Connector PK and FK, URL, scopes                                                                  |
+| `static_connector_tokens`                  | Static connector PK and FK, sealed token                                                          |
+| `oauth_connector_grants`                   | OAuth connector PK and FK, issuer, token endpoint, client id, sealed bundle                       |
+| `connector_authorizations`                 | Attempt PK, OAuth connector FK UNIQUE, initiator id, state hash UNIQUE, sealed verifier, deadline |
+| `connector_disconnections`                 | Connector PK and FK, disconnect time                                                              |
+| `connector_authorization_failures`         | Connector PK and FK, reason, safe detail                                                          |
+| `persona_connectors`, `session_connectors` | Composite PK of the referenced ids                                                                |
 
-## Token sign-in
+`connector_names` holds every name once, so the schema enforces one name across both kinds. The sealed bundle is a TypeSpec variant: with a refresh token, or an access token alone. Secret-set tables and operations never see a connector credential.
 
-`tumpel token-connector create <name> <url> --secret <SECRET_NAME>` names a secret set member. The persona's own secret set supplies the value, so two personas can reach one server under two accounts. A persona write, start or send is refused `ConnectorSecretMissing` when its set lacks a `Variable` member of that name. The supervisor keeps that member out of the box's environment.
+`Connectors_delete` refuses with 409 `ConnectorInUse` while a persona lists the connector or a Running turn uses it. `session_connectors` cascades on delete, so later turns of those sessions run without the connector.
 
-## Handover
+Reauthorization replaces the grant row in place after a successful exchange. A running turn picks up the new token at its next fetch (D12). Disconnect cancels pending authorization attempts.
 
-Each offer's DispatchGrant adds `connectors`, one flat list of entries keyed by a stable `connectorKey`. Each entry carries its type (OAuth or Token), its owner (Tenant or Member), the name, the URL and the token. When the member who sends the turn has a sign-in to a connector, that entry replaces the tenant's. The supervisor keeps the list in memory for the turn and passes the rest of the grant to the guest. The handover audit row adds the connector keys. The channel and guest protocols each step by one.
+## OAuth from chat
 
-## Relay
+Decision D6: the Worker is the OAuth client of the [MCP authorization spec](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization). It discovers protected-resource and authorization-server metadata and pins the issuer and resource. It requires HTTPS and S256. It sends `resource` on the authorization and token requests. It blocks private, loopback and link-local destinations through discovery, registration, redirects and exchange. It never forwards a token across an upstream redirect.
 
-The supervisor runs the MCP relay next to the box. Inside, the box sees one Tumpel MCP endpoint, `http://127.0.0.1:<relayPort>/mcp`, and the guest carries each call over vsock to the supervisor. For each call, the relay picks the entry, adds its token and forwards the call to the server. A persona's connectors decide which entries the relay exposes. One host gateway serves the relay and the provider keys (Decision 3).
+The Worker registers a public client through dynamic client registration (RFC 7591) on each authorization. A server that advertises no registration endpoint fails `ConnectorRegistrationUnsupported`. The Worker requests the provider's advertised scopes, with `offline_access` when the provider advertises it. [ADR 008](../adr/008-connector-dynamic-client-registration.md) records the provider evidence.
 
-## Failures and the toggle
+An authorize call creates a single-use attempt that lasts 10 minutes. Signed state binds the tenant, connector, attempt and initiating principal, and its stored hash stops a replay. The browser opens provider consent. The callback checks the state, the deadline, the issuer and the initiator's current Owner membership. It redeems the code with the sealed verifier and the exact redirect URI. It stores the bundle before the connector reads Connected. Cloudflare Access must leave the callback reachable.
 
-At turn start the relay calls `initialize` on each entry's server, within 10 s. A failure fails the turn with one reason per cause: `ConnectorUnreachable`, `ConnectorAuthRefused` or `ConnectorTokenExpired`. The detail names the connector key, its owner and its type in plain words and quotes the server. It ends with the toggle: `tumpel persona patch` turns the connector off for the next turn. `tumpel_turn_failure`, the CLI and the dashboard each show that detail.
+Discovery, registration and exchange each get 10 s. They fail `ConnectorDiscoveryFailed`, `ConnectorRegistrationUnsupported`, `ConnectorAuthorizationDenied`, `ConnectorAuthorizationExpired` or `ConnectorTokenExchangeFailed`. The Worker sanitizes provider errors and never quotes a token response.
 
-The toggle is the persona PATCH of Decision 2, which drops a connector's id from the persona's lists or puts it back. It ships as one MCP tool, one CLI command and a switch on the dashboard's persona page. A per-session override can follow. The persona PATCH comes first because Decision 2 already builds it, and an override adds a field to every session.
+| Provider   | Path                                                    |
+| ---------- | ------------------------------------------------------- |
+| Tumpel     | OAuth with DCR                                          |
+| Recall     | OAuth with DCR                                          |
+| GitHub MCP | Static token (PAT)                                      |
+| Linear     | OAuth with DCR                                          |
+| Sentry     | OAuth with DCR                                          |
+| Context7   | OAuth with DCR at `/mcp/oauth`, or an API key at `/mcp` |
 
-## Harness wiring
+Each provider's allowlist, consent screen and refresh-grant lifetime are acceptance conditions. A provider that advertises DCR can still refuse Tumpel's registration.
 
-The guest writes generated config to `/run/tumpel`, a tmpfs outside the overlay. Each harness gets the relay endpoint as one streamable HTTP server named `tumpel`.
+## Forwarder
 
-| Harness     | Config                                                                                                          | Checked                       |
-| ----------- | --------------------------------------------------------------------------------------------------------------- | ----------------------------- |
-| Claude Code | `/run/tumpel/mcp.json` with `mcpServers.tumpel` of `type` `http`, passed as `--mcp-config /run/tumpel/mcp.json` | `--mcp-config` unproven       |
-| Codex       | `-c mcp_servers.tumpel.url="<relay>"` beside the image's provider flags                                         | `codex mcp add --help`, 0.147 |
-| OpenCode    | `OPENCODE_CONFIG_CONTENT` holding `mcp.tumpel` of `type` `remote`                                               | Merge order unproven          |
-| Pi.dev      | `~/.pi/agent/mcp.json` from the persona's files, as the next section says                                       | Pi `docs/mcp.md`, 1.5.2       |
+Decision D7: the guest runs one forwarder for every connector ([ADR 007](../adr/007-connector-forwarder.md)). A connector whose access token expires with no refresh token fails its calls `ConnectorAuthRefused` until an Owner reconnects it.
 
-## Pi
+Decision D8: the forwarder listens on `127.0.0.1` in each running box. Each connector gets a fixed route, `http://127.0.0.1:<port>/connectors/<connectorId>`. The generated harness config holds these URLs and no secret. The forwarder rejects a foreign `Host` and any browser `Origin`, so a browser in the box reaches no route. It refuses every request with `ConnectorTurnNotRunning` while no turn runs. It strips `Host`, `Origin` and hop-by-hop headers and adds the upstream credential.
 
-Pi has carried MCP as a built-in extension since 0.99.0, and the catalog pins 1.5.2. Pi reads user-level servers from `~/.pi/agent/mcp.json` and connects to a `url` entry over streamable HTTP. The catalog adds `.pi/agent/mcp.json` to Pi's persona file paths, so the persona carries that file:
+The forwarder sends POST, GET and DELETE to the connector's URL. It streams JSON and SSE and passes cancellation, the `Mcp-*` session and protocol headers and `Last-Event-ID`. It rewrites a transport reconnect location to the fixed route or rejects it. It never buffers a whole tool response.
 
-```json
-{ "mcpServers": { "tumpel": { "url": "http://127.0.0.1:<relayPort>/mcp" } } }
-```
+A failed upstream request fails its tool call, and the turn goes on. The forwarder returns the sanitized status as the call's result, and the harness hands that error to the model. Upstream 401 and 403 read `ConnectorAuthRefused`. The forwarder drops the OAuth challenge, so the harness never starts native OAuth. A network error reads `ConnectorUnreachable`. Connect and first byte share a 10 s budget, and a miss fails the call `ConnectorUnreachable`. The turn budget bounds an idle stream. The forwarder never retries or replays a request.
 
-The maintained third-party extension `pi-mcp-adapter` (Nico Bailon, 7.0.1) reads the same file and turns the built-in one off. The persona needs only the built-in one.
+## Token endpoint
 
-The guest fails a Pi turn on a persona with connectors only when that file is missing, with `ConnectorSetupMissing`. Its detail says in plain words that the persona needs `.pi/agent/mcp.json` with the `tumpel` server at the relay endpoint.
+Decision D9: the forwarder fetches tokens from the Worker over HTTPS, the way a setup box writes its token through `ClaudeSetupBoxes_writeToken`. The dispatch grant gives each connector its id, URL and a turn bearer. The bearer is an HMAC of tenant, turn and connector under a key that the key-store port derives. The forwarder sends it to `POST /v1/turns/{turnId}/connectors/{connectorId}/token`. The handler is the admission check. It accepts the bearer while the turn is Running and the session lists the connector. It answers with the access token and its expiry. The supervisor sees the bearer and never a connector token. The host channel keeps its messages.
 
-## Proof
+Before each request, the forwarder fetches a new access token when fewer than 30 s remain. A token with no stated expiry is fetched once. When the upstream refuses it, the call fails `ConnectorAuthRefused`. An open stream keeps the token it started with, and later requests use the new one. A provider that ends an established stream ends that tool call.
 
-The end-to-end proof (EDD-006) adds two steps. A small test MCP server with its own OAuth authorization server runs on the proof host. Agents sign in to it as an OAuth connector with no person in a browser, as step 12 does through the service token. A Pi session on the proof host then reaches the same server through the relay. The server lives in `packages/proof-mcp`, a Node package, because the proof's tooling is Node and the server ships in no host binary. The control plane must reach the server's URL for discovery and the exchange. How the proof host exposes that URL is open.
+The tenant Durable Object runs one in-memory refresh promise per connector, and concurrent callers wait on it. It persists the rotated bundle before it replies. When an eviction loses a rotated token mid-exchange, the next refresh gets `invalid_grant`, and the Owner reconnects.
 
-## Recall
+A token fetch gets 15 s, and the provider refresh inside it gets 10 s. A timeout or a refused refresh fails the tool call `ConnectorRefreshFailed`. On `invalid_grant`, the Durable Object records an authorization failure whose fix is to reconnect. The forwarder never sends an expired token.
 
-Recall serves seven tools at `<hostname>/mcp` over streamable HTTP. Its only credential is a bearer token from its own OAuth flow: public clients, PKCE S256, 1 h access tokens, 30 d single-use refresh tokens. Tumpel needs no Recall-specific code for it.
+## Harness files and caches
 
-A super harness such as Recall reads transcripts through the public transcript read with its cursor (`Transcripts_read`). Inbound, it calls `Sessions_send` on Tumpel's hosted MCP as an OAuth client of Tumpel (FR-14 of RFC: Tumpel), and an order becomes a turn. Both are Recall-side work.
+Decision D10: the guest writes generated config after persona files, under the tmpfs `/run/tumpel/connectors`. It reserves `tumpel-<connectorId>` keys and rejects collisions. The config changes only when the session's attachments change, so only then does the guest restart a harness for connectors (EDD-003). Before a pause or snapshot, the forwarder discards its cached tokens. The guest bind-mounts generated config over native paths where a harness needs it. Conversation state resumes through the existing harness resume path.
 
-## Build plan
+| Pinned harness      | Generated config                                                                             | Observed MCP writes and credential stores                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Claude Code 2.1.325 | `--mcp-config` with `mcpServers.<key>={type:"http",url}`; the persona's `.claude.json` stays | `~/.claude.json` holds mutable MCP and project state; backups under `~/.claude/backups`; Linux OAuth store `~/.claude/.credentials.json`. The artifact shows the negative-cache basename `mcp-needs-auth-cache.json`; acceptance tracing finds its resolved location. [Settings](https://code.claude.com/docs/en/settings), [credential docs](https://code.claude.com/docs/en/authentication#credential-management), [pinned distribution](https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/2.1.325) |
+| Codex 0.169.0       | Runtime `.codex/config.toml`, `[mcp_servers.<key>]` with the local URL                       | Config edit commands write `config.toml`. Native OAuth uses the keyring or `$CODEX_HOME/.credentials.json`, with secrets backend `$CODEX_HOME/secrets/mcp_oauth.age` and locking. [Config writer](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/core/src/config/edit/document_helpers.rs), [stores](https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/rmcp-client/src/oauth.rs)                                                                                                            |
+| OpenCode 1.19.5     | Runtime `.config/opencode/opencode.json`, v1 `mcp.<key>={type:"remote",url,oauth:false}`     | Native OAuth writes `$XDG_DATA_HOME/opencode/mcp-auth.json`, by default under `~/.local/share/opencode`. Logs go to its `log/`, cache to `~/.cache/opencode`, state to `~/.local/state/opencode`. [Auth writer](https://github.com/anomalyco/opencode/blob/v1.19.5/packages/opencode/src/mcp/auth.ts), [paths](https://github.com/anomalyco/opencode/blob/v1.19.5/packages/core/src/global.ts)                                                                                                                     |
+| Pi 1.5.2            | Runtime `.pi/agent/mcp.json`, `mcpServers.<key>={url}`                                       | MCP commands and toggles write `~/.pi/agent/mcp.json` or a trusted project's `.pi/mcp.json`. OAuth writes `mcp-auth.json` with file and refresh locks. Notifications append `mcp.log` and rotate `mcp.log.1`. [Pinned source directory](https://github.com/earendil-works/pi/tree/v1.5.2/packages/coding-agent/src/extensions/mcp)                                                                                                                                                                                 |
 
-Each stage is one push, in this order.
+The table lists MCP writes only. Source confirms the OpenCode and Pi paths and the Codex stores. Claude Code ships closed, so acceptance tracing finds its negative-cache path, and a tmpfs mount covers it before release.
 
-1. TypeSpec for both connectors, both sign-ins, the persona fields and PATCH, the grant and the failures. The API change needs approval.
-2. Token connectors, the grant, the relay, Claude Code and Codex wiring, the protocol step.
-3. OAuth connectors, the callback, refresh at offer and in the relay, the Connections card, the toggle.
-4. OpenCode and Pi wiring.
-5. `TenantConfig`, the test MCP server and the two proof steps.
+Generated config stays on tmpfs. Native OAuth caches stay empty for managed connectors, and the guest never seeds them. Runtime mounts cover the listed credential and cache files and their locks, and leave ordinary conversation data alone. A cold restore starts fresh runtime mounts. An agent can still copy an access token it reads into its repository.
 
-## Decisions
+## Delivery and acceptance
 
-1. **Who owns the sign-in.** Connectors form one flat model. A tenant sign-in and member sign-ins exist side by side, flattened per turn into one keyed list that names each type and owner (Handover). A member's entry takes precedence over the tenant's for the same connector.
-2. **Persona fields.** A new `Personas_patch` sets a persona's connectors, and a field left out of it stays unchanged. On create, a missing connector list means none. `Personas_update` keeps its full-replace semantics. Changing one value of a persona is a patch, and a patch never erases anything. Every PUT update in the API gets a PATCH beside it.
-3. **Token in the box or a relay.** A relay on the host (Relay). The supervisor gets the tokens per turn over the channel, holds them in memory only and refreshes them. One host gateway serves this relay and the per-session virtual keys for provider keys, which RFC: Tumpel lists as a non-goal for v1.
-4. **Transcripts to a super harness.** A super harness reads transcripts through the existing transcript read (Recall).
-5. **Pi.** Pi reaches connectors through its MCP extension, set up in the persona's files at the relay endpoint (Pi). The guest refuses a Pi turn only without that setup. The proof runs a Pi session through the relay before Tumpel documents the setup (NFR-6).
-6. **Proof of OAuth.** Agents prove the OAuth sign-in headlessly against a test server on the proof host, which the Pi step also uses (Proof).
-7. **Recall.** Recall is an ordinary connector to the tenant's own Recall.
-8. **A failed server.** The turn fails fast with a named reason per cause, and the detail points at the toggle (Failures and the toggle).
+Decision D11: implementation waits for approval of this design. The connector types and the dispatch grant field land in tumpel/protocol first. A tumpel PR then bumps the `@tumpel/schemas`, `@tumpel/openapi` and `@tumpel/api` tarball URLs. The guest and its forwarder ship in a tumpel/supervisor release, and `release-pins.json` pins it. EDD-003 gains the connector credential contract. The control plane refuses a connector turn on a host whose supervisor predates the forwarder.
+
+1. EDD-006 gains a connector step. A test MCP server with its own OAuth authorization server runs on the proof host. The proof signs in to it with no person in a browser, as step 12 does through the service token. The test server issues short-lived access tokens, so a Claude Code tool call crosses expiry. We do not know yet how the proof host gives the Worker a public HTTPS URL for that server.
+2. Each pinned harness makes a tool call after access-token expiry. The tests cover SSE, cancellation, session headers, concurrent refresh and a lost provider response. An upstream 5xx and a first-byte timeout each fail one tool call, and the turn completes.
+3. Disconnect runs before the first fetch, across token expiry, during concurrent turns and during reconnection. Running turns keep refreshing. New turns get `ConnectorDisconnected`.
+4. A person runs Tumpel and Recall browser consent once. Separate tests cover external-provider admission. Tests check readiness within 30 s per connector, warm restart, cold restore, filesystem writes, snapshot exclusion and secret-free logs and ledgers. Pi and OpenCode never start native OAuth against a loopback route.
+
+## Confirmed decisions
+
+Decision D12: connector accounts are tenant-wide and Owner-managed. Every session in the tenant can use a connected account. Personas and session attachments select tools; they provide no account privacy boundary.
+
+Decision D13: disconnect affects new turns only. The tenant Durable Object marks the connector disconnected and refuses new turn authorizations with `ConnectorDisconnected`, including pending dispatches that have not begun running. Running turns keep their token fetches and refresh until they finish. Disconnect never interrupts their harness, forwarder or streams. The Durable Object serializes admission and disconnect. New turns need a reconnect or a persona without the connector.
+
+While a disconnected connector serves a running turn, stopping that turn is the only way to cut its credential off. When the last Running turn that uses it ends, the turn-end handler deletes the credential in one query. With no turn running, disconnect deletes it at once. Tumpel deletes the credential locally and leaves the upstream grant in place. The Owner revokes that grant on the provider's site.
 
 ## FAQ
 
-**Does a connector token reach the host's disk?** No. The supervisor holds it in memory only.
+### Can OAuth start in chat?
 
-**Can an MCP client register a connector?** Yes. Start answers a URL a person opens. No secret value passes through MCP.
+Yes. D6 returns an authorize link, and the callback stores the credential. Consent stays in the browser.
 
-**Does a server without dynamic client registration work?** No. Registration refuses it, naming the missing endpoint.
+### Where does refresh run?
 
-**How do I turn a broken connector off?** `tumpel persona patch` drops it from the persona, and the next turn runs without it.
+In the tenant Durable Object (D9). The forwarder fetches access tokens from the Worker over HTTPS and adds them per request.
 
-## Appendix of entities
+### Does token expiry end a long turn?
 
-```tsp
-@pattern("^[a-z][a-z0-9-]{0,31}$")
-scalar ConnectorName extends string;
+No. D8 fetches a new token 30 s before expiry. A failed refresh fails one tool call, and the turn goes on.
 
-model OAuthConnector {
-  @key @visibility(Lifecycle.Read) oauthConnectorId: EntityId;
-  @visibility(Lifecycle.Read) tenantId: EntityId;
-  name: ConnectorName;
-  url: url;
-  @visibility(Lifecycle.Read) createdAt: int64;
-  @visibility(Lifecycle.Read) updatedAt: int64;
-}
+### What happens when an upstream server fails mid-turn?
 
-model TenantConnectorSignIn {
-  @key @visibility(Lifecycle.Read) tenantConnectorSignInId: EntityId;
-  @visibility(Lifecycle.Read) tenantId: EntityId;
-  @visibility(Lifecycle.Read) oauthConnectorId: EntityId;
-  @visibility(Lifecycle.Read) status: ConnectorSignInStatus;
-  @visibility(Lifecycle.Read) createdAt: int64;
-  @visibility(Lifecycle.Read) updatedAt: int64;
-}
+The tool call fails with `ConnectorUnreachable` or the sanitized status (D8). The model sees the error and continues the turn.
 
-model MemberConnectorSignIn {
-  @key @visibility(Lifecycle.Read) memberConnectorSignInId: EntityId;
-  @visibility(Lifecycle.Read) tenantId: EntityId;
-  @visibility(Lifecycle.Read) principalId: EntityId;
-  @visibility(Lifecycle.Read) oauthConnectorId: EntityId;
-  @visibility(Lifecycle.Read) status: ConnectorSignInStatus;
-  @visibility(Lifecycle.Read) createdAt: int64;
-  @visibility(Lifecycle.Read) updatedAt: int64;
-}
+### Can a member connect their own account?
 
-model ConnectorSignInConnecting {
-  kind: "Connecting";
-  authorizeUrl: url;
-  authorizeExpiresAt: offsetDateTime;
-}
+No. D12 shares one Owner-managed account per connector across the tenant.
 
-model ConnectorSignInConnected {
-  kind: "Connected";
-  authorizationServer: url;
-  connectedAt: offsetDateTime;
-}
+### How does an Owner cut off a leaked credential?
 
-model ConnectorSignInNotConnected {
-  kind: "NotConnected";
-  reason: ConnectorFailureReason;
-  detail: string;
-}
+Disconnect blocks new turns (D13). The Owner stops each running turn that uses the connector and revokes the grant at the provider.
 
-@discriminated(#{ envelope: "none", discriminatorPropertyName: "kind" })
-union ConnectorSignInStatus {
-  Connecting: ConnectorSignInConnecting,
-  Connected: ConnectorSignInConnected,
-  NotConnected: ConnectorSignInNotConnected,
-}
+### Which servers can a tenant not connect?
 
-enum ConnectorFailureReason {
-  ConnectorDiscoveryFailed: "ConnectorDiscoveryFailed",
-  ConnectorRegistrationRefused: "ConnectorRegistrationRefused",
-  ConnectorAuthorizationExpired: "ConnectorAuthorizationExpired",
-  ConnectorTokenRefused: "ConnectorTokenRefused",
-  ConnectorRefreshFailed: "ConnectorRefreshFailed",
-}
-
-model TokenConnector {
-  @key @visibility(Lifecycle.Read) tokenConnectorId: EntityId;
-  @visibility(Lifecycle.Read) tenantId: EntityId;
-  name: ConnectorName;
-  url: url;
-  secretName: SecretName;
-  @visibility(Lifecycle.Read) createdAt: int64;
-  @visibility(Lifecycle.Read) updatedAt: int64;
-}
-
-model Persona {
-  oauthConnectorIds: EntityId[];
-  tokenConnectorIds: EntityId[];
-}
-
-enum ConnectorType {
-  OAuth: "OAuth",
-  Token: "Token",
-}
-
-enum ConnectorOwner {
-  Tenant: "Tenant",
-  Member: "Member",
-}
-
-model DispatchConnector {
-  connectorKey: string;
-  type: ConnectorType;
-  owner: ConnectorOwner;
-  name: ConnectorName;
-  url: url;
-  token: string;
-}
-
-enum TurnFailureReason {
-  ConnectorNotConnected: "ConnectorNotConnected",
-  ConnectorRefreshFailed: "ConnectorRefreshFailed",
-  ConnectorUnreachable: "ConnectorUnreachable",
-  ConnectorAuthRefused: "ConnectorAuthRefused",
-  ConnectorTokenExpired: "ConnectorTokenExpired",
-  ConnectorSetupMissing: "ConnectorSetupMissing",
-}
-
-model DispatchGrant {
-  credentialHandoverId: EntityId;
-  expiresAt: offsetDateTime;
-  variables: DispatchVariable[];
-  connectors: DispatchConnector[];
-}
-```
-
-Operations: `OAuthConnectors_list`, `_get`, `_start`, `_delete`; `TokenConnectors_list`, `_get`, `_create`, `_update`, `_delete`. Each is one `tumpel_<noun>_<verb>` tool and one `tumpel <noun> <verb>` command. `Personas_create` takes both id arrays as optional, and a list left out means none. `Personas_update` replaces both lists with the rest of the persona. `Personas_patch` changes only the lists in its body. Only an Owner creates or deletes a connector (403 `OwnerRequired`). `OAuthConnectors_start` takes an `owner`. An Owner starts the `TenantConnectorSignIn`, and any member starts their own `MemberConnectorSignIn`. Each start creates or replaces that sign-in. A delete of a connector a persona lists is refused with 409, as a secret set's is. `Connections_list` adds one row per OAuth connector. `TenantConfig` lists token connectors and names OAuth connectors by name; `apply` never creates or deletes an OAuth connector, and stops on a persona naming one that is missing.
-
-## Appendix of sources
-
-| Fact                                                 | Source                                                      |
-| ---------------------------------------------------- | ----------------------------------------------------------- |
-| Recall's transport, OAuth flow and token lifetimes   | `recall/README.md`, Custom connector                        |
-| Codex `-c` flags and persona `config.toml`           | PR #24                                                      |
-| Pi MCP built in since 0.99.0, `~/.pi/agent/mcp.json` | Pi `packages/coding-agent/docs/mcp.md` and CHANGELOG 0.99.0 |
-| `pi-mcp-adapter` maintainer and version              | npm registry, `pi-mcp-adapter`                              |
-| Pi catalog pin 1.5.2 and persona file paths          | `packages/control-plane/src/harness-catalog.ts`             |
-| Grant expiry                                         | EDD-003 Handover                                            |
-| Virtual keys a non-goal for v1                       | RFC: Tumpel, Credentials and storage                        |
+Unauthenticated servers, stdio servers and OAuth servers with no dynamic client registration (D2, D6).
