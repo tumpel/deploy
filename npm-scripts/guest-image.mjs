@@ -202,7 +202,6 @@ const GITCONFIG = `[core]
 	deltaCacheSize = 32m
 [gc]
 	auto = 0
-	autoDetach = false
 [maintenance]
 	auto = false
 `;
