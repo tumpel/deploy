@@ -34,6 +34,7 @@
     "release:fetch": "node npm-scripts/release-fetch.mjs",
     "guest:image": "node npm-scripts/guest-image.mjs",
     "guest:packages": "node npm-scripts/guest-packages-resolve.mjs",
+    "guest:sources": "node npm-scripts/guest-image.mjs sources",
     "harness:layer": "node npm-scripts/harness-layer.mjs",
     "smoke:pi": "node npm-scripts/pi-smoke.mjs",
     "release:publish": "node npm-scripts/release-publish.mjs",

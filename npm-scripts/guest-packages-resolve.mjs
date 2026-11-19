@@ -143,26 +143,35 @@ const catalog = async (arch) => {
   return { packages, providers };
 };
 
+const snapshotStamp = (milliseconds) => new Date(milliseconds).toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+
 const versionsOf = async (name, arch) => {
   const versions = new Map();
   let url = `${LAUNCHPAD_API}/ubuntu/+archive/primary?ws.op=getPublishedBinaries&binary_name=${encodeURIComponent(name)}&exact_match=true&distro_arch_series=${LAUNCHPAD_API}/ubuntu/noble/${arch}&ws.size=300`;
   while (url) {
     const page = JSON.parse((await fetchOk(url)).toString());
     for (const entry of page.entries)
-      if (POCKETS.has(entry.pocket) && STATUSES.has(entry.status))
+      if (POCKETS.has(entry.pocket) && STATUSES.has(entry.status)) {
+        const known = versions.get(entry.binary_package_version);
+        const published = Date.parse(entry.date_published);
+        const superseded = entry.date_superseded ? Date.parse(entry.date_superseded) : Date.now();
         versions.set(entry.binary_package_version, {
           debArch: entry.architecture_specific ? arch : "all",
           component: entry.component_name,
           source: entry.source_package_name,
+          published: Math.min(published, known?.published ?? published),
+          superseded: Math.min(superseded, known?.superseded ?? superseded),
         });
+      }
     url = page.next_collection_link;
   }
   return [...versions]
-    .map(([version, { debArch, component, source }]) => ({
+    .map(([version, { debArch, component, source, published, superseded }]) => ({
       name,
       version,
       component,
       source,
+      snapshot: snapshotStamp((published + superseded) / 2),
       file: `${name}_${version.replace(/^\d+:/, "")}_${debArch}.deb`,
     }))
     .sort((left, right) => (newer(left.version, right.version) ? -1 : 1));
@@ -314,7 +323,7 @@ const main = async () => {
   const resolved = await resolve(arch, squashfs);
   const packages = {
     ...UBUNTU_PACKAGES,
-    [arch]: resolved.map((picked) => [picked.file, picked.digest, picked.component, picked.source]),
+    [arch]: resolved.map((picked) => [picked.file, picked.digest, picked.component, picked.source, picked.snapshot]),
   };
   writeFileSync(OUTPUT, `export const UBUNTU_PACKAGES = ${JSON.stringify(packages, null, 2)};\n`);
   for (const picked of resolved) console.log(picked.file);

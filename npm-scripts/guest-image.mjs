@@ -47,6 +47,7 @@ const UBUNTU_MIRRORS = {
   ],
   arm64: ["https://ports.ubuntu.com/ubuntu-ports"],
 };
+const UBUNTU_SNAPSHOT = "https://snapshot.ubuntu.com/ubuntu";
 const GIT_VERSION = "2.43.0-1ubuntu7.4";
 const LIBCURL_VERSION = "8.5.0-2ubuntu10.16";
 const GH_VERSION = "2.103.3";
@@ -90,7 +91,7 @@ const FIRECRACKER_ARCH = { amd64: "x86_64", arm64: "aarch64" };
 const FNM_ASSET = { amd64: "fnm-linux", arm64: "fnm-arm64" };
 const HOST_ARCH = { x64: "amd64", arm64: "arm64" };
 
-const ubuntuDeb = (arch, file, digest, component, source) => {
+const ubuntuDeb = (arch, file, digest, component, source, snapshot) => {
   const [name, version] = file.split("_");
   const pool = `${source.startsWith("lib") ? source.slice(0, 4) : source[0]}/${source}/${file}`;
   return {
@@ -98,7 +99,9 @@ const ubuntuDeb = (arch, file, digest, component, source) => {
     version,
     url: `${LAUNCHPAD}/${file}`,
     digest,
-    mirrors: UBUNTU_MIRRORS[arch].map((mirror) => `${mirror}/pool/${component}/${pool}`),
+    mirrors: [...UBUNTU_MIRRORS[arch], ...(snapshot ? [`${UBUNTU_SNAPSHOT}/${snapshot}`] : [])].map(
+      (mirror) => `${mirror}/pool/${component}/${pool}`,
+    ),
   };
 };
 
@@ -638,15 +641,34 @@ const buildImage = async (name, pins) => {
   }
 };
 
+const checkSources = async (pins) => {
+  const debs = [pins.git, pins.libcurl, ...pins.packages];
+  const missing = [];
+  for (const deb of debs) {
+    let served = false;
+    for (const mirror of deb.mirrors) if (!served) served = (await fetch(mirror, { method: "HEAD" })).ok;
+    if (!served) missing.push(deb.url.split("/").at(-1));
+  }
+  if (missing.length > 0)
+    die(
+      `only Launchpad serves ${missing.join(", ")} for ${pins.arch}; rerun npm run guest:packages -- ${pins.arch} <base rootfs squashfs>`,
+    );
+  console.log(`a mirror or the snapshot service serves all ${debs.length} Ubuntu packages for ${pins.arch}`);
+};
+
 const main = async () => {
   const [name, arch = HOST_ARCH[process.arch]] = process.argv.slice(2);
   if (!name)
     die(
-      `pass a harness and optionally an architecture: npm run guest:image -- <base|${layerHarnesses().join("|")}|all> [amd64|arm64]`,
+      `pass a harness and optionally an architecture: npm run guest:image -- <base|${layerHarnesses().join("|")}|all|sources> [amd64|arm64]`,
     );
   if (!PINS[arch]) die(`no pins for architecture ${arch}; pass amd64 or arm64`);
-  if (!RELEASE_ARCHITECTURES.includes(arch)) die(disabledReason(arch));
   const pins = pinsFor(arch);
+  if (name === "sources") {
+    await checkSources(pins);
+    return;
+  }
+  if (!RELEASE_ARCHITECTURES.includes(arch)) die(disabledReason(arch));
   if (name === "base") {
     await buildBase(pins);
     return;
