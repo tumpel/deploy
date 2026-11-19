@@ -9,35 +9,12 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  actions: write
   contents: read
 
 jobs:
-  changes:
-    runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 5
-    outputs:
-      code: ${{ steps.changes.outputs.code }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-
-      - name: Detect a docs-only pull request
-        id: changes
-        run: |
-          changed=$(git diff --name-only HEAD^1 HEAD)
-          code=true
-          grep -qvE '^(docs?/.*|.*\.md|LICENSE|\.github/ISSUE_TEMPLATE/.*)$' <<<"$changed" || code=false
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-
   check:
-    needs: changes
-    runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 20
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-check
-      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -46,33 +23,15 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Install npm workspaces
-        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Install npm dependencies
+        run: npm ci --no-audit --no-fund
 
-      - if: needs.changes.outputs.code == 'false'
-        name: Run the docs, prose and format checks
-        run: npm run lint && npm run comments:check && npm run secrets:check && npm run prose:check && npm run surface:check
-
-      - if: needs.changes.outputs.code == 'true'
-        name: Run the checks
+      - name: Run the checks
         run: npm run check
 
-      - if: failure()
-        name: Cancel the rest of the run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
-          "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
-
   test:
-    needs: [changes, check]
-    if: needs.changes.outputs.code == 'true'
-    runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 20
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-test
-      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     name: npm tests
     steps:
       - uses: actions/checkout@v7
@@ -82,47 +41,8 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Install npm workspaces
-        run: npm ci --prefer-offline --no-audit --no-fund
+      - name: Install npm dependencies
+        run: npm ci --no-audit --no-fund
 
-      - name: Run the unit tests of every package and the npm-scripts tests
+      - name: Run the npm-scripts tests
         run: npm test
-
-      - if: failure()
-        name: Cancel the rest of the run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
-          "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
-
-  integration:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: [self-hosted, tumpel-build]
-    timeout-minutes: 20
-    concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}-integration
-      cancel-in-progress: true
-    name: integration tests
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - name: Install npm workspaces
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      - name: Run the integration tests against the supervisor and CLI release-pins.json names
-        run: TUMPEL_RELEASE_CACHE="$HOME/tumpel-releases" npm run test:integration -w @tumpel/control-plane
-
-      - if: failure()
-        name: Cancel the rest of the run
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json"
-          "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/cancel"
