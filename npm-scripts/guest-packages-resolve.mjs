@@ -150,11 +150,21 @@ const versionsOf = async (name, arch) => {
     const page = JSON.parse((await fetchOk(url)).toString());
     for (const entry of page.entries)
       if (POCKETS.has(entry.pocket) && STATUSES.has(entry.status))
-        versions.set(entry.binary_package_version, entry.architecture_specific ? arch : "all");
+        versions.set(entry.binary_package_version, {
+          debArch: entry.architecture_specific ? arch : "all",
+          component: entry.component_name,
+          source: entry.source_package_name,
+        });
     url = page.next_collection_link;
   }
   return [...versions]
-    .map(([version, debArch]) => ({ name, version, file: `${name}_${version.replace(/^\d+:/, "")}_${debArch}.deb` }))
+    .map(([version, { debArch, component, source }]) => ({
+      name,
+      version,
+      component,
+      source,
+      file: `${name}_${version.replace(/^\d+:/, "")}_${debArch}.deb`,
+    }))
     .sort((left, right) => (newer(left.version, right.version) ? -1 : 1));
 };
 
@@ -302,7 +312,10 @@ const main = async () => {
       "pass an architecture and the base rootfs squashfs: npm run guest:packages -- <amd64|arm64> <TUMPEL_IMAGE_DIR>/downloads/<rootfs digest in guest-image.mjs>",
     );
   const resolved = await resolve(arch, squashfs);
-  const packages = { ...UBUNTU_PACKAGES, [arch]: resolved.map((picked) => [picked.file, picked.digest]) };
+  const packages = {
+    ...UBUNTU_PACKAGES,
+    [arch]: resolved.map((picked) => [picked.file, picked.digest, picked.component, picked.source]),
+  };
   writeFileSync(OUTPUT, `export const UBUNTU_PACKAGES = ${JSON.stringify(packages, null, 2)};\n`);
   for (const picked of resolved) console.log(picked.file);
 };

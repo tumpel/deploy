@@ -39,6 +39,14 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const OUT = process.env.TUMPEL_IMAGE_DIR ?? join(homedir(), "development", ".tmp", "tumpel-images");
 const FIRECRACKER_CI = "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20261111-778a26c0594c-0";
 const LAUNCHPAD = "https://launchpad.net/ubuntu/+archive/primary/+files";
+const UBUNTU_MIRRORS = {
+  amd64: [
+    "https://nl.archive.ubuntu.com/ubuntu",
+    "https://archive.ubuntu.com/ubuntu",
+    "https://mirrors.edge.kernel.org/ubuntu",
+  ],
+  arm64: ["https://ports.ubuntu.com/ubuntu-ports"],
+};
 const GIT_VERSION = "2.43.0-1ubuntu7.4";
 const LIBCURL_VERSION = "8.5.0-2ubuntu10.16";
 const GH_VERSION = "2.103.3";
@@ -82,6 +90,18 @@ const FIRECRACKER_ARCH = { amd64: "x86_64", arm64: "aarch64" };
 const FNM_ASSET = { amd64: "fnm-linux", arm64: "fnm-arm64" };
 const HOST_ARCH = { x64: "amd64", arm64: "arm64" };
 
+const ubuntuDeb = (arch, file, digest, component, source) => {
+  const [name, version] = file.split("_");
+  const pool = `${source.startsWith("lib") ? source.slice(0, 4) : source[0]}/${source}/${file}`;
+  return {
+    name,
+    version,
+    url: `${LAUNCHPAD}/${file}`,
+    digest,
+    mirrors: UBUNTU_MIRRORS[arch].map((mirror) => `${mirror}/pool/${component}/${pool}`),
+  };
+};
+
 const pinsFor = (arch) => {
   const pins = PINS[arch];
   const ci = `${FIRECRACKER_CI}/${FIRECRACKER_ARCH[arch]}`;
@@ -91,18 +111,8 @@ const pinsFor = (arch) => {
     guestBin: process.env.TUMPEL_GUEST_BIN ?? join(ROOT, ".tmp", "release-binaries", "tumpel-guest"),
     kernel: { url: `${ci}/vmlinux-6.18.62`, digest: pins.kernel },
     rootfs: { url: `${ci}/ubuntu-24.04.squashfs`, digest: pins.rootfs },
-    git: {
-      name: "git",
-      version: GIT_VERSION,
-      url: `${LAUNCHPAD}/git_${GIT_VERSION}_${arch}.deb`,
-      digest: pins.git,
-    },
-    libcurl: {
-      name: "libcurl3t64-gnutls",
-      version: LIBCURL_VERSION,
-      url: `${LAUNCHPAD}/libcurl3t64-gnutls_${LIBCURL_VERSION}_${arch}.deb`,
-      digest: pins.libcurl,
-    },
+    git: ubuntuDeb(arch, `git_${GIT_VERSION}_${arch}.deb`, pins.git, "main", "git"),
+    libcurl: ubuntuDeb(arch, `libcurl3t64-gnutls_${LIBCURL_VERSION}_${arch}.deb`, pins.libcurl, "main", "curl"),
     gh: {
       name: "gh",
       version: GH_VERSION,
@@ -145,10 +155,7 @@ const pinsFor = (arch) => {
       url: `https://releases.astral.sh/github/python-build-standalone/releases/download/${PYTHON_BUILD}/cpython-${PYTHON_VERSION}%2B${PYTHON_BUILD}-${pins.target}-install_only_stripped.tar.gz`,
       digest: pins.python,
     },
-    packages: UBUNTU_PACKAGES[arch].map(([file, digest]) => {
-      const [name, version] = file.split("_");
-      return { name, version, url: `${LAUNCHPAD}/${file}`, digest };
-    }),
+    packages: UBUNTU_PACKAGES[arch].map((pin) => ubuntuDeb(arch, ...pin)),
   };
 };
 const OCI_TAG = "rootfs";
@@ -251,17 +258,36 @@ const sha256 = (path) =>
       .on("error", reject);
   });
 
-const download = async ({ url, digest }) => {
+const fetchFirst = async (sources) => {
+  for (const [index, url] of sources.entries()) {
+    const next = sources[index + 1];
+    const { status, body, failure } = await fetch(url)
+      .then(async (response) => ({
+        status: response.status,
+        body: response.ok ? Buffer.from(await response.arrayBuffer()) : undefined,
+      }))
+      .catch((error) => ({ failure: error.cause?.message ?? error.message }));
+    if (body) return { url, body };
+    const reason = failure ? `failed: ${failure}` : `answered ${status}`;
+    const unavailable = failure || status >= 500;
+    if (!next && unavailable) die(`downloading ${url} ${reason}; run the build again later`);
+    if (!next || (!unavailable && status !== 404))
+      die(`downloading ${url} ${reason}; check the pinned URL in this script`);
+    console.error(`guest:image: ${url} ${reason}, trying ${next}`);
+  }
+};
+
+const download = async ({ url, digest, mirrors = [] }) => {
   const dir = join(OUT, "downloads");
   const path = join(dir, digest);
   if (existsSync(path) && (await sha256(path)) === digest) return path;
   mkdirSync(dir, { recursive: true });
-  const response = await fetch(url);
-  if (!response.ok) die(`downloading ${url} answered ${response.status}; check the pinned URL in this script`);
+  const fetched = await fetchFirst([...mirrors, url]);
   const staged = `${path}.part`;
-  writeFileSync(staged, Buffer.from(await response.arrayBuffer()));
+  writeFileSync(staged, fetched.body);
   const actual = await sha256(staged);
-  if (actual !== digest) die(`${url} has digest ${actual}, the script pins ${digest}; refusing a changed artifact`);
+  if (actual !== digest)
+    die(`${fetched.url} has digest ${actual}, the script pins ${digest}; refusing a changed artifact`);
   renameSync(staged, path);
   return path;
 };
