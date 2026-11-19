@@ -4,6 +4,7 @@
       "name": "proof",
       "harness": "ClaudeCode",
       "secretSetName": "proof",
+      "connectorNames": [],
       "files": [
         { "path": ".claude/settings.json", "from": "proof/settings.json" },
         { "path": ".claude/CLAUDE.md", "from": "proof-tenant/CLAUDE.md" }
@@ -13,12 +14,14 @@
       "name": "refused",
       "harness": "ClaudeCode",
       "secretSetName": "refused",
+      "connectorNames": [],
       "files": [{ "path": ".claude/settings.json", "from": "proof/settings.json" }]
     },
     {
       "name": "ticket-worker",
       "harness": "ClaudeCode",
       "secretSetName": "ticket-worker",
+      "connectorNames": [],
       "files": [
         { "path": ".claude/settings.json", "from": "ticket-worker/settings.json" },
         { "path": ".claude/CLAUDE.md", "from": "ticket-worker/CLAUDE.md" }

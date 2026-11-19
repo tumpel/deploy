@@ -9,6 +9,7 @@ A tenant keeps its personas, secret sets, harness pins and host labels in one JS
       "name": "Reviewer",
       "harness": "ClaudeCode",
       "secretSetName": "prod",
+      "connectorNames": [],
       "files": [{ "path": ".claude/CLAUDE.md", "from": "reviewer/CLAUDE.md" }]
     }
   ],

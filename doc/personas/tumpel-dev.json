@@ -4,6 +4,7 @@
       "name": "tumpel-dev",
       "harness": "ClaudeCode",
       "secretSetName": "tumpel-dev",
+      "connectorNames": [],
       "files": [
         { "path": ".claude/settings.json", "from": "tumpel-dev/settings.json" },
         { "path": ".claude/CLAUDE.md", "from": "tumpel-dev/CLAUDE.md" }

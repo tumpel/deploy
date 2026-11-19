@@ -45,6 +45,8 @@ Steps 13 and 14 make every call as a JSON-RPC `tools/call` on `/mcp`, with the b
 17. Prebuild GitHub Actions. The step is skipped until `TUMPEL_PROOF_PREBUILD_REPO` names a fixture repository of the App installation's account. The run connects GitHub Actions with the caller workflow `.github/workflows/tumpel-prebuild.yml` and starts a rebuild on the fixture. The start commits that caller workflow when the fixture lacks it or holds an older one, and the commit's push starts the run; otherwise the start dispatches it. Within the dispatch and build budgets the prebuild must read Converting. A second start must answer the same prebuild. The run then deletes the GitHub Actions connection.
 18. Revoke. Revoking the host closes its connection with 4403, and the supervisor exits naming the revocation.
 
+19. MCP connector. A test MCP server with its own OAuth authorization server runs on the proof host and issues access tokens that expire within a minute. The run creates an OAuth connector for it, authorizes it and approves consent headlessly, as step 12 does through the service token, and lists it on the proof persona. A Claude Code turn calls one of its tools twice, the second call after the first access token expired, and both calls must answer. The step waits on a public https address for the test server on the proof host.
+
 ## Passing
 
 A run passes when every step passes with no super harness plugged in. A failed step reports its named reason and the tail of the harness's standard error.
