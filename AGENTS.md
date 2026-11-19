@@ -14,6 +14,6 @@ Always follow `rules/errors.md`, `rules/coding-standards.md` and `rules/architec
 
 ## Commands
 
-- `npm install` installs dependencies and enables the pre-commit hook.
+- `npm install` installs dependencies.
 - `npm run check` runs every check. `npm run fix` formats.
 - `npm test` runs the TypeScript tests.

@@ -20,7 +20,6 @@
     "prose:check": "node npm-scripts/prose-check.mjs",
     "templates:check": "node npm-scripts/templates-check.mjs",
     "check": "npm run lint && npm run comments:check && npm run secrets:check && npm run prose:check && npm run templates:check && npm run typecheck && npm run surface:check",
-    "prepare": "git config core.hooksPath .githooks",
     "test": "npm test --workspaces --if-present && node --test --test-timeout=30000 npm-scripts/*.test.mjs",
     "test:integration": "npm run test:integration -w @tumpel/control-plane",
     "deploy": "node npm-scripts/deploy.mjs",
