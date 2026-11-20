@@ -179,40 +179,8 @@ jobs:
         working-directory: .tmp/control-plane
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Read the stage's infra outputs and set its D1 database id
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TOFU_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          outputs="$RUNNER_TEMP/infra-outputs.json"
-          curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -o "$outputs" \
-            "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/r2/buckets/tumpel-builder-secrets/objects/infra-outputs-$TUMPEL_STAGE.json"
-          database_id=$(jq -er --arg stage "$TUMPEL_STAGE" '.[$stage].d1DatabaseId' deploy/control-plane/stages.json)
-          if [ "$(jq -r .d1_database_id "$outputs")" != "$database_id" ]; then
-            echo "The infra of $TUMPEL_STAGE names another D1 database than deploy/control-plane/stages.json."
-            exit 1
-          fi
-          sed -i "s/00000000-0000-0000-0000-000000000000/$database_id/" .tmp/control-plane/packages/control-plane/wrangler.jsonc
-          for key in hostname dashboard_hostname issuer_hostname access_issuer access_aud proof_common_name; do
-            value=$(jq -er ".$key" "$outputs")
-            echo "INFRA_${key^^}=$value" >> "$GITHUB_ENV"
-          done
-
       - name: Deploy the dashboard, apply the D1 migrations and deploy the control plane
-        working-directory: .tmp/control-plane/packages/control-plane
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_TOFU_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          (cd ../dashboard-site && npx wrangler deploy --env "$TUMPEL_STAGE" --var "API_ORIGIN:https://$INFRA_HOSTNAME")
-          npx wrangler d1 migrations apply DB --remote --env "$TUMPEL_STAGE"
-          redirects="[\"https://$INFRA_DASHBOARD_HOSTNAME/auth/callback\"]"
-          npx wrangler d1 execute DB --remote --yes --env "$TUMPEL_STAGE" --command "INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at, first_party) VALUES ('tumpel-dashboard', 'the tumpel dashboard', '$redirects', $(date +%s%3N), 1) ON CONFLICT (client_id) DO UPDATE SET client_name = excluded.client_name, redirect_uris = excluded.redirect_uris, first_party = 1"
-          npx wrangler deploy --env "$TUMPEL_STAGE" \
-            --var "ACCESS_ISSUER:$INFRA_ACCESS_ISSUER" \
-            --var "ACCESS_AUD:$INFRA_ACCESS_AUD" \
-            --var "ACCESS_PROOF_COMMON_NAME:$INFRA_PROOF_COMMON_NAME" \
-            --var "ISSUER_HOSTNAME:$INFRA_ISSUER_HOSTNAME" \
-            --var "DASHBOARD_ORIGIN:https://$INFRA_DASHBOARD_HOSTNAME" \
-            --var "API_ORIGIN:https://$INFRA_HOSTNAME" \
-            --var "DEPLOYED_COMMIT:$(git rev-parse HEAD)"
+        run: npm run deploy:code -- .tmp/control-plane a0febfa5-2ef3-4593-a922-1a1c909e91f3
