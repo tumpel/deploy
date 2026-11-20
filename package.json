@@ -15,6 +15,7 @@
     "prepare": "git config core.hooksPath .githooks",
     "test": "node --test --test-timeout=30000 npm-scripts/*.test.mjs",
     "deploy:code": "node npm-scripts/deploy.mjs a0febfa5-2ef3-4593-a922-1a1c909e91f3",
+    "deploy:infra": "node npm-scripts/deploy-infra.mjs a0febfa5-2ef3-4593-a922-1a1c909e91f3",
     "proof": "node npm-scripts/proof-env.mjs",
     "ticket": "node npm-scripts/ticket-run.mjs",
     "proof:e2e": "node npm-scripts/proof-env.mjs node npm-scripts/e2e-proof.mjs",
@@ -33,12 +34,13 @@
   "devDependencies": {
     "@biomejs/biome": "^2.6.0",
     "esbuild": "^0.28.2",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "wrangler": "^4.166.0"
   },
   "license": "Apache-2.0",
   "allowScripts": {
     "esbuild@0.28.2": true,
-    "workerd@1.20261113.1": true
+    "workerd@1.20261119.1": true
   },
   "dependencies": {
     "@tumpel/openapi": "https://github.com/tumpel/protocol/releases/download/v0.19.0/tumpel-openapi-0.19.0.tgz",
