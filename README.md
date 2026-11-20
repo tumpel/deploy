@@ -10,7 +10,7 @@ Tumpel has three layers:
 - **Hosts**: machines a tenant owns, each running `tumpel-supervisor` ([tumpel/supervisor](https://github.com/tumpel/supervisor)), which boots a box per session and runs a harness (Claude Code, Codex, OpenCode or Pi.dev; Mistral's coding agent is planned) turn by turn.
 - **Clients**: the `tumpel` CLI ([tumpel/cli](https://github.com/tumpel/cli)), a client of the same public API as the MCP server hosted on the control plane (doc/adr/005), so a terminal or an agent can start sessions and read their turns.
 
-The API is defined once in TypeSpec in [tumpel/protocol](https://github.com/tumpel/protocol), whose releases publish the `@tumpel/schemas`, `@tumpel/openapi` and `@tumpel/api` packages this repository installs. `release-pins.json` names the supervisor and CLI releases tumpel ships.
+The API is defined once in TypeSpec in [tumpel/protocol](https://github.com/tumpel/protocol), whose releases publish the `@tumpel/schemas`, `@tumpel/openapi` and `@tumpel/api` packages this repository installs. `release-pins.json` names the supervisor and CLI releases tumpel ships, and the [tumpel/control-plane](https://github.com/tumpel/control-plane) commit a release tag deploys.
 
 ## Install the CLI
 
