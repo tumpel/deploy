@@ -1,30 +1,45 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const API = "https://api.cloudflare.com/client/v4";
 const STAGE = process.env.TUMPEL_STAGE ?? "dev";
 const BUILDER_BUCKET = "tumpel-builder-secrets";
 const HANDOFF_OBJECT = `infra-outputs-${STAGE}.json`;
 const PLACEHOLDER_DATABASE_ID = "00000000-0000-0000-0000-000000000000";
+const REPOSITORY = "https://github.com/tumpel/control-plane.git";
 
 const die = (message) => {
   console.error(`deploy: ${message}`);
   process.exit(1);
 };
 
-const [checkout, databaseId] = process.argv.slice(2);
-if (!checkout || !databaseId) die("usage: npm run deploy:code -- <tumpel/control-plane checkout> <D1 database id>");
-const token = process.env.CLOUDFLARE_API_TOKEN || die("CLOUDFLARE_API_TOKEN is not set");
-const accountId = process.env.CLOUDFLARE_ACCOUNT_ID || die("CLOUDFLARE_ACCOUNT_ID is not set");
-const ROOT = resolve(checkout);
+const databaseId = process.argv[2] || die("usage: deploy.mjs <D1 database id>");
+const token =
+  process.env.CLOUDFLARE_TOFU_TOKEN ||
+  die("CLOUDFLARE_TOFU_TOKEN is not set; cloudflare-builds-bootstrap sets it on the Workers Builds trigger");
+const accountId =
+  process.env.TUMPEL_ACCOUNT_ID ||
+  die("TUMPEL_ACCOUNT_ID is not set; cloudflare-builds-bootstrap sets it on the Workers Builds trigger");
+const PINS = join(dirname(dirname(fileURLToPath(import.meta.url))), "release-pins.json");
+const pin = JSON.parse(readFileSync(PINS, "utf8")).controlPlane;
+if (!pin) die("release-pins.json names no controlPlane");
+const ROOT = mkdtempSync(join(tmpdir(), "control-plane-"));
 const PACKAGE = join(ROOT, "packages", "control-plane");
 const DASHBOARD = join(ROOT, "packages", "dashboard-site");
+const wranglerEnv = {
+  ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("WRANGLER_CI_"))),
+  CLOUDFLARE_API_TOKEN: token,
+  CLOUDFLARE_ACCOUNT_ID: accountId,
+};
 
-const run = (command, args, { cwd = ROOT, capture = false } = {}) => {
+const run = (command, args, { cwd = ROOT, capture = false, env = process.env } = {}) => {
   const result = spawnSync(command, args, {
     cwd,
+    env,
     encoding: "utf8",
     stdio: ["ignore", capture ? "pipe" : "inherit", "inherit"],
     timeout: 600_000,
@@ -34,7 +49,12 @@ const run = (command, args, { cwd = ROOT, capture = false } = {}) => {
   return result.stdout;
 };
 const wrangler = (args, cwd = PACKAGE) =>
-  run(join(ROOT, "node_modules", ".bin", "wrangler"), [...args, "--env", STAGE], { cwd });
+  run(join(ROOT, "node_modules", ".bin", "wrangler"), [...args, "--env", STAGE], { cwd, env: wranglerEnv });
+
+run("git", ["init", "--quiet"]);
+run("git", ["fetch", "--quiet", "--depth", "1", REPOSITORY, pin]);
+run("git", ["checkout", "--quiet", "FETCH_HEAD"]);
+run("npm", ["ci", "--no-audit", "--no-fund"]);
 
 const readHandoff = async () => {
   const path = `/accounts/${accountId}/r2/buckets/${BUILDER_BUCKET}/objects/${encodeURIComponent(HANDOFF_OBJECT)}`;

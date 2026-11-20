@@ -14,7 +14,7 @@
     "check": "npm run lint",
     "prepare": "git config core.hooksPath .githooks",
     "test": "node --test --test-timeout=30000 npm-scripts/*.test.mjs",
-    "deploy:code": "node npm-scripts/deploy.mjs",
+    "deploy:code": "node npm-scripts/deploy.mjs a0febfa5-2ef3-4593-a922-1a1c909e91f3",
     "proof": "node npm-scripts/proof-env.mjs",
     "ticket": "node npm-scripts/ticket-run.mjs",
     "proof:e2e": "node npm-scripts/proof-env.mjs node npm-scripts/e2e-proof.mjs",
