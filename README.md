@@ -30,6 +30,6 @@ npm install
 npm run check
 ```
 
-`npm run check` runs Biome, the TypeScript typecheck and the comment, secret, prose and surface checks. `npm run fix` formats everything.
+`npm run check` runs Biome. `npm run fix` formats everything.
 
 Agent rules live in [AGENTS.md](AGENTS.md); decisions in [doc/adr](doc/adr).
