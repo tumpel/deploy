@@ -8,7 +8,49 @@ import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 import { UBUNTU_PACKAGES } from "./guest-packages.mjs";
 
-const ROOTS = ["build-essential", "pkg-config", "jq", "unzip", "zip", "ripgrep", "fd-find", "tree"];
+const ROOTS = [
+  "build-essential",
+  "pkg-config",
+  "jq",
+  "unzip",
+  "zip",
+  "ripgrep",
+  "fd-find",
+  "tree",
+  "xvfb",
+  "fonts-noto-color-emoji",
+  "fonts-unifont",
+  "libfontconfig1",
+  "libfreetype6",
+  "xfonts-cyrillic",
+  "xfonts-scalable",
+  "fonts-liberation",
+  "fonts-ipafont-gothic",
+  "fonts-wqy-zenhei",
+  "fonts-tlwg-loma-otf",
+  "fonts-freefont-ttf",
+  "libasound2t64",
+  "libatk-bridge2.0-0t64",
+  "libatk1.0-0t64",
+  "libatspi2.0-0t64",
+  "libcairo2",
+  "libcups2t64",
+  "libdbus-1-3",
+  "libdrm2",
+  "libgbm1",
+  "libglib2.0-0t64",
+  "libnspr4",
+  "libnss3",
+  "libpango-1.0-0",
+  "libx11-6",
+  "libxcb1",
+  "libxcomposite1",
+  "libxdamage1",
+  "libxext6",
+  "libxfixes3",
+  "libxkbcommon0",
+  "libxrandr2",
+];
 const POCKETS = new Set(["Release", "Updates", "Security"]);
 const STATUSES = new Set(["Published", "Superseded"]);
 const ARCHIVES = { amd64: "http://archive.ubuntu.com/ubuntu", arm64: "http://ports.ubuntu.com/ubuntu-ports" };
