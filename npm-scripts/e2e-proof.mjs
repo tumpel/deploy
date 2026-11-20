@@ -18,6 +18,7 @@ const REPOSITORY = process.env.TUMPEL_PROOF_REPOSITORY ?? "https://github.com/mv
 const MODEL = process.env.TUMPEL_PROOF_MODEL ?? "claude-haiku-4-5";
 const PROBE_MODEL = process.env.TUMPEL_PROOF_PROBE_MODEL ?? "claude-sonnet-4-5";
 const PREBUILD_REPOSITORY = process.env.TUMPEL_PROOF_PREBUILD_REPO;
+const TRIGGER_REPOSITORY = process.env.TUMPEL_PROOF_TRIGGER_REPO ?? "https://github.com/tumpel/deploy.git";
 const CALLER_WORKFLOW = ".github/workflows/tumpel-prebuild.yml";
 const CLI = process.env.TUMPEL_PROOF_CLI;
 const SUPERVISOR = process.env.TUMPEL_PROOF_SUPERVISOR;
@@ -28,6 +29,7 @@ const MARKER_FILE = "/root/proof-marker.txt";
 const TMPFS_MARKER_FILE = "/dev/shm/proof-marker.txt";
 const GOAL_FILE = "/root/proof-goal.txt";
 const BUILD_PROVIDERS = ["GitHubActions", "CircleCI", "Namespace"];
+const TRIGGER_REPOSITORY_NAME = TRIGGER_REPOSITORY.replace(/^https:\/\/github\.com\//, "").replace(/\.git$/, "");
 
 const die = (message) => {
   console.error(`proof:e2e: ${message}`);
@@ -41,6 +43,9 @@ if (!SUPERVISOR)
   die("TUMPEL_PROOF_SUPERVISOR is unset; run this through npm run proof:e2e, which downloads the release supervisor");
 if (!existsSync(CLI)) die(`${CLI} is missing; set TUMPEL_PROOF_CLI to a built tumpel binary`);
 if (!existsSync(SUPERVISOR)) die(`${SUPERVISOR} is missing; set TUMPEL_PROOF_SUPERVISOR to a built supervisor`);
+if (!/^[^/]+\/[^/]+$/.test(TRIGGER_REPOSITORY_NAME)) {
+  die(`TUMPEL_PROOF_TRIGGER_REPO ${TRIGGER_REPOSITORY} is not a GitHub repository URL`);
+}
 
 const config = JSON.parse(
   readFileSync(join(ROOT, "packages", "control-plane", "wrangler.jsonc"), "utf8").replace(/^\s*\/\/.*$/gm, ""),
@@ -75,6 +80,18 @@ const tumpel = (args, env = {}) => {
   return result.stdout;
 };
 const tumpelJson = (args) => JSON.parse(tumpel(args));
+
+const github = (args) => {
+  const token = process.env.PROOF_GITHUB_TOKEN ?? fail("PROOF_GITHUB_TOKEN is unset");
+  const result = spawnSync("gh", ["api", ...args], {
+    encoding: "utf8",
+    env: { ...process.env, GH_TOKEN: token },
+    timeout: 60_000,
+  });
+  if (result.status !== 0) fail(`gh api ${args[0]}: ${result.stderr.trim().split("\n").at(-1)}`);
+  return result.stdout;
+};
+const githubJson = (args) => JSON.parse(github(args));
 
 const ssh = (command, input) => {
   const result = spawnSync("ssh", [HOST, command], {
@@ -887,6 +904,227 @@ const steps = [
         return `supervisor stopped naming the revocation ${exitMs} ms after revoke`;
       } finally {
         ssh(`rm -rf ${REVOKE_DIR}`);
+      }
+    },
+  },
+  {
+    id: 19,
+    name: "Foreman",
+    needs: [3],
+    run: async () => {
+      const tag = `proof:${MARKER}`;
+      const pausedMessage = `Approve ${MARKER}`;
+      const reply = `approved ${MARKER}`;
+      const foreman = await runTurn({
+        personaId: state.personaId,
+        prompt: "Without using any tools, reply with only the word ready.",
+      });
+      completed(foreman, "the foreman's first turn");
+      const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
+      const goal = `Subscription for ${MARKER} is ended with reason GoalMet`;
+      const active = tumpelJson([
+        "subscription",
+        "create",
+        "--session-id",
+        foreman.sessionId,
+        "--prompt",
+        `Find this session's Active subscription with tumpel_subscription_list. For the first crew SessionIdle, call tumpel_subscription_pause on it with message "${pausedMessage}". After the person replies "${reply}", call tumpel_subscription_complete on it when the next crew SessionIdle arrives.`,
+        "--goal",
+        goal,
+        "--event",
+        "SessionIdle",
+        "--crew-tag",
+        tag,
+        "--expires-at",
+        expiresAt,
+      ]);
+      const startedCrew = await runTurn({
+        sessionId: foreman.sessionId,
+        prompt: `Call tumpel_session_start exactly once with repository ${REPOSITORY}, model ${MODEL}, personaId ${state.personaId}, and prompt "Without using tools, reply with only the word crew." Do not pass tags. Reply with only the new session id.`,
+      });
+      completed(startedCrew, "the foreman turn that starts the crew");
+      const crew = await waitFor("the foreman to start one tagged crew session", 60_000, () => {
+        const sessions = tumpelJson(["session", "list", "--tag", tag]);
+        return sessions.length === 1 ? sessions[0] : undefined;
+      });
+      if (crew.startedBy.kind !== "Turn" || crew.startedBy.sessionId !== foreman.sessionId) {
+        fail(`crew session ${crew.sessionId} was not started by foreman ${foreman.sessionId}`);
+      }
+      if (crew.tags.length !== 1 || crew.tags[0] !== tag) {
+        fail(`crew session ${crew.sessionId} carries tags ${crew.tags.join(", ")}, not only ${tag}`);
+      }
+      await waitFor(`crew session ${crew.sessionId} reading Idle`, settings.turnTotalBudgetSeconds * 1000, () => {
+        const session = tumpelJson(["session", "get", crew.sessionId]);
+        if (session.state === "Failed") fail(`crew session ${crew.sessionId} failed`);
+        return session.state === "Idle" ? session : undefined;
+      });
+      const firstDelivery = await waitFor(
+        "the foreman to finish its first SessionIdle delivery",
+        settings.turnTotalBudgetSeconds * 1000,
+        () =>
+          tumpelJson(["turn", "list", foreman.sessionId]).find(
+            (turn) => turn.goal === goal && ["Completed", "Failed"].includes(turn.state),
+          ),
+      );
+      if (firstDelivery.state !== "Completed") fail(`the first foreman delivery reads ${firstDelivery.state}`);
+      const paused = tumpelJson(["subscription", "get", active.subscriptionId]);
+      if (paused.state !== "Paused" || paused.reason.kind !== "ByRequest" || paused.reason.message !== pausedMessage) {
+        fail(`subscription ${active.subscriptionId} did not pause with message ${pausedMessage}`);
+      }
+      const answered = await runTurn({
+        sessionId: foreman.sessionId,
+        prompt: `The answer to your question is "${reply}". Reply with only the word acknowledged.`,
+      });
+      completed(answered, "the reply to the paused foreman");
+      const crewAgain = await runTurn({
+        sessionId: crew.sessionId,
+        prompt: "Without using any tools, reply with only the word idle.",
+      });
+      completed(crewAgain, "the crew turn while the subscription is paused");
+      tumpel(["subscription", "resume", active.subscriptionId]);
+      const secondDelivery = await waitFor(
+        "the foreman to finish its resumed SessionIdle delivery",
+        settings.turnTotalBudgetSeconds * 1000,
+        () =>
+          tumpelJson(["turn", "list", foreman.sessionId]).find(
+            (turn) =>
+              turn.turnId !== firstDelivery.turnId &&
+              turn.goal === goal &&
+              ["Completed", "Failed"].includes(turn.state),
+          ),
+      );
+      if (secondDelivery.state !== "Completed") fail(`the resumed foreman delivery reads ${secondDelivery.state}`);
+      const ended = tumpelJson(["subscription", "get", active.subscriptionId]);
+      if (ended.state !== "Ended" || ended.reason !== "GoalMet") {
+        fail(`subscription ${active.subscriptionId} reads ${ended.state} ${ended.reason ?? ""}, not Ended GoalMet`);
+      }
+      return `one inherited tag, crew ${crew.sessionId} delivered SessionIdle; paused with a message, read the reply, resumed and ended GoalMet`;
+    },
+  },
+  {
+    id: 20,
+    name: "Trigger",
+    needs: [3],
+    run: async () => {
+      const repository = githubJson([`repos/${TRIGGER_REPOSITORY_NAME}`]);
+      const branch = `tumpel-proof-${MARKER}`;
+      const markerPath = ".tumpel-agent-review-proof";
+      const baseRef = githubJson([`repos/${TRIGGER_REPOSITORY_NAME}/git/ref/heads/${repository.default_branch}`]);
+      github([
+        `repos/${TRIGGER_REPOSITORY_NAME}/git/refs`,
+        "--method",
+        "POST",
+        "-f",
+        `ref=refs/heads/${branch}`,
+        "-f",
+        `sha=${baseRef.object.sha}`,
+      ]);
+      let pull = null;
+      let trigger = null;
+      try {
+        const initial = githubJson([
+          `repos/${TRIGGER_REPOSITORY_NAME}/contents/${markerPath}`,
+          "--method",
+          "PUT",
+          "-f",
+          `message=test: open agent-review proof ${MARKER}`,
+          "-f",
+          `content=${Buffer.from(`open ${MARKER}\n`).toString("base64")}`,
+          "-f",
+          `branch=${branch}`,
+        ]);
+        pull = githubJson([
+          `repos/${TRIGGER_REPOSITORY_NAME}/pulls`,
+          "--method",
+          "POST",
+          "-f",
+          "title=test: prove agent review",
+          "-f",
+          `head=${branch}`,
+          "-f",
+          `base=${repository.default_branch}`,
+          "-f",
+          "body=This pull request is created and closed by the end-to-end proof.",
+        ]);
+        await waitFor("the test pull request's opening agent-review status", 120_000, () =>
+          githubJson([`repos/${TRIGGER_REPOSITORY_NAME}/commits/${initial.commit.sha}/statuses`]).find(
+            (status) => status.context === "agent-review" && status.state === "pending",
+          ),
+        );
+        trigger = tumpelJson([
+          "trigger",
+          "create",
+          "--name",
+          `agent-review-${MARKER}`,
+          "--source",
+          "GitHub",
+          "--event",
+          "status",
+          "--where",
+          `repository.full_name=${TRIGGER_REPOSITORY_NAME}`,
+          "--where",
+          "context=agent-review",
+          "--where",
+          "state=pending",
+          "--where",
+          "sender.login=github-actions[bot]",
+          "--persona-id",
+          state.personaId,
+          "--model",
+          MODEL,
+          "--prompt",
+          `Review the pull request {{target_url}} at commit {{sha}}. Check out {{sha}} and inspect its diff against ${repository.default_branch}. Set the agent-review status on {{sha}} to success with gh api when nothing blocks a merge, or failure when something does. Always set the verdict before you finish.`,
+        ]);
+        const pushed = githubJson([
+          `repos/${TRIGGER_REPOSITORY_NAME}/contents/${markerPath}`,
+          "--method",
+          "PUT",
+          "-f",
+          `message=test: push agent-review proof ${MARKER}`,
+          "-f",
+          `content=${Buffer.from(`push ${MARKER}\n`).toString("base64")}`,
+          "-f",
+          `branch=${branch}`,
+          "-f",
+          `sha=${initial.content.sha}`,
+        ]);
+        const pending = await waitFor("agent-review to read pending after the test push", 120_000, () =>
+          githubJson([`repos/${TRIGGER_REPOSITORY_NAME}/commits/${pushed.commit.sha}/statuses`]).find(
+            (status) => status.context === "agent-review" && status.state === "pending",
+          ),
+        );
+        if (pending.creator.login !== "github-actions[bot]") {
+          fail(`agent-review pending came from ${pending.creator.login}, not github-actions[bot]`);
+        }
+        const reviewer = await waitFor("the trigger to start one reviewer", 120_000, () => {
+          const sessions = tumpelJson(["session", "list", "--trigger", trigger.triggerId]);
+          return sessions.length === 1 ? sessions[0] : undefined;
+        });
+        if (reviewer.startedBy.kind !== "Trigger" || reviewer.startedBy.triggerId !== trigger.triggerId) {
+          fail(`reviewer session ${reviewer.sessionId} does not name trigger ${trigger.triggerId}`);
+        }
+        const verdict = await waitFor(
+          "the reviewer's agent-review verdict",
+          settings.turnTotalBudgetSeconds * 1000,
+          () =>
+            githubJson([`repos/${TRIGGER_REPOSITORY_NAME}/commits/${pushed.commit.sha}/statuses`]).find(
+              (status) => status.context === "agent-review" && ["success", "failure", "error"].includes(status.state),
+            ),
+        );
+        if (verdict.state !== "success")
+          fail(`the reviewer set agent-review to ${verdict.state}: ${verdict.description}`);
+        const settled = await waitFor(`reviewer session ${reviewer.sessionId} to settle`, 60_000, () => {
+          const session = tumpelJson(["session", "get", reviewer.sessionId]);
+          return ["Idle", "Failed"].includes(session.state) ? session : undefined;
+        });
+        if (settled.state !== "Idle") fail(`reviewer session ${reviewer.sessionId} reads ${settled.state}`);
+        return `push to ${pull.html_url} set agent-review pending, trigger ${trigger.triggerId} started reviewer ${reviewer.sessionId}, verdict success`;
+      } finally {
+        if (trigger !== null) tumpel(["trigger", "delete", trigger.triggerId]);
+        if (pull !== null) {
+          github([`repos/${TRIGGER_REPOSITORY_NAME}/pulls/${pull.number}`, "--method", "PATCH", "-f", "state=closed"]);
+        }
+        github([`repos/${TRIGGER_REPOSITORY_NAME}/git/refs/heads/${branch}`, "--method", "DELETE"]);
       }
     },
   },
