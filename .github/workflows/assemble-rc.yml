@@ -1,0 +1,55 @@
+name: assemble-rc
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Print the pin diff and the RC tag without writing them
+        default: false
+        type: boolean
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: assemble-rc
+  cancel-in-progress: false
+
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - id: assemble
+        name: Pin the latest release of every component
+        run: npm run release:rc -- ${{ inputs.dry-run && '--dry-run' || '' }}
+
+      - if: steps.assemble.outputs.tag != ''
+        name: Commit the pins, tag the RC and start its release
+        env:
+          TAG: ${{ steps.assemble.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet release-pins.json; then
+            git commit -m "chore(release): pin the latest releases for $TAG" release-pins.json
+            git push origin HEAD:main
+          fi
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+          gh workflow run release.yml --ref "$TAG"
