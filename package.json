@@ -29,7 +29,8 @@
     "release:publish": "node npm-scripts/release-publish.mjs",
     "release:secrets": "node npm-scripts/release-secrets.mjs",
     "history:split": "node npm-scripts/split/split.mjs",
-    "split:sync": "node npm-scripts/split/sync.mjs"
+    "split:sync": "node npm-scripts/split/sync.mjs",
+    "release:rc": "node npm-scripts/assemble-rc.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.0",
