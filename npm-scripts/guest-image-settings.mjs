@@ -1,5 +1,7 @@
-import { GUEST_TOOLCHAINS } from "../packages/control-plane/src/guest-toolchains.ts";
-import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
+import { controlPlaneModule } from "./control-plane-source.mjs";
+
+const { GUEST_TOOLCHAINS } = await controlPlaneModule("packages/control-plane/src/guest-toolchains.ts");
+const { HARNESS_CATALOG } = await controlPlaneModule("packages/control-plane/src/harness-catalog.ts");
 
 export const CLONE_SECONDS = 120;
 export const WORKING_DIRECTORY = "/root/workspace";

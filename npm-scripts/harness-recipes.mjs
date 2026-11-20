@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, readFileSync, renameSync } from "node:fs";
 import { basename, join } from "node:path";
 import { GuestHarnessSchema } from "@tumpel/schemas";
-import { HARNESS_CATALOG } from "../packages/control-plane/src/harness-catalog.ts";
+import { controlPlaneModule } from "./control-plane-source.mjs";
 import {
   CLONE_SECONDS,
   ENVIRONMENT,
@@ -12,6 +12,8 @@ import {
   TURN_PROTOCOLS,
   WORKING_DIRECTORY,
 } from "./guest-image-settings.mjs";
+
+const { HARNESS_CATALOG } = await controlPlaneModule("packages/control-plane/src/harness-catalog.ts");
 
 export const LAYER_ROOT = "/opt/harness";
 export const MKSQUASHFS_FLAGS = ["-comp", "zstd", "-all-root", "-all-time", "0", "-mkfs-time", "0"];
