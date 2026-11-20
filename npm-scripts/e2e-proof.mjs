@@ -1022,6 +1022,7 @@ const steps = [
       let pull = null;
       let trigger = null;
       try {
+        const verdictDescription = `Proof reviewer ${MARKER}`;
         const initial = githubJson([
           `repos/${TRIGGER_REPOSITORY_NAME}/contents/${markerPath}`,
           "--method",
@@ -1073,7 +1074,7 @@ const steps = [
           "--model",
           MODEL,
           "--prompt",
-          `Review the pull request {{target_url}} at commit {{sha}}. Check out {{sha}} and inspect its diff against ${repository.default_branch}. Set the agent-review status on {{sha}} to success with gh api when nothing blocks a merge, or failure when something does. Always set the verdict before you finish.`,
+          `Review the pull request {{target_url}} at commit {{sha}}. Check out {{sha}} and inspect its diff against ${repository.default_branch}. Set the agent-review status on {{sha}} to success with gh api when nothing blocks a merge, or failure when something does. Give the status the description "${verdictDescription}". Always set the verdict before you finish.`,
         ]);
         const pushed = githubJson([
           `repos/${TRIGGER_REPOSITORY_NAME}/contents/${markerPath}`,
@@ -1108,7 +1109,10 @@ const steps = [
           settings.turnTotalBudgetSeconds * 1000,
           () =>
             githubJson([`repos/${TRIGGER_REPOSITORY_NAME}/commits/${pushed.commit.sha}/statuses`]).find(
-              (status) => status.context === "agent-review" && ["success", "failure", "error"].includes(status.state),
+              (status) =>
+                status.context === "agent-review" &&
+                status.description === verdictDescription &&
+                ["success", "failure", "error"].includes(status.state),
             ),
         );
         if (verdict.state !== "success")
@@ -1118,7 +1122,7 @@ const steps = [
           return ["Idle", "Failed"].includes(session.state) ? session : undefined;
         });
         if (settled.state !== "Idle") fail(`reviewer session ${reviewer.sessionId} reads ${settled.state}`);
-        return `push to ${pull.html_url} set agent-review pending, trigger ${trigger.triggerId} started reviewer ${reviewer.sessionId}, verdict success`;
+        return `push to ${pull.html_url} set agent-review pending, trigger ${trigger.triggerId} started reviewer ${reviewer.sessionId}, its marked verdict read success`;
       } finally {
         if (trigger !== null) tumpel(["trigger", "delete", trigger.triggerId]);
         if (pull !== null) {
