@@ -15,7 +15,7 @@ import {
   ReleaseHarnessLayerSchema,
   ReleaseManifestSchema,
 } from "@tumpel/schemas";
-import { CHECKSUM_HEADER, checksumOf, presignUrl } from "../packages/control-plane/src/presign.ts";
+import { controlPlaneModule } from "./control-plane-source.mjs";
 import { layerHarnesses, layerPrefix, layerRecipe, recipeKey } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 import {
@@ -29,6 +29,8 @@ import {
   supervisorRefusal,
   supervisorRelease,
 } from "./release-download.mjs";
+
+const { CHECKSUM_HEADER, checksumOf, presignUrl } = await controlPlaneModule("packages/control-plane/src/presign.ts");
 
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
 const ENABLED = new Set(RELEASE_ARCHITECTURES.map((arch) => ARCHITECTURES[arch]));
