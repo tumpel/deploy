@@ -35,6 +35,7 @@ const { CHECKSUM_HEADER, checksumOf, presignUrl } = await controlPlaneModule("pa
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
 const ENABLED = new Set(RELEASE_ARCHITECTURES.map((arch) => ARCHITECTURES[arch]));
 const CURRENT = "current.json";
+const MONOREPO_LAST_RELEASE = "520a197fead3e84d534578cfcdb9c14c0f95a185";
 const IMAGE_RELEASE = "images.json";
 const IMAGE_RELEASE_TAG = /^images-v\d+\.\d+\.\d+$/;
 const REQUEST_SECONDS = 900;
@@ -395,7 +396,7 @@ const headCommit = () => {
 const git = (...args) => spawnSync("git", args, { encoding: "utf8" });
 
 const supersededBy = (commit, published) => {
-  if (published === commit) return false;
+  if (published === commit || published === MONOREPO_LAST_RELEASE) return false;
   if (git("cat-file", "-e", `${published}^{commit}`).status !== 0)
     return die(
       `${bucket}/${CURRENT} holds commit ${published}, which this checkout does not know; publish only from a commit of this repository, or fetch the branch that holds ${published}`,
