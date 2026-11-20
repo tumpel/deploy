@@ -1,0 +1,21 @@
+name: agent-review
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+permissions:
+  statuses: write
+
+jobs:
+  pending:
+    if: ${{ !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh api repos/${{ github.repository }}/statuses/${{ github.event.pull_request.head.sha }}
+          -f state=pending -f context=agent-review -f description="Waiting for the agent review"
+          -f target_url=${{ github.event.pull_request.html_url }}
