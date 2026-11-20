@@ -23,7 +23,7 @@ import {
   readDevcontainer,
   resolveContainerEnv,
   SETUP_COMMANDS,
-} from "../packages/control-plane/src/devcontainer.ts";
+} from "./devcontainer.ts";
 
 const USAGE = `usage:
   prebuild.mjs build <out dir>
