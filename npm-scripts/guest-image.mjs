@@ -555,12 +555,14 @@ const stampUpdated = (tree) => {
 };
 
 const packImage = async (work, tree, pins, out, ociConfig) => {
-  const [mkfs, e2fsck] = [tool("mkfs.ext4"), tool("e2fsck")];
+  const [mkfs, e2fsck, resize2fs] = [tool("mkfs.ext4"), tool("e2fsck"), tool("resize2fs")];
   run("chmod", ["-R", "u+rwX", tree]);
   const image = join(work, "image.ext4");
   const mib = Math.ceil((treeBytes(tree) * 1.3) / 2 ** 20) + 256;
   run(mkfs, ["-q", "-F", "-d", tree, "-E", "root_owner=0:0", "-L", "rootfs", image, `${mib}M`]);
   ownByRoot(tree, image);
+  run(e2fsck, ["-fy", image], { stdio: ["ignore", "ignore", "inherit"] });
+  run(resize2fs, ["-M", image], { stdio: ["ignore", "ignore", "inherit"] });
   run(e2fsck, ["-fn", image], { stdio: ["ignore", "ignore", "inherit"] });
   const imageDigest = await sha256(image);
   const kernel = await download(pins.kernel);
