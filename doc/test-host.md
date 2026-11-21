@@ -36,7 +36,7 @@ After `cloud-init status --wait`, reboot it once, then check that `systemctl is-
 
 ## Release builds
 
-GitHub Actions runs the image build of `.github/workflows/images.yml` on the runner that the repository variable `BUILD_RUNNER` names, such as a self-hosted runner with the label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
+GitHub Actions runs the image build of `.github/workflows/images.yml` on `ubuntu-latest`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/release.md`).
 
 ## Host setup
 
