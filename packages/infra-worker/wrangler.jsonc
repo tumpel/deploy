@@ -3,5 +3,6 @@
   "name": "tumpel-infra-dev",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "workers_dev": false
+  "workers_dev": false,
+  "limits": { "cpu_ms": 30 }
 }
