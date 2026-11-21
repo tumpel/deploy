@@ -38,7 +38,7 @@ jobs:
 
   images:
     needs: plan
-    runs-on: [self-hosted, tumpel-build]
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -48,6 +48,9 @@ jobs:
       TUMPEL_IMAGE_DIR: ${{ github.workspace }}/.tmp/images-${{ matrix.arch }}
       TUMPEL_GUEST_BIN: ${{ github.workspace }}/.tmp/release-binaries/tumpel-guest
     steps:
+      - name: Free disk space
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
