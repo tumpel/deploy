@@ -8,7 +8,7 @@ Agents prove every stage after its deploy, against that stage's control plane an
 
 ## Where it runs
 
-The reference host is a Linux VM on the hypervisor `box`, with a host-passthrough CPU so it exposes KVM, 4 vCPU and 8 GiB. The control plane is the stage's deployed Worker. An agent on the development machine drives the hosted MCP server and the CLI of the stage's current release.
+The reference host is a Linux VM with a host-passthrough CPU so it exposes KVM, reachable over SSH (`doc/test-host.md`). The control plane is the stage's deployed Worker. An agent on the development machine drives the hosted MCP server and the CLI of the stage's current release.
 
 `npm run proof:e2e` runs the steps below against the stage that `TUMPEL_STAGE` names, on the host that `TUMPEL_PROOF_HOST` names. It signs in through `npm run proof` with the stage's own Access service token, which OpenTofu manages, and it runs after every deploy of every stage. The `proof` persona's `CLAUDE.md` sits in `doc/personas/proof-tenant/`.
 

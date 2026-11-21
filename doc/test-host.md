@@ -1,47 +1,25 @@
 # Test hosts
 
-`tumpel-host` is a libvirt domain on the hypervisor `box` with nested KVM, for running the MicroVM runtime. Reach it from `sandbox` with `ssh tumpel-host` (192.168.122.216, user `mvhenten`, network `default`). It is the dedicated host of the dev stage and runs the supervisor all the time.
+A test host is a KVM host reachable over SSH: a Linux machine or VM where `/dev/kvm` exists, such as a libvirt domain with `<cpu mode='host-passthrough'>` on a hypervisor with nested KVM. Each stage has a dedicated test host that runs the supervisor all the time. Set `TUMPEL_PROOF_HOST` to its SSH destination, a `Host` entry in `~/.ssh/config` or `user@address`; `npm run proof:e2e` refuses to start without it.
+
+`TUMPEL_PROOF_HOST_NETWORK_TARGETS` lists, space-separated, the `host:port` addresses on the test host's own network that a box must not reach, such as the host's address with port 22 and its network's resolver with port 53. The isolation step of the proof probes them together with fixed private and link-local addresses, and refuses to start without them.
 
 Test hosts are amd64, and releases build amd64 only: the flag `BUILD_ARM64` in `.github/workflows/release.yml` and `.github/workflows/images.yml` stays `false`. Nothing claims arm64 host support until a real arm64 host passes the proof.
 
-- 14 vCPU, 44 GiB, q35, `<cpu mode='host-passthrough'>`, so `/dev/kvm` exists in the guest. The memory is oversubscribed on purpose.
-- Disk `/mnt/nvme/vms/tumpel-host.qcow2`, 400 G sparse, standalone qcow2 converted from `~/vm-staging/noble-server-cloudimg-amd64-20261017.img` (Ubuntu 24.04, sha256 `04e8f246...5b6c94`, checked against Ubuntu's SHA256SUMS).
-- Cloud-init NoCloud seed `tumpel-host-seed.iso` in the same directory, built from `~/vm-staging/tumpel-host-seed/{meta-data,user-data}`: passwordless sudo, the group `kvm`, sandbox's key, no password login, `qemu-guest-agent`, 4 G swapfile.
-- Domain XML: `~/vm-config/tumpel-host.xml` on box, MAC `52:54:00:ac:16:41`. Autostart is on.
+A test host built from the Ubuntu 24.04 server cloud image needs a cloud-init seed with passwordless sudo, the group `kvm` for the login user, the key of the machine that runs the proof, no password login, and `qemu-guest-agent`. Give it at least 4 vCPU and 8 GiB. On a fresh host, drop the old host key with `ssh-keygen -R <address>`, then wait for the seed with `cloud-init status --wait` on the host. Then download the supervisor from the release and install it with the token on stdin, as Host setup below shows. The host reads Online in about 10 s.
 
-Rebuild, on box as `mvhenten` (no sudo needed):
-
-```sh
-V="virsh -c qemu:///system"; $V destroy tumpel-host; $V undefine tumpel-host
-cd ~/vm-staging/tumpel-host-seed
-xorriso -as mkisofs -output /mnt/nvme/vms/tumpel-host-seed.iso -volid cidata -joliet -rock meta-data user-data
-qemu-img convert -O qcow2 ~/vm-staging/noble-server-cloudimg-amd64-20261017.img /mnt/nvme/vms/tumpel-host.qcow2
-qemu-img resize /mnt/nvme/vms/tumpel-host.qcow2 400G
-$V define ~/vm-staging/tumpel-host-seed/tumpel-host.xml && $V autostart tumpel-host && $V start tumpel-host && $V domifaddr tumpel-host
-```
-
-`virsh undefine --remove-all-storage` cannot delete the disk and the seed under `/mnt/nvme/vms`, because libvirt does not manage them. Remove them by hand. Each host gets its IP from a DHCP lease on the network `default`.
-
-On a fresh host, drop the old host key on `sandbox` with `ssh-keygen -R <address>`, then wait for the seed with `cloud-init status --wait` on the host. Then download the supervisor from the release and install it with the token on stdin, as Host setup below shows. The host reads Online in about 10 s.
-
-## Second host
-
-`tumpel-host-2` is a sibling of `tumpel-host` for multi-host placement and cross-host concurrency. `ssh tumpel-host-2` from `sandbox` reaches it (192.168.122.218, user `mvhenten`, network `default`). It is not defined on box now; rebuild it when a test needs it.
-
-It follows the rebuild steps above, with every `tumpel-host` name replaced by `tumpel-host-2`: same CPU passthrough, 4 vCPU, 8 GiB, a 40 G disk `tumpel-host-2.qcow2` beside the first one, from the same cloud image, and the seed `~/vm-staging/tumpel-host-2-seed/` with only the hostname and instance id changed. Its domain XML, `tumpel-host-2.xml` in that seed directory and a copy in `~/vm-config/` on box, sets its own UUID and MAC `52:54:00:ac:16:42`. Autostart is off.
-
-It runs the same `tumpel-supervisor install` as the first host and fetches its guest images from the release.
+A second host of the same build covers multi-host placement and cross-host concurrency.
 
 ## Installer proof matrix
 
 Desktops and servers are both host targets. A desktop runs NetworkManager without systemd-networkd; a server cloud image runs systemd-networkd. The installer proves itself on one fresh host of each:
 
-| Host            | Image                                                                     | Network stack    | TAP pool made by                      |
-| --------------- | ------------------------------------------------------------------------- | ---------------- | ------------------------------------- |
-| `tumpel-host`   | Ubuntu 24.04 server cloud image                                           | systemd-networkd | `/etc/systemd/network/50-tumpel<k>.*` |
-| `tumpel-host-2` | Ubuntu 24.04 desktop (`ubuntu-desktop-minimal` on the server cloud image) | NetworkManager   | `tumpel-tap-pool.service`             |
+| Host    | Image                                                                     | Network stack    | TAP pool made by                      |
+| ------- | ------------------------------------------------------------------------- | ---------------- | ------------------------------------- |
+| server  | Ubuntu 24.04 server cloud image                                           | systemd-networkd | `/etc/systemd/network/50-tumpel<k>.*` |
+| desktop | Ubuntu 24.04 desktop (`ubuntu-desktop-minimal` on the server cloud image) | NetworkManager   | `tumpel-tap-pool.service`             |
 
-`tumpel-host-2` is the NetworkManager rebuild target. Rebuild it with the steps above, with every `tumpel-host` name replaced by `tumpel-host-2`, and with these lines added to `~/vm-staging/tumpel-host-2-seed/user-data` before `xorriso` builds the seed:
+Build the desktop host like the server host, with these lines added to the seed's `user-data`:
 
 ```yaml
 packages: [ubuntu-desktop-minimal, network-manager, nftables]
@@ -54,50 +32,44 @@ runcmd:
 
 Keep the `printf` line in single quotes: unquoted, its `: ` makes cloud-init reject the file with "Nested mappings are not allowed".
 
-After `cloud-init status --wait`, reboot it once, then check that `systemctl is-active systemd-networkd` is `inactive` and `nmcli general status` answers. NetworkManager asks for a new DHCP lease, which can hand out another address. Read the address again with `$V domifaddr tumpel-host-2` on box, point `ssh tumpel-host-2` on `sandbox` at it and drop its old host key with `ssh-keygen -R <address>`. Then install as Host setup below shows.
+After `cloud-init status --wait`, reboot it once, then check that `systemctl is-active systemd-networkd` is `inactive` and `nmcli general status` answers. NetworkManager asks for a new DHCP lease, which can hand out another address. Read the address again, point the SSH destination at it and drop its old host key with `ssh-keygen -R <address>`. Then install as Host setup below shows.
 
 ## Release builds
 
-GitHub Actions runs the image build of `.github/workflows/images.yml` on the runner that the repository variable `BUILD_RUNNER` names, the self-hosted label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
-
-The self-hosted runner is a second runner instance on the VM `github-actions-runner` on `box`. It lives in `/home/runner/actions-runner-tumpel` as a service, registered to `mvhenten/tumpel` as `github-actions-runner-tumpel`. Leave the other project's runners there alone. The VM does not autostart. When it spins a vCPU, run `virsh destroy`, then `virsh start`. Never reboot it.
-
-`runner@` accepts only devbox's key. From `sandbox`: `ssh -J box,homelab devbox`, then `ssh -J box runner@192.168.122.50`.
-
-`box` has 16 threads and 58.7 GiB. `sandbox` takes 8 vCPU and 16 GiB, `tumpel-host` 14 and 44, `github-actions-runner` 8 and 16, and `lab` 4 and 16 (off by default). Memory is oversubscribed while all three run, so `tumpel-host-2` and `lab` stay off.
+GitHub Actions runs the image build of `.github/workflows/images.yml` on the runner that the repository variable `BUILD_RUNNER` names, such as a self-hosted runner with the label `tumpel-build`. With the variable unset, it uses `ubuntu-24.04`. The workflow installs its own tools. It publishes to the R2 bucket `tumpel-releases-<stage>` (`doc/deploy.md`).
 
 ## Host setup
 
-`tumpel-supervisor install --endpoint <url> --token-file <path|->` turns the host into an enrolled, running Tumpel host in one run. Run it as `mvhenten`, never as root. It asks for admin rights only for its one-time setup. A second run on a set-up host repeats the setup steps and leaves their results as they are. A run that stopped part way finishes when run again. The running supervisor never escalates.
+`tumpel-supervisor install --endpoint <url> --token-file <path|->` turns the host into an enrolled, running Tumpel host in one run. Run it as the login user, never as root. It asks for admin rights only for its one-time setup. A second run on a set-up host repeats the setup steps and leaves their results as they are. A run that stopped part way finishes when run again. The running supervisor never escalates.
 
 ```sh
-ssh tumpel-host 'curl -fL -o tumpel-supervisor <url>/v1/releases/supervisor/Amd64 && chmod +x tumpel-supervisor'
-tumpel host mint-token --expires-in 600 | ssh tumpel-host ./tumpel-supervisor install --endpoint <url> --token-file -
+ssh "$TUMPEL_PROOF_HOST" 'curl -fL -o tumpel-supervisor <url>/v1/releases/supervisor/Amd64 && chmod +x tumpel-supervisor'
+tumpel host mint-token --expires-in 600 | ssh "$TUMPEL_PROOF_HOST" ./tumpel-supervisor install --endpoint <url> --token-file -
 ```
 
 The installer:
 
-1. checks that `mvhenten` can open `/dev/kvm`; when not, it adds the user to group `kvm`, restarts the user manager so the supervisor runs with that group, and checks the access once with `sg kvm`. On these test hosts the seed already puts `mvhenten` in `kvm`, so this step does nothing;
+1. checks that the user can open `/dev/kvm`; when not, it adds the user to group `kvm`, restarts the user manager so the supervisor runs with that group, and checks the access once with `sg kvm`. When the seed already puts the user in `kvm`, this step does nothing;
 2. writes `~/.local/state/tumpel-supervisor/runtime.json` (`SupervisorRuntime`) with defaults when the file is missing, and brings an older one to the current schema: it adds missing fields with their defaults and drops fields the schema no longer has;
 3. downloads Firecracker v1.18.0 to `firecrackerPath`, checked against the digest the supervisor pins;
 4. writes the guest filter `/etc/tumpel-guest-filter.nft` and the unit `tumpel-guest-filter.service` that loads it at boot;
-5. makes the TAP pool: `boxCapacity` devices, 8 by default. Device `tumpel<k>` is owned by `mvhenten` and has gateway 172.16.<k>.1/30, for guest 172.16.<k>.2. The guest filter table masquerades their traffic out of the host. With systemd-networkd running, networkd makes the devices. Without it, as on a NetworkManager desktop, the unit `tumpel-tap-pool.service` makes them with `ip tuntap` at boot and turns on IPv4 forwarding. The installer never turns networkd on. When NetworkManager is installed, `/etc/NetworkManager/conf.d/90-tumpel-unmanaged.conf` tells it to leave `tumpel*` devices alone. Each failing step names itself: nft load, NetworkManager reload, networkd reload or the TAP unit;
-6. turns on lingering for `mvhenten`, copies itself to `~/.local/bin/tumpel-supervisor` and enables the user unit `tumpel-supervisor.service`, which runs `tumpel-supervisor run` after the rollback check of EDD-008;
+5. makes the TAP pool: `boxCapacity` devices, 8 by default. Device `tumpel<k>` is owned by the user and has gateway 172.16.<k>.1/30, for guest 172.16.<k>.2. The guest filter table masquerades their traffic out of the host. With systemd-networkd running, networkd makes the devices. Without it, as on a NetworkManager desktop, the unit `tumpel-tap-pool.service` makes them with `ip tuntap` at boot and turns on IPv4 forwarding. The installer never turns networkd on. When NetworkManager is installed, `/etc/NetworkManager/conf.d/90-tumpel-unmanaged.conf` tells it to leave `tumpel*` devices alone. Each failing step names itself: nft load, NetworkManager reload, networkd reload or the TAP unit;
+6. turns on lingering for the user, copies itself to `~/.local/bin/tumpel-supervisor` and enables the user unit `tumpel-supervisor.service`, which runs `tumpel-supervisor run` after the rollback check of EDD-008;
 7. enrols the host with the token from the file or stdin and starts the unit.
 
 To change the pool size, edit `boxCapacity` in `runtime.json` and run `tumpel-supervisor install` again; without `--endpoint` and `--token-file` it only sets up the host and restarts an enrolled supervisor. To enrol again, delete `~/.local/state/tumpel-supervisor` and repeat the install command above with `--endpoint` and `--token-file`. The host key is bound to the host id, not to the control plane hostname, so to move an enrolled host to a new endpoint, set `endpoint` in `~/.local/state/tumpel-supervisor/supervisor.json` and run `systemctl --user restart tumpel-supervisor`.
 
-Check: `ip -br addr show` lists `tumpel0` to `tumpel7`, each `/sys/class/net/tumpel<k>/owner` is 1000, `systemctl is-active tumpel-guest-filter` is `active`, and `sysctl net.ipv4.ip_forward` is 1. All four hold after a reboot, on both hosts of the proof matrix.
+Check: `ip -br addr show` lists `tumpel0` to `tumpel7`, each `/sys/class/net/tumpel<k>/owner` is the user's uid, `systemctl is-active tumpel-guest-filter` is `active`, and `sysctl net.ipv4.ip_forward` is 1. All four hold after a reboot, on both hosts of the proof matrix.
 
 ## Guest isolation
 
-A guest reaches the internet but never the internal network. The nftables table `inet tumpel_guest` drops anything forwarded from a `tumpel*` device to 10/8, 100.64/10, 169.254/16, 172.16/12 or 192.168/16. Those ranges cover the LAN, the libvirt network, the hypervisor `box`, other VMs and every other box. The table also drops forwarded packets whose source lies outside 172.16.0.0/16. On the host itself, it drops every packet a box sends, so no host service, not even ping at the gateway, is reachable from a box. IPv6 forwarding is off, so a guest has no IPv6 path. The table also masquerades traffic from 172.16.0.0/16 that leaves through a non-`tumpel*` device. It is separate from networkd's `io.systemd.nat`, so neither flushes the other.
+A guest reaches the internet but never the internal network. The nftables table `inet tumpel_guest` drops anything forwarded from a `tumpel*` device to 10/8, 100.64/10, 169.254/16, 172.16/12 or 192.168/16. Those ranges cover the LAN, a libvirt network, the hypervisor, other VMs and every other box. The table also drops forwarded packets whose source lies outside 172.16.0.0/16. On the host itself, it drops every packet a box sends, so no host service, not even ping at the gateway, is reachable from a box. IPv6 forwarding is off, so a guest has no IPv6 path. The table also masquerades traffic from 172.16.0.0/16 that leaves through a non-`tumpel*` device. It is separate from networkd's `io.systemd.nat`, so neither flushes the other.
 
 `tumpel-guest-filter.service` loads the table before `network-pre.target`, so the filter is in place before networkd or `tumpel-tap-pool.service` brings up the pool. `nftables.service` stays disabled, because its `/etc/nftables.conf` flushes the whole ruleset.
 
-The guest image writes `/etc/resolv.conf` with the public resolvers 1.1.1.1 and 9.9.9.9. A guest can use neither the host's DNS, served only on 127.0.0.53, nor the libvirt resolver 192.168.122.1, which the filter blocks.
+The guest image writes `/etc/resolv.conf` with the public resolvers 1.1.1.1 and 9.9.9.9. A guest can use neither the host's DNS, served only on 127.0.0.53, nor the resolver of the host's network, which the filter blocks.
 
-To test with real traffic, swap `tumpel3` for a veth with its peer in a namespace, ping from the guest side, then put the TAP back. networkd configures the veth the same way as the TAP. Run the test while no box holds `tumpel3`.
+To test with real traffic, swap `tumpel3` for a veth with its peer in a namespace, ping from the guest side, then put the TAP back. networkd configures the veth the same way as the TAP. Run the test while no box holds `tumpel3`. Set `RESOLVER` to the resolver of the host's network and `NEIGHBOUR` to another machine on it.
 
 ```sh
 sudo ip link del tumpel3
@@ -108,7 +80,7 @@ sudo ip -n tg link set eth0 up
 sudo networkctl reconfigure tumpel3
 sudo ip -n tg route add default via 172.16.3.1
 sudo nft reset counters table inet tumpel_guest
-for a in 172.16.3.1 172.16.0.1 192.168.122.1 192.168.122.188 1.1.1.1; do
+for a in 172.16.3.1 172.16.0.1 "$RESOLVER" "$NEIGHBOUR" 1.1.1.1; do
   sudo ip netns exec tg ping -c 1 -W 2 "$a" >/dev/null 2>&1 && echo "$a reached" || echo "$a blocked"
 done
 sudo nft list table inet tumpel_guest | grep counter
@@ -117,4 +89,4 @@ sudo networkctl reload
 ip -d link show tumpel3
 ```
 
-Expected: 1.1.1.1 reached, the other four blocked. The drop of forwarded private-range traffic counts 1 packet and the input drop counts 3. Deleting the namespace removes the veth, and the last command shows `tun type tap ... user mvhenten` again.
+Expected: 1.1.1.1 reached, the other four blocked. The drop of forwarded private-range traffic counts 1 packet and the input drop counts 3. Deleting the namespace removes the veth, and the last command shows `tun type tap ... user <name>` again.

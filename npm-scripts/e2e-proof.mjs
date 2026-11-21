@@ -10,7 +10,8 @@ import { INLINE_CAP, loadCredential, proofTenantApply, proofTenantPlan } from ".
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const STAGE = process.env.TUMPEL_STAGE ?? "dev";
-const HOST = process.env.TUMPEL_PROOF_HOST ?? "tumpel-host";
+const HOST = process.env.TUMPEL_PROOF_HOST;
+const HOST_NETWORK_TARGETS = (process.env.TUMPEL_PROOF_HOST_NETWORK_TARGETS ?? "").split(/\s+/).filter(Boolean);
 const ENDPOINT = process.env.TUMPEL_PROOF_ENDPOINT;
 const ISSUER = process.env.TUMPEL_PROOF_ISSUER;
 const TENANT = process.env.TUMPEL_PROOF_TENANT ?? "Tumpel proof";
@@ -23,7 +24,7 @@ const CALLER_WORKFLOW = ".github/workflows/tumpel-prebuild.yml";
 const CLI = process.env.TUMPEL_PROOF_CLI;
 const SUPERVISOR = process.env.TUMPEL_PROOF_SUPERVISOR;
 const STATE_DIR = ".local/state/tumpel-supervisor";
-const REVOKE_DIR = "development/.tmp/tumpel-proof-revoke";
+const REVOKE_DIR = ".local/state/tumpel-proof-revoke";
 const MARKER = `tumpel-proof-${randomBytes(4).toString("hex")}`;
 const MARKER_FILE = "/root/proof-marker.txt";
 const TMPFS_MARKER_FILE = "/dev/shm/proof-marker.txt";
@@ -36,6 +37,15 @@ const die = (message) => {
   process.exit(1);
 };
 
+if (!HOST) die("TUMPEL_PROOF_HOST is unset; set it to the SSH destination of a KVM test host enrolled with this stage");
+if (HOST_NETWORK_TARGETS.length === 0) {
+  die(
+    "TUMPEL_PROOF_HOST_NETWORK_TARGETS is unset; set it to space-separated host:port addresses on the test host's own network that a box must not reach, such as the host's address and its network's resolver",
+  );
+}
+if (HOST_NETWORK_TARGETS.some((target) => !/^[0-9.]+:\d+$/.test(target))) {
+  die(`TUMPEL_PROOF_HOST_NETWORK_TARGETS ${HOST_NETWORK_TARGETS.join(" ")} must list IPv4 host:port addresses`);
+}
 if (!ENDPOINT) die("TUMPEL_PROOF_ENDPOINT is unset; run this through npm run proof:e2e, which sets it from the stage");
 if (!ISSUER) die("TUMPEL_PROOF_ISSUER is unset; run this through npm run proof:e2e, which sets it from the stage");
 if (!CLI) die("TUMPEL_PROOF_CLI is unset; run this through npm run proof:e2e, which downloads the release CLI");
@@ -329,8 +339,7 @@ const credential = loadCredential(die);
 const probeCommand = (capacity) => {
   const boxes = Array.from({ length: capacity }, (_, k) => [`172.16.${k}.1:22`, `172.16.${k}.2:22`]).flat();
   const targets = [
-    "192.168.122.188:22",
-    "192.168.122.1:53",
+    ...HOST_NETWORK_TARGETS,
     ...boxes,
     "10.0.0.1:22",
     "100.64.0.1:22",
