@@ -18,6 +18,7 @@ const HANDOFF_OUTPUTS = [
   "access_issuer",
   "access_aud",
   "proof_common_name",
+  "vapid_public_key",
 ];
 const CONTROL_PLANE = "tumpel-control-plane";
 const DASHBOARD = "tumpel-dashboard";
