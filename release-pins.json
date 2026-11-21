@@ -1,6 +1,6 @@
 {
   "supervisor": "0.2.1-rc.14",
   "cli": "0.10.0-rc.15",
-  "controlPlane": "225bf9e7833e3b95f90769ce6f3e87081dd5a465",
+  "controlPlane": "db253a3dfa1d8b813fdc732622bd35d6351b7493",
   "infra": "f7f69b0c3c9b0d6017143e74773840cece023b4a"
 }
