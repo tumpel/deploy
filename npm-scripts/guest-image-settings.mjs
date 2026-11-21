@@ -15,9 +15,10 @@ export const ENVIRONMENT = {
   HOME: "/root",
   LANG: "C.UTF-8",
 };
-export const CARGO_BUILD_JOBS_GENERATOR = `#!/bin/sh
-set -e
-if [ -n "$CARGO_BUILD_JOBS" ]; then
+export const CARGO_BUILD_CONFIG = `#!/bin/sh
+set -eu
+config=$1
+if [ -e "$config" ]; then
   exit 0
 fi
 memory_kib=$(awk '/^MemTotal:/ { print $2 }' /proc/meminfo)
@@ -29,16 +30,8 @@ cpus=$(nproc)
 if [ "$jobs" -gt "$cpus" ]; then
   jobs=$cpus
 fi
-printf 'CARGO_BUILD_JOBS=%s\n' "$jobs"
-`;
-export const CARGO_BUILD_JOBS_CONFIG = `#!/bin/sh
-set -eu
-config=$1
-if jq -e 'any(.fixedVariables[]; .name == "CARGO_BUILD_JOBS")' "$config" >/dev/null; then
-  exit 0
-fi
 tmp=$(mktemp "$config.XXXXXX")
-jq --arg value "$CARGO_BUILD_JOBS" '.fixedVariables += [{"name": "CARGO_BUILD_JOBS", "value": $value}]' "$config" > "$tmp"
+printf '[build]\njobs = %s\n' "$jobs" > "$tmp"
 mv "$tmp" "$config"
 `;
 export const CLAUDE_FLAGS = [
