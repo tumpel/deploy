@@ -4,14 +4,20 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  CONTROL_PLANE_REPOSITORY,
+  checkoutPinned,
+  INFRA_REPOSITORY,
+  installTofu,
+  pinnedCommit,
+  TOFU_VERSION,
+} from "./pinned-source.mjs";
 import { currentRelease, downloadRelease } from "./release-download.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const INFRA = join(ROOT, "packages", "control-plane", "infra");
 const WORK = join(ROOT, ".tmp", "deploy");
 const ENV_FILE = process.env.TUMPEL_CF_ENV ?? join(homedir(), ".config", "tumpel", "cf-env");
 const STAGE = process.env.TUMPEL_STAGE ?? "dev";
-const TOFU = join(WORK, "tofu-1.13.2", "tofu");
 const RELEASE_DIR = join(ROOT, ".tmp", "proof-release");
 const HOST_ARCHITECTURE = "Amd64";
 const LOCAL_ARCHITECTURES = { x64: "Amd64", arm64: "Arm64" };
@@ -25,7 +31,17 @@ const [command, ...args] = process.argv.slice(2);
 if (!command) die("pass the command to run, e.g. npm run proof -- tumpel login --endpoint https://<stage host>");
 if (!/^[a-z][a-z0-9]{1,15}$/.test(STAGE)) die(`TUMPEL_STAGE ${STAGE} must be 2 to 16 lower-case letters and digits`);
 if (!existsSync(ENV_FILE)) die(`${ENV_FILE} is missing; write it as doc/deploy.md describes`);
-if (!existsSync(TOFU)) die(`${TOFU} is missing; run npm run deploy:infra once to install OpenTofu`);
+
+const infraPin = pinnedCommit("infra", die);
+const controlPlanePin = pinnedCommit("controlPlane", die);
+const INFRA = checkoutPinned(INFRA_REPOSITORY, infraPin, join(WORK, `infra-${infraPin}`), die);
+const CONTROL_PLANE = checkoutPinned(
+  CONTROL_PLANE_REPOSITORY,
+  controlPlanePin,
+  join(WORK, `control-plane-${controlPlanePin}`),
+  die,
+);
+const TOFU = await installTofu(join(WORK, `tofu-${TOFU_VERSION}`), die);
 
 const settings = Object.fromEntries(
   readFileSync(ENV_FILE, "utf8")
@@ -99,6 +115,7 @@ const child = spawnSync(command === "tumpel" ? cli : command, args, {
     TUMPEL_PROOF_CLIENT_ID: value("proof_client_id"),
     TUMPEL_PROOF_CLIENT_SECRET: value("proof_client_secret"),
     TUMPEL_PROOF_ENDPOINT: endpoint,
+    TUMPEL_PROOF_WRANGLER_CONFIG: join(CONTROL_PLANE, "packages", "control-plane", "wrangler.jsonc"),
     TUMPEL_PROOF_ISSUER: `https://${value("issuer_hostname")}`,
   },
 });

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkoutPinned, INFRA_REPOSITORY, installTofu, pinnedCommit } from "./pinned-source.mjs";
 
 const API = "https://api.cloudflare.com/client/v4";
 const STAGE = process.env.TUMPEL_STAGE ?? "dev";
@@ -22,8 +22,6 @@ const HANDOFF_OUTPUTS = [
 ];
 const CONTROL_PLANE = "tumpel-control-plane";
 const DASHBOARD = "tumpel-dashboard";
-const REPOSITORY = "https://github.com/tumpel/infra.git";
-const TOFU_VERSION = "1.13.2";
 const RETIRED = ["cloudflare_dns_record.app", "cloudflare_workers_route.app", "cloudflare_dns_record.issuer"];
 const BUILD_VARIABLES = [
   "CLOUDFLARE_TOFU_TOKEN",
@@ -50,9 +48,8 @@ const token = process.env.CLOUDFLARE_TOFU_TOKEN;
 const accountId = process.env.TUMPEL_ACCOUNT_ID;
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const pin = JSON.parse(readFileSync(join(REPO_ROOT, "release-pins.json"), "utf8")).infra;
-if (!pin) die("release-pins.json names no infra");
-const ROOT = mkdtempSync(join(tmpdir(), "infra-"));
+const pin = pinnedCommit("infra", die);
+const ROOT = checkoutPinned(INFRA_REPOSITORY, pin, join(mkdtempSync(join(tmpdir(), "infra-")), "infra"), die);
 
 const run = (command, args, { cwd = ROOT, env = process.env, capture = false, input } = {}) => {
   const result = spawnSync(command, args, {
@@ -67,10 +64,6 @@ const run = (command, args, { cwd = ROOT, env = process.env, capture = false, in
   if (result.status !== 0) die(`${command} ${args.join(" ")} exited with ${result.status}`);
   return result.stdout;
 };
-
-run("git", ["init", "--quiet"]);
-run("git", ["fetch", "--quiet", "--depth", "1", REPOSITORY, pin]);
-run("git", ["checkout", "--quiet", "FETCH_HEAD"]);
 
 const cfFetch = (path, init = {}) =>
   fetch(`${API}${path}`, {
@@ -104,37 +97,12 @@ const writeHandoff = async (handoff) => {
   if (!response.ok) die(`PUT ${path} returned ${response.status}; the token needs Workers R2 Storage Write`);
 };
 
-const installTofu = async () => {
-  const arch = { x64: "amd64", arm64: "arm64" }[process.arch] ?? die(`no OpenTofu build for ${process.arch}`);
-  const dir = mkdtempSync(join(tmpdir(), "tofu-"));
-  const base = `https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}`;
-  const archive = `tofu_${TOFU_VERSION}_linux_${arch}.tar.gz`;
-  const download = async (name) => {
-    const response = await fetch(`${base}/${name}`, { signal: AbortSignal.timeout(120_000) });
-    if (!response.ok) die(`downloading ${name} returned ${response.status}`);
-    return Buffer.from(await response.arrayBuffer());
-  };
-  const [tarball, sums] = await Promise.all([download(archive), download(`tofu_${TOFU_VERSION}_SHA256SUMS`)]);
-  const expected = sums
-    .toString("utf8")
-    .split("\n")
-    .find((line) => line.endsWith(`  ${archive}`))
-    ?.split(" ")[0];
-  if (!expected || expected !== createHash("sha256").update(tarball).digest("hex"))
-    die(`${archive} does not match its published SHA256 sum`);
-  writeFileSync(join(dir, archive), tarball);
-  run("tar", ["-xzf", archive, "tofu"], { cwd: dir });
-  const binary = join(dir, "tofu");
-  chmodSync(binary, 0o755);
-  return binary;
-};
-
 const otp = (await cfGet(`/accounts/${accountId}/access/identity_providers`)).find(
   (provider) => provider.type === "onetimepin",
 );
 if (!otp) die("the account has no One-time PIN login method; add it under Zero Trust, Settings, Authentication");
 
-const tofuBinary = await installTofu();
+const tofuBinary = await installTofu(mkdtempSync(join(tmpdir(), "tofu-")), die);
 const tofuEnv = {
   ...process.env,
   CLOUDFLARE_API_TOKEN: token,
