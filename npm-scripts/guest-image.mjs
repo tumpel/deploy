@@ -22,6 +22,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BaseImageManifestSchema, BaseLayout, GuestHarnessSchema, GuestImageManifestSchema } from "@tumpel/schemas";
 import {
+  CARGO_BUILD_JOBS_CONFIG,
+  CARGO_BUILD_JOBS_GENERATOR,
   ENVIRONMENT,
   FNM_DIR,
   LTS_NODE_VERSION,
@@ -223,6 +225,7 @@ DefaultDependencies=no
 After=local-fs.target
 
 [Service]
+ExecStartPre=/usr/local/sbin/tumpel-cargo-build-jobs /etc/tumpel/guest.json
 ExecStart=/usr/local/bin/tumpel-guest
 Restart=always
 RestartSec=1
@@ -534,6 +537,12 @@ const relinkIntoGuest = (tree, dir) => {
 
 const installDevTools = async (tree, pins, work) => {
   mkdirSync(join(tree, "opt/tumpel"), { recursive: true });
+  const environmentGenerators = join(tree, "usr/local/lib/systemd/system-environment-generators");
+  mkdirSync(environmentGenerators, { recursive: true });
+  writeFileSync(join(environmentGenerators, "50-tumpel-cargo-build-jobs"), CARGO_BUILD_JOBS_GENERATOR, {
+    mode: 0o755,
+  });
+  writeFileSync(join(tree, "usr/local/sbin/tumpel-cargo-build-jobs"), CARGO_BUILD_JOBS_CONFIG, { mode: 0o755 });
   await bundlePrebuild(join(tree, "opt/tumpel/prebuild.mjs"));
   rmSync(join(tree, "etc/resolv.conf"), { force: true });
   writeFileSync(join(tree, "etc/resolv.conf"), "nameserver 1.1.1.1\nnameserver 9.9.9.9\n");
