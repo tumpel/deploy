@@ -270,10 +270,10 @@ const fetchFirst = async (sources) => {
         status: response.status,
         body: response.ok ? Buffer.from(await response.arrayBuffer()) : undefined,
       }))
-      .catch((error) => ({ failure: error.cause?.message ?? error.message }));
+      .catch((error) => ({ failure: error.cause?.message || error.message || String(error) }));
     if (body) return { url, body };
     const reason = failure ? `failed: ${failure}` : `answered ${status}`;
-    const unavailable = failure || status >= 500;
+    const unavailable = status === undefined || status >= 500;
     if (!next && unavailable) die(`downloading ${url} ${reason}; run the build again later`);
     if (!next || (!unavailable && status !== 404))
       die(`downloading ${url} ${reason}; check the pinned URL in this script`);
