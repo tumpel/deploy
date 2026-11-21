@@ -1,8 +1,8 @@
 name: assemble-rc
 
 on:
-  schedule:
-    - cron: "0 5 * * *"
+  repository_dispatch:
+    types: [component-released]
   workflow_dispatch:
     inputs:
       dry-run:
