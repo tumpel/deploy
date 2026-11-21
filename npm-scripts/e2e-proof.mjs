@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CompactTranscriptPageSchema, WhoamiWithEndpointSchema } from "@tumpel/schemas";
@@ -23,6 +23,8 @@ const TRIGGER_REPOSITORY = process.env.TUMPEL_PROOF_TRIGGER_REPO ?? "https://git
 const CALLER_WORKFLOW = ".github/workflows/tumpel-prebuild.yml";
 const CLI = process.env.TUMPEL_PROOF_CLI;
 const SUPERVISOR = process.env.TUMPEL_PROOF_SUPERVISOR;
+const WRANGLER_CONFIG = process.env.TUMPEL_PROOF_WRANGLER_CONFIG;
+const CLI_CONFIG_HOME = join(ROOT, ".tmp", `proof-cli-${STAGE}`);
 const STATE_DIR = ".local/state/tumpel-supervisor";
 const REVOKE_DIR = ".local/state/tumpel-proof-revoke";
 const MARKER = `tumpel-proof-${randomBytes(4).toString("hex")}`;
@@ -51,16 +53,25 @@ if (!ISSUER) die("TUMPEL_PROOF_ISSUER is unset; run this through npm run proof:e
 if (!CLI) die("TUMPEL_PROOF_CLI is unset; run this through npm run proof:e2e, which downloads the release CLI");
 if (!SUPERVISOR)
   die("TUMPEL_PROOF_SUPERVISOR is unset; run this through npm run proof:e2e, which downloads the release supervisor");
+if (!WRANGLER_CONFIG) {
+  die(
+    "TUMPEL_PROOF_WRANGLER_CONFIG is unset; run this through npm run proof:e2e, which fetches the pinned control plane",
+  );
+}
 if (!existsSync(CLI)) die(`${CLI} is missing; set TUMPEL_PROOF_CLI to a built tumpel binary`);
 if (!existsSync(SUPERVISOR)) die(`${SUPERVISOR} is missing; set TUMPEL_PROOF_SUPERVISOR to a built supervisor`);
 if (!/^[^/]+\/[^/]+$/.test(TRIGGER_REPOSITORY_NAME)) {
   die(`TUMPEL_PROOF_TRIGGER_REPO ${TRIGGER_REPOSITORY} is not a GitHub repository URL`);
 }
 
-const config = JSON.parse(
-  readFileSync(join(ROOT, "packages", "control-plane", "wrangler.jsonc"), "utf8").replace(/^\s*\/\/.*$/gm, ""),
-);
+const config = JSON.parse(readFileSync(WRANGLER_CONFIG, "utf8").replace(/^\s*\/\/.*$/gm, ""));
 const settings = (config.env?.[STAGE]?.vars ?? config.vars).TUMPEL_SETTINGS;
+
+mkdirSync(CLI_CONFIG_HOME, { recursive: true });
+const inherited = Object.fromEntries(
+  Object.entries(process.env).filter(([key]) => !["TUMPEL_ENV_FILE", "TUMPEL_ENDPOINT", "TUMPEL_TOKEN"].includes(key)),
+);
+const cliEnv = (env = {}) => ({ ...inherited, XDG_CONFIG_HOME: CLI_CONFIG_HOME, ...env });
 
 class Failed extends Error {}
 const fail = (message) => {
@@ -68,9 +79,9 @@ const fail = (message) => {
 };
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const collect = (command, args) =>
+const collect = (command, args, env = process.env) =>
   new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env });
     let firstAt = null;
     let out = "";
     let err = "";
@@ -85,7 +96,7 @@ const collect = (command, args) =>
   });
 
 const tumpel = (args, env = {}) => {
-  const result = spawnSync(CLI, args, { encoding: "utf8", env: { ...process.env, ...env }, timeout: 600_000 });
+  const result = spawnSync(CLI, args, { encoding: "utf8", env: cliEnv(env), timeout: 600_000 });
   if (result.status !== 0) fail(`tumpel ${args.slice(0, 2).join(" ")}: ${result.stderr.trim().split("\n").at(-1)}`);
   return result.stdout;
 };
@@ -125,7 +136,7 @@ const waitFor = async (what, limitMs, probe) => {
 };
 
 const follow = async (turnId) => {
-  const read = await collect(CLI, ["transcript", "read", turnId, "--follow"]);
+  const read = await collect(CLI, ["transcript", "read", turnId, "--follow"], cliEnv());
   return { ...read, lines: read.out.split("\n").filter(Boolean) };
 };
 
@@ -147,6 +158,7 @@ const runTurn = async ({ sessionId, personaId, prompt, model = MODEL }) => {
           "--prompt",
           prompt,
         ],
+    cliEnv(),
   );
   const idsMs = Date.now() - t0;
   if (started.code !== 0) fail(`starting the turn: ${started.err.trim().split("\n").at(-1)}`);
@@ -203,6 +215,7 @@ const hostOnline = (hostId) =>
 const mintToken = () => {
   const minted = spawnSync(CLI, ["host", "mint-token", "--expires-in", "600"], {
     encoding: "utf8",
+    env: cliEnv(),
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (minted.status !== 0) fail(`tumpel host mint-token: ${minted.stderr.trim().split("\n").at(-1)}`);
@@ -363,6 +376,7 @@ const steps = [
     run: async () => {
       const login = spawnSync(CLI, ["login", "--endpoint", ENDPOINT, "--name", `proof-${STAGE}`], {
         encoding: "utf8",
+        env: cliEnv(),
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 300_000,
       });
@@ -840,7 +854,7 @@ const steps = [
         const result = spawnSync(
           CLI,
           ["prebuild", "start", "--repository", REPOSITORY, "--persona-id", state.personaId, "--provider", provider],
-          { encoding: "utf8", timeout: 60_000 },
+          { encoding: "utf8", env: cliEnv(), timeout: 60_000 },
         );
         if (result.status === 0)
           fail(`a prebuild started on ${provider}, which is not connected: ${result.stdout.trim()}`);
