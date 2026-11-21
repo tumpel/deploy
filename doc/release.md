@@ -13,15 +13,15 @@ flowchart LR
 
 ## Components
 
-| Component     | Released as                                                                      | Pinned by                                                         |
-| ------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| protocol      | GitHub pre-release `vX.Y.Z-rc.N` with npm tarballs; `tumpel-api` on crates.io    | `package.json` dependency URLs, edited by hand                    |
-| supervisor    | GitHub pre-release `vX.Y.Z-rc.N` with binaries, `.sha256` files and `release.json` | `supervisor` in `release-pins.json`                               |
-| cli           | GitHub pre-release `vX.Y.Z-rc.N` with the binary and its `.sha256`               | `cli` in `release-pins.json`                                      |
-| control-plane | a `main` commit whose `checks` run passed                                        | `controlPlane` in `release-pins.json`                             |
-| infra         | a `main` commit whose `checks` run passed                                        | `infra` in `release-pins.json`                                    |
-| dashboard     | GitHub release `vX.Y.Z` with tarballs                                            | `packages/dashboard-site/package.json` in tumpel/control-plane    |
-| guest images  | a tag `images-vX.Y.Z` on tumpel/deploy                                           | `images.json` in the release bucket                               |
+| Component     | Released as                                                                        | Pinned by                                                      |
+| ------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| protocol      | GitHub pre-release `vX.Y.Z-rc.N` with npm tarballs; `tumpel-api` on crates.io      | `package.json` dependency URLs, edited by hand                 |
+| supervisor    | GitHub pre-release `vX.Y.Z-rc.N` with binaries, `.sha256` files and `release.json` | `supervisor` in `release-pins.json`                            |
+| cli           | GitHub pre-release `vX.Y.Z-rc.N` with the binary and its `.sha256`                 | `cli` in `release-pins.json`                                   |
+| control-plane | a `main` commit whose `checks` run passed                                          | `controlPlane` in `release-pins.json`                          |
+| infra         | a `main` commit whose `checks` run passed                                          | `infra` in `release-pins.json`                                 |
+| dashboard     | GitHub release `vX.Y.Z` with tarballs                                              | `packages/dashboard-site/package.json` in tumpel/control-plane |
+| guest images  | a tag `images-vX.Y.Z` on tumpel/deploy                                             | `images.json` in the release bucket                            |
 
 Protocol, supervisor and cli run `release.yml` on every push to `main` that changes a shipped file. It publishes the GitHub pre-release `vX.Y.Z-rc.N`. The conventional commits since the latest stable tag pick `X.Y.Z`, and `N` counts the commits since that tag. A published release is never overwritten. A person runs `promote.yml` with one RC tag to publish the stable `vX.Y.Z`. Promote checks out the RC's commit, builds it again, tags it and publishes the release as Latest. It also publishes crates: `tumpel-api` from protocol, `tumpel-channel`, `tumpel-guest` and `tumpel-supervisor` from supervisor, and `tumpel` from cli.
 
@@ -79,10 +79,10 @@ The Workers Builds projects `tumpel` and `tumpel-infra` build the branch `main` 
 
 These times were measured over the 14 days to 2026-11-21.
 
-| Component     | Merge to release          | Wait for assemble-rc | Then                                         |
-| ------------- | ------------------------- | -------------------- | -------------------------------------------- |
-| supervisor    | RC ready about 6 min      | 0 to 399 min, manual | `release.yml` writes `current.json` in about 1 min |
-| cli           | RC ready about 4.3 min    | 0 to 399 min, manual | `release.yml` writes `current.json` in about 1 min |
+| Component     | Merge to release           | Wait for assemble-rc              | Then                                                       |
+| ------------- | -------------------------- | --------------------------------- | ---------------------------------------------------------- |
+| supervisor    | RC ready about 6 min       | 0 to 399 min, manual              | `release.yml` writes `current.json` in about 1 min         |
+| cli           | RC ready about 4.3 min     | 0 to 399 min, manual              | `release.yml` writes `current.json` in about 1 min         |
 | control-plane | checks pass in about 1 min | a pin PR, then manual assemble-rc | Workers Builds deploys; Actions does not show its duration |
 
 ## The release manifest
