@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { createPublicKey } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -70,6 +71,12 @@ const readHandoff = async () => {
 const handoff = await readHandoff();
 if (handoff.d1_database_id !== databaseId)
   die(`the infra of ${STAGE} names D1 database ${handoff.d1_database_id}, not ${databaseId}`);
+const vapidJwk = createPublicKey(handoff.vapid_public_key).export({ format: "jwk" });
+const vapidPublicKey = Buffer.concat([
+  Buffer.from([4]),
+  Buffer.from(vapidJwk.x, "base64url"),
+  Buffer.from(vapidJwk.y, "base64url"),
+]).toString("base64url");
 const config = join(PACKAGE, "wrangler.jsonc");
 writeFileSync(config, readFileSync(config, "utf8").replaceAll(PLACEHOLDER_DATABASE_ID, databaseId));
 
@@ -99,6 +106,10 @@ wrangler([
   `DASHBOARD_ORIGIN:https://${handoff.dashboard_hostname}`,
   "--var",
   `API_ORIGIN:https://${handoff.hostname}`,
+  "--var",
+  `VAPID_PUBLIC_KEY:${vapidPublicKey}`,
+  "--var",
+  `VAPID_SUBJECT:https://${handoff.hostname}`,
   "--var",
   `DEPLOYED_COMMIT:${run("git", ["rev-parse", "HEAD"], { capture: true }).trim()}`,
 ]);
