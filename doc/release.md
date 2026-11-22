@@ -124,7 +124,7 @@ To move one component, a pull request edits its pin in `release-pins.json`. A co
 
 1. No component dispatches `component-released` yet. That needs a `DEPLOY_DISPATCH_TOKEN` secret, which no component repository holds, so a person runs assemble-rc.
 2. The dashboard sits outside `release-pins.json`.
-3. Protocol tarballs are pinned by hand. tumpel/deploy installs `@tumpel/schemas` and `@tumpel/openapi` at `1.0.0-rc.38`; tumpel/control-plane installs `0.21.0-rc.37`.
+3. Protocol tarballs are pinned by hand. tumpel/deploy installs `@tumpel/schemas` and `@tumpel/openapi` at `1.0.0-rc.43`, as does tumpel/control-plane.
 4. `dev` is the only stage.
 5. `release.yml` writes `current.json` while Workers Builds deploys the Workers, in no fixed order. No smoke check runs on either, and no deploy rolls back by itself.
 6. Workers Builds deploys every push to `main`. The branch `release` feeds nothing.
