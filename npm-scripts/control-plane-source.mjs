@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -34,3 +35,6 @@ const checkout = () => {
 checkout();
 
 export const controlPlaneModule = (path) => import(pathToFileURL(join(SOURCE, path)).href);
+
+export const controlPlanePackage = (name) =>
+  import(pathToFileURL(createRequire(join(SOURCE, "packages", "control-plane", "package.json")).resolve(name)).href);

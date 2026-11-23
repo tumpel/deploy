@@ -115,7 +115,7 @@ export const supervisorRefusal = (release, channel, guest, imageGuestProtocolVer
   const pinned = `supervisor ${release.supervisorVersion}`;
   const fix = `pin a supervisor release in ${PINS_PATH} whose window meets it`;
   if (!overlaps(release.channelProtocolOldest, release.channelProtocolVersion, channel))
-    return `${pinned} speaks channel protocol ${release.channelProtocolOldest} to ${release.channelProtocolVersion}, and this commit accepts ${channel.Oldest} to ${channel.Version}; ${fix}`;
+    return `${pinned} speaks channel protocol ${release.channelProtocolOldest} to ${release.channelProtocolVersion}, and the pinned control plane accepts ${channel.Oldest} to ${channel.Version}; ${fix}`;
   if (!overlaps(release.guestProtocolOldest, release.guestProtocolVersion, guest))
     return `${pinned} speaks guest protocol ${release.guestProtocolOldest} to ${release.guestProtocolVersion}, and this commit speaks ${guest.Oldest} to ${guest.Version}; ${fix}`;
   if (
