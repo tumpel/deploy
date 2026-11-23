@@ -30,9 +30,13 @@ import {
 } from "./release-download.mjs";
 
 const { CHECKSUM_HEADER, checksumOf, presignUrl } = await controlPlaneModule("packages/control-plane/src/presign.ts");
-const { SPOKEN_CHANNEL_PROTOCOL } = await controlPlaneModule("packages/control-plane/src/channel/protocol.ts");
 const { ChannelProtocol } = await controlPlanePackage("@tumpel/schemas");
-const CONTROL_PLANE_CHANNEL = { Oldest: ChannelProtocol.Oldest, Version: SPOKEN_CHANNEL_PROTOCOL };
+for (const bound of ["Oldest", "Version"])
+  if (!Number.isInteger(ChannelProtocol?.[bound]))
+    throw new Error(
+      `release:publish: the pinned control plane's @tumpel/schemas exports no integer ChannelProtocol.${bound}; update release-pins.json controlPlane or read the channel window from where that commit now keeps it`,
+    );
+const CONTROL_PLANE_CHANNEL = { Oldest: ChannelProtocol.Oldest, Version: ChannelProtocol.Version };
 
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
 const ENABLED = new Set(RELEASE_ARCHITECTURES.map((arch) => ARCHITECTURES[arch]));
