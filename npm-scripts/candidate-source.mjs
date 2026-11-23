@@ -43,8 +43,8 @@ export const candidateSource = async ({ pins, stage, github, clock = { now: Date
   const protocol = /\/v([^/]+)\//.exec(controlPlane.dependencies["@tumpel/schemas"])?.[1];
   const url = site.dependencies["@tumpel/dashboard"];
   const dashboardVersion = /\/v([^/]+)\//.exec(url)?.[1];
-  if (!dashboardVersion || !controlPlane.dependencies["@tumpel/pages"].includes(`/v${dashboardVersion}/`))
-    throw new Error("Dashboard and pages do not name one release; merge their dependency update before assembly.");
+  if (!dashboardVersion)
+    throw new Error("The dashboard URL has no release version; pin a published dashboard release.");
   const dashboardRelease = await github(`/repos/tumpel/dashboard/releases/tags/v${dashboardVersion}`);
   if (dashboardRelease.draft || dashboardRelease.tag_name !== `v${dashboardVersion}`)
     throw new Error("The dashboard candidate is not published.");

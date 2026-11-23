@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
 
@@ -73,6 +74,18 @@ export const checkedCandidate = (input) => {
   return candidate;
 };
 
+export const readCandidate = (path) => (existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : undefined);
+
+export const candidateFor = (input, pins, stage) => {
+  if (input?.clients === undefined) return undefined;
+  const candidate = checkedCandidate(input);
+  if (candidate.stage !== stage || Object.entries(candidate.pins).some(([key, value]) => pins[key] !== value))
+    throw new Error(
+      "Candidate evidence does not match the stage and pins; supply matching evidence before continuing.",
+    );
+  return candidate;
+};
+
 export const exactChecks = async (repository, sha, github, clock = { sleep: setTimeout }) => {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const { workflow_runs: runs } = await github(
@@ -112,12 +125,14 @@ export const verifyManifest = (candidate, manifest) => {
   }
 };
 
-export const readyClients = async (
-  candidate,
-  { read, manifest, transport = fetch, clock = { now: Date.now, sleep: setTimeout } },
-) => {
+export const readyClients = async (candidate, { read, clock = { now: Date.now, sleep: setTimeout } }) => {
   for (let attempt = 0; attempt < 10; attempt += 1) {
-    const evidence = ReadinessSchema.parse(await read());
+    const input = await read();
+    if (input === undefined || input === null)
+      throw new Error(
+        "Client readiness is missing; collect evidence for this candidate before publishing or deploying.",
+      );
+    const evidence = ReadinessSchema.parse(input);
     if (
       evidence.candidateId !== candidate.candidateId ||
       evidence.stage !== candidate.stage ||
@@ -148,24 +163,25 @@ export const readyClients = async (
       evidence.consumers.every((consumer) => consumer.status === "Ready") &&
       evidence.supervisors.every((host) => !host.online || host.supervisorVersion === candidate.pins.supervisor)
     ) {
-      verifyManifest(candidate, await manifest());
-      const origin = `https://api.${candidate.stage === "prod" ? "" : `${candidate.stage}.`}tumpel.dev`;
-      for (const name of ["cli", "supervisor"]) {
-        for (const binary of candidate.clients[name].binaries) {
-          const response = await transport(
-            `${origin}/v1/releases/${name}/${binary.architecture}?candidate=${candidate.candidateId}`,
-            { signal: AbortSignal.timeout(30_000), cache: "no-store" },
-          );
-          if (!response.ok || hash(Buffer.from(await response.arrayBuffer())) !== binary.sha256)
-            throw new Error(
-              `The stage ${name} endpoint differs from the candidate release; the API remains unchanged.`,
-            );
-        }
-      }
       return;
     }
     if (attempt === 9) throw new Error("Client readiness timed out after 10 observations; the API remains unchanged.");
     await clock.sleep(1000 * 2 ** attempt);
+  }
+};
+
+export const verifyStageClients = async (candidate, manifest, transport = fetch) => {
+  verifyManifest(candidate, await manifest());
+  const origin = `https://api.${candidate.stage === "prod" ? "" : `${candidate.stage}.`}tumpel.dev`;
+  for (const name of ["cli", "supervisor"]) {
+    for (const binary of candidate.clients[name].binaries) {
+      const response = await transport(
+        `${origin}/v1/releases/${name}/${binary.architecture}?candidate=${candidate.candidateId}`,
+        { signal: AbortSignal.timeout(30_000), cache: "no-store" },
+      );
+      if (!response.ok || hash(Buffer.from(await response.arrayBuffer())) !== binary.sha256)
+        throw new Error(`The stage ${name} endpoint differs from the candidate release; the API remains unchanged.`);
+    }
   }
 };
 
@@ -177,6 +193,7 @@ export const verifyDashboard = async (candidate, transport = fetch) => {
     const response = await transport(`${origin}${path}?candidate=${candidate.candidateId}`, {
       redirect: "error",
       headers: { "cache-control": "no-cache" },
+      signal: AbortSignal.timeout(30_000),
     });
     if (!response.ok) throw new Error(`Dashboard read-back failed (${response.status}); the API remains unchanged.`);
     let bytes = Buffer.from(await response.arrayBuffer());
@@ -204,8 +221,18 @@ export const activateCandidate = async (
     receipt,
     clock = { now: Date.now, sleep: setTimeout },
     transport = fetch,
+    notice = console.log,
   },
 ) => {
+  if (input === undefined) {
+    notice(
+      "::notice::Candidate client evidence is absent; deploying dashboard, migrations and API in the existing order.",
+    );
+    await dashboard();
+    await migrate();
+    await api();
+    return;
+  }
   const candidate = checkedCandidate(input);
   if (
     Object.entries(candidate.pins).some(([key, value]) => pins[key] !== value) ||
@@ -213,7 +240,7 @@ export const activateCandidate = async (
   )
     throw new Error("Pins or infra handoff do not match the candidate; refresh the handoff before code writes.");
   const assertLease = async () => {
-    if ((await lease()).candidateId !== candidate.candidateId)
+    if ((await lease())?.candidateId !== candidate.candidateId)
       throw new Error("Another candidate owns this stage; finish its activation first.");
   };
   await assertLease();
@@ -227,14 +254,16 @@ export const activateCandidate = async (
       throw new Error("The stage manifest changed after publication; assemble a new candidate.");
     return served;
   };
-  await readyClients(candidate, { read: readiness, manifest: readManifest, transport, clock });
+  await readyClients(candidate, { read: readiness, clock });
+  await verifyStageClients(candidate, readManifest, transport);
   await assertLease();
   if ((await handoff()).infra_fingerprint !== candidate.pins.infra)
     throw new Error("Infra changed before dashboard activation; refresh the handoff.");
   await dashboard();
   await verifyDashboard(candidate, transport);
   await assertLease();
-  await readyClients(candidate, { read: readiness, manifest: readManifest, transport, clock });
+  await readyClients(candidate, { read: readiness, clock });
+  await verifyStageClients(candidate, readManifest, transport);
   if ((await handoff()).infra_fingerprint !== candidate.pins.infra)
     throw new Error("Infra changed before migrations; refresh the handoff.");
   await migrate();
@@ -242,7 +271,8 @@ export const activateCandidate = async (
   if ((await handoff()).infra_fingerprint !== candidate.pins.infra)
     throw new Error("Infra changed during activation; refresh the handoff.");
   await exactChecks("tumpel/control-plane", candidate.pins.controlPlane, github, clock);
-  await readyClients(candidate, { read: readiness, manifest: readManifest, transport, clock });
+  await readyClients(candidate, { read: readiness, clock });
+  await verifyStageClients(candidate, readManifest, transport);
   await assertLease();
   if ((await handoff()).infra_fingerprint !== candidate.pins.infra)
     throw new Error("Infra changed before API activation; refresh the handoff.");
@@ -260,37 +290,64 @@ export const activateCandidate = async (
 export const publishCandidate = async (
   input,
   manifest,
-  { get, put, github, readiness, endpoint, clock, transport = fetch },
+  { get, put, github, readiness, endpoint, clock, transport = fetch, notice = console.log },
 ) => {
+  if (input === undefined) {
+    notice("::notice::Candidate client evidence is absent; publishing the manifest through the existing release path.");
+    await put("current.json", manifest);
+    return;
+  }
   const candidate = checkedCandidate(input);
   await exactChecks("tumpel/control-plane", candidate.pins.controlPlane, github, clock);
   for (const name of ["cli", "supervisor"])
     await exactChecks(`tumpel/${name}`, candidate.clients[name].sha, github, clock);
   verifyManifest(candidate, manifest);
+  await readyClients(candidate, { read: readiness, clock });
   const previous = await get("rollout.json");
   if (
-    previous &&
+    previous?.value &&
     previous.value.candidateId !== candidate.candidateId &&
     !(await get(`activated/${previous.value.candidateId}.json`))
   )
     throw new Error("Another candidate owns this stage; finish its Worker activation before publishing.");
-  if (!previous || previous.value.candidateId !== candidate.candidateId)
-    await put(
-      "rollout.json",
-      { candidateId: candidate.candidateId },
-      previous ? { "if-match": previous.etag } : { "if-none-match": "*" },
-    );
-  await put("current.json", manifest);
-  await readyClients(candidate, {
-    read: readiness,
-    transport,
-    manifest: async () => {
-      const served = await endpoint();
-      if (hash(JSON.stringify(served)) !== hash(JSON.stringify(manifest)))
-        throw new Error("Stage manifest read-back differs from publication; keep main pins unchanged.");
-      return served;
-    },
-    clock,
+  const previousManifest = await get("current.json");
+  const leaseEtag =
+    previous?.value?.candidateId === candidate.candidateId
+      ? previous.etag
+      : await put(
+          "rollout.json",
+          { candidateId: candidate.candidateId },
+          previous ? { "if-match": previous.etag } : { "if-none-match": "*" },
+        );
+  const restore = async (key, record, etag) => {
+    await put(key, record?.value ?? null, { "if-match": etag });
+  };
+  const manifestEtag = await put(
+    "current.json",
+    manifest,
+    previousManifest ? { "if-match": previousManifest.etag } : { "if-none-match": "*" },
+  ).catch(async (error) => {
+    const current = await get("current.json");
+    if (current && hash(JSON.stringify(current.value)) === hash(JSON.stringify(manifest)))
+      await restore("current.json", previousManifest, current.etag);
+    await restore("rollout.json", previous, leaseEtag);
+    throw error;
   });
-  await put(`prepared/${candidate.candidateId}.json`, { candidateId: candidate.candidateId, manifest });
+  try {
+    await verifyStageClients(
+      candidate,
+      async () => {
+        const served = await endpoint();
+        if (hash(JSON.stringify(served)) !== hash(JSON.stringify(manifest)))
+          throw new Error("Stage manifest read-back differs from publication; keep main pins unchanged.");
+        return served;
+      },
+      transport,
+    );
+    await put(`prepared/${candidate.candidateId}.json`, { candidateId: candidate.candidateId, manifest });
+  } catch (error) {
+    await restore("current.json", previousManifest, manifestEtag);
+    await restore("rollout.json", previous, leaseEtag);
+    throw error;
+  }
 };

@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { fetched, github } from "./candidate-source.mjs";
-import { activateCandidate, checkedCandidate } from "./rollout.mjs";
+import { activateCandidate, candidateFor, readCandidate } from "./rollout.mjs";
 
 const API = "https://api.cloudflare.com/client/v4";
 const STAGE = process.env.TUMPEL_STAGE ?? "dev";
@@ -30,10 +30,7 @@ const accountId =
   die("TUMPEL_ACCOUNT_ID is not set; cloudflare-builds-bootstrap sets it on the Workers Builds trigger");
 const PINS = join(dirname(dirname(fileURLToPath(import.meta.url))), "release-pins.json");
 const pins = JSON.parse(readFileSync(PINS, "utf8"));
-const candidate = checkedCandidate(
-  JSON.parse(readFileSync(new URL("../release-candidate.json", import.meta.url), "utf8")),
-);
-if (candidate.stage !== STAGE) die("the candidate belongs to another stage; assemble a candidate for this stage");
+const candidate = candidateFor(readCandidate(new URL("../release-candidate.json", import.meta.url)), pins, STAGE);
 const pin = pins.controlPlane;
 if (!pin) die("release-pins.json names no controlPlane");
 const ROOT = mkdtempSync(join(tmpdir(), "control-plane-"));
@@ -77,7 +74,8 @@ const readHandoff = async () => {
 };
 
 const handoff = await readHandoff();
-if (handoff.infra_fingerprint !== pins.infra) die("the infra handoff is stale; refresh it before code writes");
+if (candidate && handoff.infra_fingerprint !== pins.infra)
+  die("the infra handoff is stale; refresh it before code writes");
 if (handoff.d1_database_id !== databaseId)
   die(`the infra of ${STAGE} names D1 database ${handoff.d1_database_id}, not ${databaseId}`);
 const vapidJwk = createPublicKey(handoff.vapid_public_key).export({ format: "jwk" });

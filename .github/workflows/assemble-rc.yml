@@ -39,5 +39,5 @@ jobs:
         run: npm ci --prefer-offline --no-audit --no-fund
 
       - id: assemble
-        name: Freeze, publish and verify the candidate before advancing pins
+        name: Assemble the release with optional candidate evidence
         run: npm run release:rc -- ${{ inputs.dry-run && '--dry-run' || '' }}

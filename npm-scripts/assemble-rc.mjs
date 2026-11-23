@@ -1,10 +1,9 @@
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { candidateSource, fetched } from "./candidate-source.mjs";
-import { checkedCandidate, exactChecks, verifyManifest } from "./rollout.mjs";
+import { candidateSource } from "./candidate-source.mjs";
+import { candidateFor, checkedCandidate, exactChecks, readCandidate } from "./rollout.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PINS_PATH = join(ROOT, "release-pins.json");
@@ -64,21 +63,23 @@ const latestRelease = (repository, pinned) => {
   return latest;
 };
 
-const latestCheckedCommit = async (repository, pinned) => {
+export const latestCheckedCommit = async (repository, pinned, github, candidate, clock) => {
   if (!SHA.test(pinned)) die("The pinned commit is invalid; pin a full commit SHA.");
-  const { sha } = api(`repos/${repository}/commits/main`);
-  await exactChecks(repository, sha, async (path) => api(path.slice(1)));
-  const { status } = api(`repos/${repository}/compare/${pinned}...${sha}`);
+  let sha;
+  if (candidate) {
+    ({ sha } = await github(`/repos/${repository}/commits/main`));
+    await exactChecks(repository, sha, github, clock);
+  } else {
+    const { workflow_runs: runs } = await github(
+      `/repos/${repository}/actions/runs?branch=main&event=push&status=success&per_page=50`,
+    );
+    sha = runs.find((run) => run.name === "checks")?.head_sha;
+    if (sha === undefined) die(`${repository} has no main commit whose checks passed`);
+  }
+  const { status } = await github(`/repos/${repository}/compare/${pinned}...${sha}`);
   if (status !== "ahead" && status !== "identical")
     die("The candidate regresses a commit pin; merge the component history first.");
   return sha;
-};
-
-const SOURCES = {
-  supervisor: (pinned) => latestRelease("tumpel/supervisor", pinned),
-  cli: (pinned) => latestRelease("tumpel/cli", pinned),
-  controlPlane: (pinned) => latestCheckedCommit("tumpel/control-plane", pinned),
-  infra: (pinned) => latestCheckedCommit("tumpel/infra", pinned),
 };
 
 const nextTag = () => {
@@ -93,33 +94,44 @@ const nextTag = () => {
   return { last, next: `v${major}.${minor}.${Number(patch) + 1}-rc.1` };
 };
 
-export const assembleCandidate = async (
-  candidate,
-  { tag, publish, observe, readBack, advance, clock = { sleep: setTimeout } },
-) => {
-  checkedCandidate(candidate);
-  const sha = await tag();
-  await publish();
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const { workflow_runs: runs } = await observe(sha);
-    const [release] = runs
-      .filter((run) => run.head_sha === sha && run.event === "workflow_dispatch")
-      .sort((a, b) => b.id - a.id);
-    if (release?.status === "completed") {
-      if (release.conclusion !== "success")
-        throw new Error("Candidate publication failed; main pins remain unchanged.");
-      verifyManifest(candidate, await readBack());
-      await advance();
-      return;
-    }
-    if (attempt === 9) throw new Error("Publication timed out after 10 observations; main pins remain unchanged.");
-    await clock.sleep(1000 * 2 ** attempt);
+export const assembleCandidate = async (candidate, { tag, publish, advance, notice = console.log }) => {
+  if (candidate === undefined) {
+    notice(
+      "::notice::Candidate client evidence is absent; advancing pins before starting the existing release workflow.",
+    );
+    await advance();
+  } else {
+    checkedCandidate(candidate);
   }
+  await tag();
+  await publish();
+};
+
+export const advancePublishedCandidate = async (candidate, advance) => {
+  if (candidate === undefined) return;
+  checkedCandidate(candidate);
+  await advance();
 };
 
 const main = async () => {
   const dryRun = process.argv.includes("--dry-run");
   const pins = JSON.parse(readFileSync(PINS_PATH, "utf8"));
+  const stage = process.env.TUMPEL_STAGE ?? "dev";
+  const input = readCandidate(join(ROOT, "release-candidate.json"));
+  const candidate = candidateFor(input, input?.pins ?? pins, stage);
+  if (process.argv.includes("--published")) {
+    await advancePublishedCandidate(candidateFor(input, pins, stage), async () =>
+      run("git", ["push", "origin", "HEAD:refs/heads/main"]),
+    );
+    return;
+  }
+  const github = async (path) => api(path.slice(1));
+  const SOURCES = {
+    supervisor: (pinned) => latestRelease("tumpel/supervisor", pinned),
+    cli: (pinned) => latestRelease("tumpel/cli", pinned),
+    controlPlane: (pinned) => latestCheckedCommit("tumpel/control-plane", pinned, github, candidate),
+    infra: (pinned) => latestCheckedCommit("tumpel/infra", pinned, github, candidate),
+  };
   const unknown = Object.keys(pins).filter((name) => !(name in SOURCES));
   if (unknown.length > 0)
     die(`release-pins.json names ${unknown.join(", ")}, which this script has no release source for`);
@@ -143,29 +155,28 @@ const main = async () => {
   );
 
   if (dryRun || tag === "") process.exit(0);
-  const stage = process.env.TUMPEL_STAGE ?? "dev";
-  const github = async (path) => api(path.slice(1));
-  const candidate = await candidateSource({ pins: assembled, stage, github });
+  if (candidate) {
+    candidateFor(candidate, assembled, stage);
+    const source = await candidateSource({ pins: assembled, stage, github, clock: { now: () => candidate.createdAt } });
+    if (source.candidateId !== candidate.candidateId)
+      die("The published source differs from candidate evidence; assemble matching evidence before continuing.");
+  }
+  run("git", ["checkout", "--detach"]);
+  if (changed.length > 0) {
+    writeFileSync(PINS_PATH, `${JSON.stringify(assembled, null, 2)}\n`);
+    run("git", ["config", "user.name", "github-actions[bot]"]);
+    run("git", ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
+    run("git", ["add", "release-pins.json"]);
+    run("git", ["commit", "-m", `chore(release): pin the latest releases for ${tag}`]);
+  }
   await assembleCandidate(candidate, {
     tag: async () => {
-      run("git", ["checkout", "--detach"]);
-      writeFileSync(PINS_PATH, `${JSON.stringify(assembled, null, 2)}\n`);
-      writeFileSync(join(ROOT, "release-candidate.json"), `${JSON.stringify(candidate, null, 2)}\n`);
-      run("git", ["config", "user.name", "github-actions[bot]"]);
-      run("git", ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
-      run("git", ["add", "release-pins.json", "release-candidate.json"]);
-      run("git", ["commit", "-m", `chore(release): freeze candidate ${tag}`]);
       run("git", ["tag", tag]);
       run("git", ["push", "origin", `refs/tags/${tag}`]);
-      return run("git", ["rev-parse", "HEAD"]);
     },
     publish: async () => {
       run("gh", ["workflow", "run", "release.yml", "--ref", tag, "-f", `stage=${stage}`]);
     },
-    observe: async (sha) =>
-      github(`/repos/tumpel/deploy/actions/workflows/release.yml/runs?head_sha=${sha}&per_page=100`),
-    readBack: async () =>
-      (await fetched(`https://api.${stage === "prod" ? "" : `${stage}.`}tumpel.dev/v1/releases/current`)).json(),
     advance: async () => run("git", ["push", "origin", "HEAD:refs/heads/main"]),
   });
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `tag=\n`);

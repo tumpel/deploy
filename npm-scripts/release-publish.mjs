@@ -1,7 +1,15 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  createReadStream,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { request } from "node:https";
 import { basename, dirname, join } from "node:path";
 import {
@@ -29,7 +37,7 @@ import {
   supervisorRefusal,
   supervisorRelease,
 } from "./release-download.mjs";
-import { checkedCandidate, publishCandidate } from "./rollout.mjs";
+import { candidateFor, publishCandidate, readCandidate } from "./rollout.mjs";
 
 const { CHECKSUM_HEADER, checksumOf, presignUrl } = await controlPlaneModule("packages/control-plane/src/presign.ts");
 const { ChannelProtocol } = await controlPlanePackage("@tumpel/schemas");
@@ -133,7 +141,7 @@ const readJson = async (store, key) => {
   if (status !== 200)
     die(`GET ${bucket}/${key} answered ${status}: ${text}; check that the R2 token can read ${bucket}`);
   try {
-    return JSON.parse(text);
+    return JSON.parse(text) ?? undefined;
   } catch (error) {
     return die(`${bucket}/${key} is not JSON (${String(error)}); publish it again`);
   }
@@ -143,20 +151,25 @@ const put = async (store, key, digest, headers, body, size) => {
   const url = await presignUrl(store.credentials, "PUT", store.origin, segmentsOf(key), SIGNED_SECONDS, new Date(), [
     [CHECKSUM_HEADER, checksumOf(digest)],
   ]);
-  const { status, text } = await send(
+  const {
+    status,
+    text,
+    headers: responseHeaders,
+  } = await send(
     url,
     "PUT",
     { ...headers, [CHECKSUM_HEADER]: checksumOf(digest), "content-length": String(size) },
     body,
   );
   if (status !== 200)
-    die(`PUT ${bucket}/${key} answered ${status}: ${text}; check that the R2 token can write ${bucket}`);
+    throw new Error(`PUT ${bucket}/${key} answered ${status}: ${text}; check that the R2 token can write ${bucket}`);
+  return responseHeaders.etag;
 };
 
 const putJson = async (store, key, value, conditions = {}) => {
   const body = `${JSON.stringify(value, null, 2)}\n`;
   const digest = createHash("sha256").update(body).digest("hex");
-  await put(
+  return put(
     store,
     key,
     digest,
@@ -532,17 +545,11 @@ const publishRelease = async (layerFragmentDir) => {
     harnessLayers,
     bases,
   });
-  const candidate = checkedCandidate(
-    JSON.parse(readFileSync(new URL("../release-candidate.json", import.meta.url), "utf8")),
+  const candidate = candidateFor(
+    readCandidate(new URL("../release-candidate.json", import.meta.url)),
+    JSON.parse(readFileSync(new URL("../release-pins.json", import.meta.url), "utf8")),
+    stage,
   );
-  if (
-    candidate.stage !== stage ||
-    Object.entries(candidate.pins).some(
-      ([name, value]) =>
-        JSON.parse(readFileSync(new URL("../release-pins.json", import.meta.url), "utf8"))[name] !== value,
-    )
-  )
-    die("the candidate does not match this stage and pins; assemble a candidate first");
   await publishCandidate(candidate, manifest, {
     get: async (key) => {
       const url = await presignUrl(store.credentials, "GET", store.origin, segmentsOf(key), SIGNED_SECONDS, new Date());
@@ -562,6 +569,7 @@ const publishRelease = async (layerFragmentDir) => {
         )
       ).json(),
   });
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `candidate=${candidate !== undefined}\n`);
   console.log(
     `published ${bucket}/${CURRENT} for ${releaseVersion} with supervisor ${pins.supervisor}, CLI ${pins.cli} and the images of ${imageReleaseVersion}`,
   );
