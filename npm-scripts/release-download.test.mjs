@@ -12,7 +12,7 @@ const RELEASE = {
   guestProtocolVersion: 11,
 };
 
-test("a pinned supervisor publishes while its channel and guest windows meet this commit's and the images'", () => {
+test("a pinned supervisor publishes while its channel and guest windows meet the control plane's, this commit's and the images'", () => {
   assert.equal(supervisorRefusal(RELEASE, CHANNEL, GUEST, 11), undefined);
   assert.equal(
     supervisorRefusal({ ...RELEASE, channelProtocolOldest: 19, channelProtocolVersion: 20 }, CHANNEL, GUEST, 9),
@@ -24,10 +24,10 @@ test("a pinned supervisor publishes while its channel and guest windows meet thi
   );
 });
 
-test("a pinned supervisor whose window misses this commit's or the images' guest protocol is refused", () => {
+test("a pinned supervisor whose window misses the control plane's, this commit's or the images' guest protocol is refused", () => {
   assert.match(
     supervisorRefusal({ ...RELEASE, channelProtocolOldest: 20, channelProtocolVersion: 20 }, CHANNEL, GUEST, 11),
-    /supervisor 0\.1\.0 speaks channel protocol 20 to 20, and this commit accepts 18 to 19/,
+    /supervisor 0\.1\.0 speaks channel protocol 20 to 20, and the pinned control plane accepts 18 to 19/,
   );
   assert.match(
     supervisorRefusal({ ...RELEASE, channelProtocolOldest: 16, channelProtocolVersion: 17 }, CHANNEL, GUEST, 11),

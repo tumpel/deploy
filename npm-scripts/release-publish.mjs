@@ -7,7 +7,6 @@ import { basename, dirname, join } from "node:path";
 import {
   BaseImageManifestSchema,
   BaseLayout,
-  ChannelProtocol,
   GuestImageManifestSchema,
   GuestProtocol,
   HarnessLayerManifestSchema,
@@ -15,7 +14,7 @@ import {
   ReleaseHarnessLayerSchema,
   ReleaseManifestSchema,
 } from "@tumpel/schemas";
-import { controlPlaneModule } from "./control-plane-source.mjs";
+import { controlPlaneModule, controlPlanePackage } from "./control-plane-source.mjs";
 import { layerHarnesses, layerPrefix, layerRecipe, recipeKey } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 import {
@@ -31,6 +30,9 @@ import {
 } from "./release-download.mjs";
 
 const { CHECKSUM_HEADER, checksumOf, presignUrl } = await controlPlaneModule("packages/control-plane/src/presign.ts");
+const { SPOKEN_CHANNEL_PROTOCOL } = await controlPlaneModule("packages/control-plane/src/channel/protocol.ts");
+const { ChannelProtocol } = await controlPlanePackage("@tumpel/schemas");
+const CONTROL_PLANE_CHANNEL = { Oldest: ChannelProtocol.Oldest, Version: SPOKEN_CHANNEL_PROTOCOL };
 
 const ARCHITECTURES = { amd64: "Amd64", arm64: "Arm64" };
 const ENABLED = new Set(RELEASE_ARCHITECTURES.map((arch) => ARCHITECTURES[arch]));
@@ -440,7 +442,7 @@ const publishImageRelease = async (fragmentDir, baseFragmentDir) => {
 const pinnedBinaries = async (imageGuestProtocolVersion) => {
   const pins = releasePins();
   const release = await supervisorRelease(pins.supervisor).catch((error) => die(error.message));
-  const refusal = supervisorRefusal(release, ChannelProtocol, GuestProtocol, imageGuestProtocolVersion);
+  const refusal = supervisorRefusal(release, CONTROL_PLANE_CHANNEL, GuestProtocol, imageGuestProtocolVersion);
   if (refusal !== undefined) die(refusal);
   const pinned = async (architecture) => {
     const listed = release.binaries.find((binary) => binary.architecture === architecture);
