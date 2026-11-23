@@ -21,7 +21,7 @@ concurrency:
 jobs:
   assemble:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 5
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -35,9 +35,21 @@ jobs:
           node-version: 24
           package-manager-cache: false
 
-      - name: Install the script dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund
-
       - id: assemble
-        name: Freeze, publish and verify the candidate before advancing pins
+        name: Pin the latest release of every component
         run: npm run release:rc -- ${{ inputs.dry-run && '--dry-run' || '' }}
+
+      - if: steps.assemble.outputs.tag != ''
+        name: Commit the pins, tag the RC and start its release
+        env:
+          TAG: ${{ steps.assemble.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet release-pins.json; then
+            git commit -m "chore(release): pin the latest releases for $TAG" release-pins.json
+            git push origin HEAD:main
+          fi
+          git tag "$TAG"
+          git push origin "refs/tags/$TAG"
+          gh workflow run release.yml --ref "$TAG"
