@@ -102,7 +102,7 @@ jobs:
   publish:
     needs: layers
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 10
     concurrency:
       group: release-publish-${{ inputs.stage || 'dev' }}
       cancel-in-progress: false

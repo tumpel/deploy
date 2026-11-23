@@ -11,4 +11,3 @@
 9. Every Cloudflare token, secret and resource is a tofu resource in `packages/control-plane/infra`. Never create one with a script or a manual wrangler step.
 10. On the dev stage, apply the tofu with `npm run deploy:infra`, without a plan review.
 11. Decisions live in `doc/adr`, designs in `doc/RFC` and `doc/EDD`.
-12. Every code deployment requires a frozen candidate, matching published client evidence, fresh Tumpel-run consumer readiness, every online stage supervisor on the candidate version and the matching infra fingerprint. Publish and read back clients before advancing pins. Verify the dashboard's served bytes before migrations and API Worker activation. A pin commit never supplies readiness evidence.

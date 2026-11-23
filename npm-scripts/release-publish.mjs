@@ -14,7 +14,6 @@ import {
   ReleaseHarnessLayerSchema,
   ReleaseManifestSchema,
 } from "@tumpel/schemas";
-import { fetched, github } from "./candidate-source.mjs";
 import { controlPlaneModule, controlPlanePackage } from "./control-plane-source.mjs";
 import { layerHarnesses, layerPrefix, layerRecipe, recipeKey } from "./harness-recipes.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
@@ -29,7 +28,6 @@ import {
   supervisorRefusal,
   supervisorRelease,
 } from "./release-download.mjs";
-import { checkedCandidate, publishCandidate } from "./rollout.mjs";
 
 const { CHECKSUM_HEADER, checksumOf, presignUrl } = await controlPlaneModule("packages/control-plane/src/presign.ts");
 const { ChannelProtocol } = await controlPlanePackage("@tumpel/schemas");
@@ -102,9 +100,7 @@ const send = (url, method, headers, body) =>
     const req = request(url, { method, headers, timeout: REQUEST_SECONDS * 1000 }, (response) => {
       const chunks = [];
       response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () =>
-        resolve({ status: response.statusCode, text: Buffer.concat(chunks).toString(), headers: response.headers }),
-      );
+      response.on("end", () => resolve({ status: response.statusCode, text: Buffer.concat(chunks).toString() }));
       response.on("error", reject);
     });
     req.on("timeout", () =>
@@ -153,14 +149,14 @@ const put = async (store, key, digest, headers, body, size) => {
     die(`PUT ${bucket}/${key} answered ${status}: ${text}; check that the R2 token can write ${bucket}`);
 };
 
-const putJson = async (store, key, value, conditions = {}) => {
+const putJson = async (store, key, value) => {
   const body = `${JSON.stringify(value, null, 2)}\n`;
   const digest = createHash("sha256").update(body).digest("hex");
   await put(
     store,
     key,
     digest,
-    { "content-type": "application/json", "cache-control": "no-cache", ...conditions },
+    { "content-type": "application/json", "cache-control": "no-cache" },
     body,
     Buffer.byteLength(body),
   );
@@ -532,36 +528,7 @@ const publishRelease = async (layerFragmentDir) => {
     harnessLayers,
     bases,
   });
-  const candidate = checkedCandidate(
-    JSON.parse(readFileSync(new URL("../release-candidate.json", import.meta.url), "utf8")),
-  );
-  if (
-    candidate.stage !== stage ||
-    Object.entries(candidate.pins).some(
-      ([name, value]) =>
-        JSON.parse(readFileSync(new URL("../release-pins.json", import.meta.url), "utf8"))[name] !== value,
-    )
-  )
-    die("the candidate does not match this stage and pins; assemble a candidate first");
-  await publishCandidate(candidate, manifest, {
-    get: async (key) => {
-      const url = await presignUrl(store.credentials, "GET", store.origin, segmentsOf(key), SIGNED_SECONDS, new Date());
-      const response = await send(url, "GET", {});
-      if (response.status === 404) return undefined;
-      if (response.status !== 200)
-        throw new Error(`Release evidence read failed (${response.status}); keep main pins unchanged.`);
-      return { value: JSON.parse(response.text), etag: response.headers.etag };
-    },
-    put: (key, value, conditions) => putJson(store, key, value, conditions),
-    github,
-    readiness: () => readJson(store, `readiness/${candidate.candidateId}.json`),
-    endpoint: async () =>
-      (
-        await fetched(
-          `https://api.${stage === "prod" ? "" : `${stage}.`}tumpel.dev/v1/releases/current?candidate=${candidate.candidateId}`,
-        )
-      ).json(),
-  });
+  await putJson(store, CURRENT, manifest);
   console.log(
     `published ${bucket}/${CURRENT} for ${releaseVersion} with supervisor ${pins.supervisor}, CLI ${pins.cli} and the images of ${imageReleaseVersion}`,
   );
