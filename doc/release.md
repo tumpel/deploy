@@ -2,6 +2,20 @@
 
 A release puts tested component versions on the stage `dev`. Each component repository publishes its own releases. tumpel/deploy pins one version of each in `release-pins.json`, tags a release candidate (RC) and publishes it. `doc/deploy.md` covers the Workers Builds projects, the stage layout and bootstrap.
 
+## Candidate evidence
+
+The default release path accepts today's manual pin PRs and tag-based dashboard releases. Assembly, publication and code deployment log a notice when `release-candidate.json` is absent or carries no `clients` evidence. They retain the existing pin, publication and deployment order. Dashboard `0.9.0` and pages `0.7.0` remain independent dependencies. Assembly does not create candidate evidence from those dependencies alone.
+
+A candidate with `clients` evidence enables the strict path. Its frozen digest, stage, pins, exact client commits, protocol and checksums must match. Missing readiness, stale evidence, failed checks and authentication errors abort that path. They never select the default path.
+
+Strict publication verifies exact-SHA checks and fresh Tumpel-run CLI, supervisor and MCP readiness, including every online supervisor's version, before claiming the stage or changing `current.json`. It then publishes the manifest, reads back the stage's manifest and binary bytes, and writes the prepared receipt. A failed write releases the claim. A failed read-back or receipt write conditionally restores the old manifest and claim. A released claim, or a manifest that had no previous value, is stored as JSON null. Restoration uses [conditional R2 writes](https://developers.cloudflare.com/r2/api/s3/conditional-operations/). A failed restoration aborts and requires recovery of the same candidate before another release.
+
+The assembler tags and dispatches an evidenced candidate without waiting for its workflow. Successful tag publication advances main in the dependent promotion job, then advances the release branch. A failed release never reaches that job. Readiness polls observe at most ten times with nine sleeps of 1 through 256 seconds; publication completion uses the workflow dependency instead of a polling deadline.
+
+Every code entry reads the same optional candidate, including retries and manual pins. Strict activation requires the prepared receipt, stage ownership, matching infra fingerprint and fresh readiness. It deploys and verifies dashboard bytes before migrations and API activation. It rechecks evidence between mutations and records successful Worker activation. A pin change with mismatched candidate evidence fails.
+
+This repository consumes readiness records; it does not produce trusted client acknowledgements. The default path remains active while the current pipeline supplies no candidate client evidence. The strict path requires the matching readiness producer and candidate artifact together.
+
 ```mermaid
 flowchart LR
   C[component releases] --> A[assemble-rc]
@@ -37,7 +51,7 @@ The RC run of protocol publishes `tumpel-api` at the RC version to crates.io wit
 
 `.github/workflows/assemble-rc.yml` runs `npm run release:rc`. It starts on a repository dispatch `component-released`, or by hand (Actions, assemble-rc, Run workflow). The input `dry-run` prints the pin diff and the tag and writes nothing. One run goes at a time.
 
-It picks the newest version of every key in `release-pins.json`:
+The default path picks the newest version of every key in `release-pins.json`:
 
 - `supervisor` and `cli`: the newest release tagged `vX.Y.Z` or `vX.Y.Z-rc.N`, in semver order. It skips drafts and every other tag, such as `-main.N`.
 - `controlPlane` and `infra`: the head commit of the newest successful `checks` run on a push to `main`, among the last 50 successful push runs.
@@ -58,7 +72,7 @@ The tag follows the highest release tag. `v0.2.50-rc.9` leads to `v0.2.50-rc.10`
 
 1. `layers` checks the bucket for each harness layer. It builds the missing ones with `npm run harness:layer` and uploads them.
 2. `publish` downloads the pinned supervisor and cli from their GitHub releases, checks each against its `.sha256` and writes `current.json`.
-3. `promote` runs on a tag only. It pushes the tag's commit to the branch `release`, and a push that is no fast-forward fails.
+3. `promote` runs on a tag only. An evidenced release first advances main after successful publication. It then pushes the tag's commit to the branch `release`, and a push that is no fast-forward fails. The default path skips candidate promotion and its dependency installation.
 
 `publish` refuses when:
 
@@ -73,7 +87,7 @@ A tag run writes the tag as `releaseVersion`. A manual run writes `0.0.0-` and t
 
 ## Workers Builds and the release branch
 
-The Workers Builds projects `tumpel` and `tumpel-infra` build the branch `main` of tumpel/deploy. `tumpel` builds on every push to `main`. `tumpel-infra` builds on a push that changes `release-pins.json`, `npm-scripts/deploy-infra.mjs` or `packages/infra-worker/`. So the control plane, the dashboard and the infra deploy when a pin commit lands on `main`. On an assemble-rc run, those builds and `release.yml` start from the same push and run side by side. Nothing orders them. No build reads the branch `release`.
+The Workers Builds projects `tumpel` and `tumpel-infra` build the branch `main` of tumpel/deploy. `tumpel` builds on every push to `main`. `tumpel-infra` builds on a push that changes `release-pins.json`, `npm-scripts/deploy-infra.mjs` or `packages/infra-worker/`. The control plane, dashboard and infra deploy when a pin commit lands on `main`. In the default path those builds and `release.yml` run side by side. An evidenced candidate reaches main only after successful publication. No build reads the branch `release`.
 
 ## Merge to dev
 
@@ -126,7 +140,7 @@ To move one component, a pull request edits its pin in `release-pins.json`. A co
 2. The dashboard sits outside `release-pins.json`.
 3. Protocol tarballs are pinned by hand. tumpel/deploy installs `@tumpel/schemas` and `@tumpel/openapi` at `1.0.0-rc.43`, as does tumpel/control-plane.
 4. `dev` is the only stage.
-5. `release.yml` writes `current.json` while Workers Builds deploys the Workers, in no fixed order. No smoke check runs on either, and no deploy rolls back by itself.
+5. The default path writes `current.json` while Workers Builds deploys the Workers, in no fixed order. Strict ordering requires candidate client evidence and its trusted readiness producer.
 6. Workers Builds deploys every push to `main`. The branch `release` feeds nothing.
 7. `release.yml` never writes `rollback: true`.
-8. `npm run deploy:code` checks only the D1 database id in `infra-outputs-<stage>.json` and ignores its `infra_fingerprint`.
+8. The default code path checks only the D1 database id in `infra-outputs-<stage>.json`. The strict path also checks `infra_fingerprint` against the candidate.
