@@ -28,7 +28,7 @@ export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex"
 
 export const currentRelease = async (endpoint, stage) => {
   const url = `${endpoint}/v1/releases/current`;
-  const response = await fetch(url);
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
   if (!response.ok)
     throw new Error(`GET ${url} answered ${response.status}: ${await response.text()}; publish a release to ${stage}`);
   const parsed = ReleaseManifestSchema.safeParse(await response.json());

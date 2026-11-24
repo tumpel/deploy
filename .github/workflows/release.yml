@@ -10,7 +10,7 @@ on:
         default: dev
         type: string
       supervisor_rollout_approved:
-        description: The rollout owner approved the supervisor pin at this ref
+        description: Approve the supervisor pin at this ref and stage as a repository admin
         default: false
         type: boolean
 
@@ -134,6 +134,8 @@ jobs:
       - id: manifest
         name: Write current.json with the supervisor and CLI release-pins.json names
         env:
+          GH_TOKEN: ${{ github.token }}
+          SUPERVISOR_ROLLOUT_ACTOR: ${{ github.triggering_actor }}
           SUPERVISOR_ROLLOUT_APPROVED: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_rollout_approved }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}

@@ -107,7 +107,7 @@ The control plane serves it at `GET /v1/releases/current` without sign-in and ca
 
 ## Host self-update
 
-Supervisor rollouts are on hold until the bootstrap release. Before writing `current.json`, the release checks the pinned supervisor against the stage's live manifest. After the owner approves the rollout, dispatch the release workflow on the approved ref with `supervisor_rollout_approved` set to true. Tag runs and automated dispatches leave approval off by default. Revert the hold to lift it for all releases.
+Supervisor rollouts are on hold until the bootstrap release. RC assembly carries forward the supervisor version in the stage's live manifest. A repository admin must apply `supervisor-rollout-approved` after the latest push to a PR that changes the pin. To publish a supervisor change, a repository admin must dispatch the release workflow for the approved ref and stage with `supervisor_rollout_approved` set to true. Both checks verify the approver's repository permissions with GitHub and reject bots. The publisher compares the pin with the stage's live manifest before writing `current.json`.
 
 A write of `current.json` raises an R2 event on the queue `tumpel-releases-<stage>`. The control plane consumes it and sends ReleasePublished to every Online host.
 

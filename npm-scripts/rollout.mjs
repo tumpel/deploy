@@ -1,8 +1,8 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
-import { requireSupervisorRolloutApproval } from "./supervisor-rollout.mjs";
 
 const sha = z.string().regex(/^[0-9a-f]{40}$/);
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
@@ -288,11 +288,73 @@ export const activateCandidate = async (
   }
 };
 
+export const supervisorVersion = (manifest) => {
+  const entries = manifest?.supervisors;
+  const version = entries?.[0]?.supervisorVersion;
+  return version && entries.every((entry) => entry?.supervisorVersion === version) ? version : undefined;
+};
+
+const approvalLabel = "supervisor-rollout-approved";
+
+const approvalApi = (path, paginate = false) =>
+  JSON.parse(
+    execFileSync("gh", ["api", ...(paginate ? ["--paginate", "--slurp"] : []), path], {
+      encoding: "utf8",
+      timeout: 30_000,
+    }),
+  );
+
+export const supervisorRolloutAllowed = async (current, proposed, approval, api = approvalApi) => {
+  if (proposed && proposed === current) return true;
+  if (!proposed || !approval) return false;
+  const { repository, eventName, event, requested, triggeringActor, actor } = approval;
+  let login;
+  if (eventName === "pull_request" && event.action === "labeled" && event.label?.name === approvalLabel) {
+    const pages = await api(`repos/${repository}/issues/${event.pull_request.number}/events?per_page=100`, true);
+    const latest = pages
+      .flat()
+      .findLast((entry) => entry.label?.name === approvalLabel && ["labeled", "unlabeled"].includes(entry.event));
+    if (
+      latest?.event !== "labeled" ||
+      latest.actor?.type !== "User" ||
+      !latest.actor.id ||
+      latest.actor.id !== event.sender?.id ||
+      latest.performed_via_github_app
+    )
+      return false;
+    login = latest.actor.login;
+  } else if (eventName === "workflow_dispatch" && requested === true && triggeringActor === actor) {
+    login = triggeringActor;
+  }
+  if (!login || login.toLowerCase() === "github-actions" || login.toLowerCase().endsWith("[bot]")) return false;
+  const { permission, user } = await api(`repos/${repository}/collaborators/${encodeURIComponent(login)}/permission`);
+  return (
+    permission === "admin" &&
+    user?.type === "User" &&
+    user.login === login &&
+    (eventName !== "pull_request" || user.id === event.sender.id)
+  );
+};
+
 export const publishCandidate = async (
   input,
   manifest,
-  { get, put, github, readiness, endpoint, clock, transport = fetch, notice = console.log, supervisorRolloutApproved },
+  {
+    get,
+    put,
+    github,
+    readiness,
+    endpoint,
+    clock,
+    transport = fetch,
+    notice = console.log,
+    approval,
+    approvalApi,
+    skipSuperseded,
+  },
 ) => {
+  const previousManifest = await get("current.json");
+  if (previousManifest && skipSuperseded?.(previousManifest.value)) return false;
   const candidate = input === undefined ? undefined : checkedCandidate(input);
   if (candidate) {
     await exactChecks("tumpel/control-plane", candidate.pins.controlPlane, github, clock);
@@ -301,13 +363,24 @@ export const publishCandidate = async (
     verifyManifest(candidate, manifest);
     await readyClients(candidate, { read: readiness, clock });
   }
-  const previousManifest = await get("current.json");
-  requireSupervisorRolloutApproval(previousManifest?.value, manifest, supervisorRolloutApproved);
+  if (
+    !(await supervisorRolloutAllowed(
+      supervisorVersion(previousManifest?.value),
+      supervisorVersion(manifest),
+      approval,
+      approvalApi,
+    ))
+  )
+    throw new Error(
+      "Supervisor rollouts are on hold until the bootstrap release. Ask a repository admin to dispatch the release for this stage and ref with supervisor_rollout_approved set to true.",
+    );
+  if (previousManifest && !previousManifest.etag)
+    throw new Error("The live manifest has no ETag. Restore conditional writes before publishing.");
   const manifestConditions = previousManifest ? { "if-match": previousManifest.etag } : { "if-none-match": "*" };
   if (candidate === undefined) {
     notice("::notice::Candidate client evidence is absent; publishing the manifest through the existing release path.");
     await put("current.json", manifest, manifestConditions);
-    return;
+    return true;
   }
   const previous = await get("rollout.json");
   if (
@@ -351,4 +424,5 @@ export const publishCandidate = async (
     await restore("rollout.json", previous, leaseEtag);
     throw error;
   }
+  return true;
 };

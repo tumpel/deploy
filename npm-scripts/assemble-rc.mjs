@@ -3,7 +3,8 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { candidateSource } from "./candidate-source.mjs";
-import { candidateFor, checkedCandidate, exactChecks, readCandidate } from "./rollout.mjs";
+import { currentRelease } from "./release-download.mjs";
+import { candidateFor, checkedCandidate, exactChecks, readCandidate, supervisorVersion } from "./rollout.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PINS_PATH = join(ROOT, "release-pins.json");
@@ -127,7 +128,12 @@ const main = async () => {
   }
   const github = async (path) => api(path.slice(1));
   const SOURCES = {
-    supervisor: (pinned) => latestRelease("tumpel/supervisor", pinned),
+    supervisor: async () => {
+      const endpoint = `https://api.${stage === "prod" ? "" : `${stage}.`}tumpel.dev`;
+      const live = supervisorVersion(await currentRelease(endpoint, stage));
+      if (!live) die(`the live manifest has no single supervisor version; publish an approved supervisor for ${stage}`);
+      return live;
+    },
     cli: (pinned) => latestRelease("tumpel/cli", pinned),
     controlPlane: (pinned) => latestCheckedCommit("tumpel/control-plane", pinned, github, candidate),
     infra: (pinned) => latestCheckedCommit("tumpel/infra", pinned, github, candidate),

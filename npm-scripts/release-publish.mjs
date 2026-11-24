@@ -523,16 +523,6 @@ const publishRelease = async (layerFragmentDir) => {
     );
   const { pins, channelProtocolVersion, supervisors, clis } = await pinnedBinaries(guestProtocolVersion);
   const commit = headCommit();
-  const current = await readJson(store, CURRENT);
-  if (current !== undefined) {
-    const published = PublishedCommitSchema.parse(current).commit;
-    if (supersededBy(commit, published)) {
-      if (process.env.GITHUB_REF_TYPE === "tag")
-        die(`${bucket}/${CURRENT} holds ${published}, which descends from ${commit}; tag a newer commit`);
-      console.log(`kept ${bucket}/${CURRENT}: it holds ${published}, which descends from ${commit}`);
-      return;
-    }
-  }
   const releaseVersion =
     process.env.GITHUB_REF_TYPE === "tag" ? required("GITHUB_REF_NAME") : `0.0.0-${commit.slice(0, 12)}`;
   const manifest = ReleaseManifestSchema.parse({
@@ -550,8 +540,22 @@ const publishRelease = async (layerFragmentDir) => {
     JSON.parse(readFileSync(new URL("../release-pins.json", import.meta.url), "utf8")),
     stage,
   );
-  await publishCandidate(candidate, manifest, {
-    supervisorRolloutApproved: process.env.SUPERVISOR_ROLLOUT_APPROVED === "true",
+  const published = await publishCandidate(candidate, manifest, {
+    approval: {
+      eventName: process.env.GITHUB_EVENT_NAME,
+      repository: process.env.GITHUB_REPOSITORY,
+      requested: process.env.SUPERVISOR_ROLLOUT_APPROVED === "true",
+      triggeringActor: process.env.SUPERVISOR_ROLLOUT_ACTOR,
+      actor: process.env.GITHUB_ACTOR,
+    },
+    skipSuperseded: (current) => {
+      const published = PublishedCommitSchema.parse(current).commit;
+      if (!supersededBy(commit, published)) return false;
+      if (process.env.GITHUB_REF_TYPE === "tag")
+        throw new Error(`${bucket}/${CURRENT} holds ${published}, which descends from ${commit}; tag a newer commit`);
+      console.log(`kept ${bucket}/${CURRENT}: it holds ${published}, which descends from ${commit}`);
+      return true;
+    },
     get: async (key) => {
       const url = await presignUrl(store.credentials, "GET", store.origin, segmentsOf(key), SIGNED_SECONDS, new Date());
       const response = await send(url, "GET", {});
@@ -570,6 +574,7 @@ const publishRelease = async (layerFragmentDir) => {
         )
       ).json(),
   });
+  if (!published) return;
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `candidate=${candidate !== undefined}\n`);
   console.log(
     `published ${bucket}/${CURRENT} for ${releaseVersion} with supervisor ${pins.supervisor}, CLI ${pins.cli} and the images of ${imageReleaseVersion}`,

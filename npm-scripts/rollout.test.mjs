@@ -16,6 +16,7 @@ import {
   publishCandidate,
   readCandidate,
   readyClients,
+  supervisorRolloutAllowed,
   verifyDashboard,
 } from "./rollout.mjs";
 
@@ -45,17 +46,127 @@ test("today's pin PR and release without evidence retain their deployment and pu
       notice: (message) => notices.push(message),
       get: async (key) => {
         assert.equal(key, "current.json");
-        return { value: manifest, etag: '"live"' };
+        return { value: { ...manifest, clis: [{ cliVersion: "1.0.0-rc.23" }] }, etag: '"live"' };
       },
       github: async () => assert.fail("the legacy release adds no exact-SHA gate"),
       readiness: async () => assert.fail("the legacy release adds no readiness gate"),
-      put: async (key, value) => mutations.push([key, value]),
+      put: async (key, value, conditions) => mutations.push([key, value, conditions]),
     });
-    assert.deepEqual(mutations, ["dashboard", "migrations", "API", ["current.json", manifest]]);
+    assert.deepEqual(mutations, [
+      "dashboard",
+      "migrations",
+      "API",
+      ["current.json", manifest, { "if-match": '"live"' }],
+    ]);
     assert.equal(notices.length, 2);
     assert.ok(notices.every((message) => message.startsWith("::notice::Candidate client evidence is absent;")));
   } finally {
     rmSync(dir, { recursive: true });
+  }
+});
+
+test("a PR supervisor change needs the latest approval label from a human admin for this head", async () => {
+  const repository = "tumpel/deploy";
+  const label = { name: "supervisor-rollout-approved" };
+  for (const [login, type, permission, expected] of [
+    ["mvhenten", "User", "admin", true],
+    ["writer", "User", "write", false],
+    ["tumpel-dev[bot]", "Bot", "admin", false],
+    ["github-actions", "User", "admin", false],
+  ]) {
+    const sender = { login, type, id: 7 };
+    const event = { action: "labeled", label, pull_request: { number: 75 }, sender };
+    const api = async (path, paginate) => {
+      if (path === "repos/tumpel/deploy/issues/75/events?per_page=100") {
+        assert.equal(paginate, true);
+        return [[{ event: "labeled", label, actor: sender }]];
+      }
+      assert.ok(type === "User" && login !== "github-actions", "bot approvals never reach the permissions check");
+      assert.equal(path, `repos/tumpel/deploy/collaborators/${login}/permission`);
+      return { permission, user: sender };
+    };
+    assert.equal(
+      await supervisorRolloutAllowed("1.0.0", "1.1.0", { repository, eventName: "pull_request", event }, api),
+      expected,
+      login,
+    );
+  }
+  const sender = { login: "mvhenten", type: "User", id: 7 };
+  const event = { action: "labeled", label, pull_request: { number: 75 }, sender };
+  const api = async (path) => {
+    assert.equal(path, "repos/tumpel/deploy/issues/75/events?per_page=100");
+    return [[{ event: "labeled", label, actor: sender }], [{ event: "unlabeled", label, actor: sender }]];
+  };
+  assert.equal(
+    await supervisorRolloutAllowed("1.0.0", "1.1.0", { repository, eventName: "pull_request", event }, api),
+    false,
+  );
+  assert.equal(
+    await supervisorRolloutAllowed(
+      "1.0.0",
+      "1.1.0",
+      { repository, eventName: "pull_request", event: { ...event, action: "synchronize" } },
+      async () => assert.fail("a push needs a new label event"),
+    ),
+    false,
+  );
+});
+
+test("publication accepts only a supervisor rollout requested by a human admin", async () => {
+  const current = { supervisors: [{ supervisorVersion: "1.0.0" }] };
+  const manifest = { supervisors: [{ supervisorVersion: "1.1.0" }] };
+  for (const [eventName, actor, triggeringActor, requested, permission, allowed] of [
+    ["workflow_dispatch", "kate", "kate", true, "admin", true],
+    ["workflow_dispatch", "writer", "writer", true, "write", false],
+    ["workflow_dispatch", "writer", "kate", true, "admin", false],
+    ["workflow_dispatch", "github-actions", "github-actions", true, "admin", false],
+    ["workflow_dispatch", "kate", "kate", false, "admin", false],
+    ["push", "kate", "kate", true, "admin", false],
+  ]) {
+    const writes = [];
+    const publish = publishCandidate(undefined, manifest, {
+      approval: { repository: "tumpel/deploy", eventName, actor, triggeringActor, requested },
+      approvalApi: async (path) => {
+        assert.equal(path, `repos/tumpel/deploy/collaborators/${actor}/permission`);
+        return { permission, user: { login: actor, type: "User" } };
+      },
+      get: async (key) => {
+        assert.equal(key, "current.json");
+        return { value: current, etag: '"live"' };
+      },
+      put: async (...args) => writes.push(args),
+    });
+    if (allowed) await publish;
+    else await assert.rejects(publish, /Supervisor rollouts are on hold/);
+    assert.deepEqual(writes, allowed ? [["current.json", manifest, { "if-match": '"live"' }]] : []);
+  }
+});
+
+test("publication checks ancestry and writes against the same current manifest read", async () => {
+  const current = { commit: "a".repeat(40), supervisors: [{ supervisorVersion: "1.0.0" }] };
+  const proposed = { commit: "b".repeat(40), supervisors: [{ supervisorVersion: "1.0.0" }] };
+  for (const superseded of [true, false]) {
+    const effects = [];
+    const published = await publishCandidate(undefined, proposed, {
+      get: async (key) => {
+        effects.push(["read", key]);
+        return { value: current, etag: '"live"' };
+      },
+      skipSuperseded: (manifest) => {
+        effects.push(["ancestry", manifest.commit]);
+        return superseded;
+      },
+      put: async (...args) => effects.push(["write", ...args]),
+    });
+    assert.equal(published, !superseded);
+    const reads = [
+      ["read", "current.json"],
+      ["ancestry", current.commit],
+    ];
+    assert.deepEqual(
+      effects,
+      superseded ? reads : [...reads, ["write", "current.json", proposed, { "if-match": '"live"' }]],
+    );
   }
 });
 
@@ -160,7 +271,7 @@ test("candidate gates use explicit published client and consumer inputs", async 
             ],
           }),
           readiness: async () => evidence,
-          get: async () => assert.fail("failed readiness cannot reach stage ownership"),
+          get: async (key) => assert.equal(key, "current.json", "failed readiness cannot reach stage ownership"),
           put: async (key) => writes.push(key),
           clock: { now: () => 1000, sleep: async () => assert.fail("terminal readiness errors cannot wait") },
         }),
@@ -193,14 +304,21 @@ test("candidate gates use explicit published client and consumer inputs", async 
         put: async () => assert.fail("a refused rollout cannot claim or write"),
         clock: { now: () => 1000, sleep: async () => assert.fail("ready publication cannot wait") },
       }),
-      /supervisor rollouts are on hold until the bootstrap release/,
+      /Supervisor rollouts are on hold until the bootstrap release/,
     );
   });
 
   await t.test("publication orders readiness, claim, manifest, stage read-back and prepared receipt", async () => {
     const effects = [];
     await publishCandidate(candidate, manifest, {
-      supervisorRolloutApproved: true,
+      approval: {
+        repository: "tumpel/deploy",
+        eventName: "workflow_dispatch",
+        actor: "mvhenten",
+        triggeringActor: "mvhenten",
+        requested: true,
+      },
+      approvalApi: async () => ({ permission: "admin", user: { login: "mvhenten", type: "User" } }),
       github: async (path) => ({
         workflow_runs: [
           {

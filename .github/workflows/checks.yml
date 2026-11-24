@@ -3,6 +3,7 @@ name: checks
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -11,6 +12,7 @@ concurrency:
 permissions:
   actions: write
   contents: read
+  pull-requests: read
 
 jobs:
   changes:
@@ -40,6 +42,8 @@ jobs:
       cancel-in-progress: true
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
 
       - uses: actions/setup-node@v7
         with:
@@ -48,6 +52,11 @@ jobs:
 
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: Check the supervisor rollout hold
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: npm run check:supervisor-rollout
 
       - name: Run the checks
         run: npm run check
