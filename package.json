@@ -12,6 +12,7 @@
     "lint": "biome check .",
     "fix": "biome check --write .",
     "check": "npm run lint",
+    "check:supervisor-rollout": "node npm-scripts/supervisor-rollout.mjs",
     "prepare": "git config core.hooksPath .githooks",
     "test": "node --test --test-timeout=30000 npm-scripts/*.test.mjs",
     "deploy:code": "node npm-scripts/deploy.mjs a0febfa5-2ef3-4593-a922-1a1c909e91f3",

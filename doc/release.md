@@ -107,6 +107,8 @@ The control plane serves it at `GET /v1/releases/current` without sign-in and ca
 
 ## Host self-update
 
+Supervisor rollouts are on hold until the bootstrap release. The checks workflow blocks pull requests that change the supervisor pin. After the owner approves a rollout, add `supervisor-rollout-approved` to that pull request. Revert the pull request that added the hold to lift it for all pull requests.
+
 A write of `current.json` raises an R2 event on the queue `tumpel-releases-<stage>`. The control plane consumes it and sends ReleasePublished to every Online host.
 
 A supervisor reads `/v1/releases/current` at each Welcome, on each ReleasePublished, and when the control plane refuses its channel protocol. It updates when the sha256 for its architecture differs from its own binary. On Welcome and ReleasePublished it refuses an older supervisor version unless the manifest carries `rollback: true`. It logs "older than the running ..., and is no rollback". It also refuses the same version with another binary. After a protocol refusal it installs the release without the version check. `doc/EDD/008-supervisor-self-update.md` covers the dry run, the swap and the trial.
