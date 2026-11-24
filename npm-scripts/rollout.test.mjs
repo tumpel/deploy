@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { advancePublishedCandidate, assembleCandidate, latestCheckedCommit } from "./assemble-rc.mjs";
+import { advancePublishedCandidate } from "./assemble-rc.mjs";
 import { candidateSource } from "./candidate-source.mjs";
 import {
   activateCandidate,
@@ -50,28 +50,6 @@ test("today's pin PR and release without evidence retain their deployment and pu
   } finally {
     rmSync(dir, { recursive: true });
   }
-});
-
-test("assembly without evidence retains historical green selection and pin-before-release order", async () => {
-  const reads = [];
-  const sha = await latestCheckedCommit("tumpel/control-plane", "a".repeat(40), async (path) => {
-    reads.push(path);
-    if (path.includes("/actions/runs?")) return { workflow_runs: [{ name: "checks", head_sha: "c".repeat(40) }] };
-    assert.equal(path, `/repos/tumpel/control-plane/compare/${"a".repeat(40)}...${"c".repeat(40)}`);
-    return { status: "ahead" };
-  });
-  assert.equal(sha, "c".repeat(40));
-  assert.equal(reads.length, 2);
-  const effects = [];
-  await assembleCandidate(undefined, {
-    notice: (message) => effects.push(message),
-    advance: async () => effects.push("main"),
-    tag: async () => effects.push("tag"),
-    publish: async () => effects.push("release dispatch"),
-  });
-  assert.match(effects[0], /^::notice::/);
-  assert.deepEqual(effects.slice(1), ["main", "tag", "release dispatch"]);
-  await advancePublishedCandidate(undefined, async () => assert.fail("legacy publication does not push main again"));
 });
 
 test("candidate gates use explicit published client and consumer inputs", async (t) => {
@@ -262,26 +240,11 @@ test("candidate gates use explicit published client and consumer inputs", async 
     }
   });
 
-  await t.test("evidenced assembly delegates pin advancement to successful release completion", async () => {
+  await t.test("successful publication advances evidenced pins", async () => {
     const effects = [];
-    await assembleCandidate(candidate, {
-      advance: async () => assert.fail("dispatch does not prove publication"),
-      tag: async () => effects.push("tag"),
-      publish: async () => effects.push("dispatch"),
-    });
-    assert.deepEqual(effects, ["tag", "dispatch"]);
     await advancePublishedCandidate(candidate, async () => effects.push("main after publication"));
-    assert.deepEqual(effects, ["tag", "dispatch", "main after publication"]);
-    await assert.rejects(
-      assembleCandidate(candidate, {
-        tag: async () => undefined,
-        publish: async () => {
-          throw new Error("dispatch failed");
-        },
-        advance: async () => assert.fail("dispatch failure cannot advance main"),
-      }),
-      /dispatch failed/,
-    );
+    assert.deepEqual(effects, ["main after publication"]);
+    await advancePublishedCandidate(undefined, async () => assert.fail("main was already advanced"));
   });
 
   await t.test("a different candidate can claim a stage released by failed publication", async () => {

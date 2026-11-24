@@ -1,60 +1,53 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { checkedCandidate, hash } from "./rollout.mjs";
-import { scenario, write } from "./test-support/release-scenario/workspace.mjs";
+import { assembleRc } from "./assemble-rc.mjs";
 
-test("dispatch tags the assembled candidate and manual assembly tags pins alone", async (t) => {
-  const { dir, cloud, git, run, node, repo, commit, clients, deployRepo } = await scenario(t);
-  const dashboard = repo("dashboard");
-  write(join(dashboard, "package.json"), { name: "dashboard", version: "1.0.0", files: ["dist"] });
-  write(join(dashboard, "dist/index.html"), "<head></head>");
-  const dashboardSha = commit(dashboard, "feat: ship dashboard");
-  git(dashboard, "push", "-q", "origin", "main", "HEAD:refs/tags/v1.0.0");
-  const { stdout } = await run(dashboard, "npm", ["pack", "--json"]);
-  const tarball = readFileSync(join(dashboard, JSON.parse(stdout)[0].filename));
-  const release = cloud.publish("dashboard", "v1.0.0", [
-    ["dashboard.tgz", tarball],
-    ["dashboard.tgz.sha256", hash(tarball)],
+test("assembly tags one pin commit and skips unchanged pins on the tagged head", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "assemble-rc-"));
+  t.after(() => rmSync(root, { recursive: true }));
+  const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", timeout: 5000 }).trim();
+  const pinned = "a".repeat(40);
+  const latest = "b".repeat(40);
+  git("init", "-q");
+  const pins = { controlPlane: pinned, cli: "1.0.0" };
+  writeFileSync(join(root, "release-pins.json"), JSON.stringify(pins));
+  writeFileSync(join(root, "release-candidate.json"), "invalid candidate");
+  git("add", ".");
+  git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "initial pins");
+  git("tag", "v1.0.0");
+
+  const github = async (path) => {
+    if (path === "/repos/tumpel/cli/releases?per_page=100") return [{ tag_name: "v1.0.1" }];
+    if (path === "/repos/tumpel/control-plane/actions/runs?branch=main&event=push&status=success&per_page=50")
+      return { workflow_runs: [{ name: "checks", head_sha: latest }] };
+    if (path === `/repos/tumpel/control-plane/compare/${pinned}...${latest}`) return { status: "ahead" };
+    assert.equal(path, `/repos/tumpel/control-plane/compare/${latest}...${latest}`);
+    return { status: "identical" };
+  };
+  const remoteCalls = [];
+  const command = (name, args) => {
+    if (name === "git" && args[0] !== "push") return git(...args);
+    remoteCalls.push([name, ...args]);
+  };
+  const options = { root, github, command, stage: "dev" };
+  const tag = "v1.0.1-rc.1";
+  assert.equal(await assembleRc(options), tag);
+  const head = git("rev-parse", tag);
+  assert.equal(git("rev-parse", "HEAD"), head);
+  assert.equal(git("rev-list", "--count", `v1.0.0..${tag}`), "1");
+  assert.equal(git("diff", "--name-only", "v1.0.0", tag), "release-pins.json");
+  assert.deepEqual(JSON.parse(git("show", `${tag}:release-pins.json`)), { controlPlane: latest, cli: "1.0.1" });
+
+  assert.equal(await assembleRc(options), undefined);
+  assert.equal(git("rev-parse", "HEAD"), head);
+  assert.equal(git("tag", "--list"), `v1.0.0\n${tag}`);
+  assert.deepEqual(remoteCalls, [
+    ["git", "push", "origin", "HEAD:refs/heads/main"],
+    ["git", "push", "origin", `refs/tags/${tag}`],
+    ["gh", "workflow", "run", "release.yml", "--ref", tag, "-f", "stage=dev"],
   ]);
-  clients("1.0.0");
-  const cp = repo("control-plane"),
-    infra = repo("infra");
-  const old = commit(cp, "chore: start control plane");
-  write(join(cp, "packages/control-plane/package.json"), {
-    dependencies: { "@tumpel/schemas": "https://github.com/tumpel/protocol/releases/download/v1.0.0/schemas.tgz" },
-  });
-  write(join(cp, "packages/dashboard-site/package.json"), {
-    dependencies: { "@tumpel/dashboard": release.assets[0].url },
-  });
-  const next = commit(cp, "fix: update control plane");
-  const infraSha = commit(infra, "chore: start infra");
-  for (const cwd of [cp, infra]) git(cwd, "push", "-q", "origin", "main");
-  cloud.check("control-plane", next, "success");
-  cloud.check("infra", infraSha, "success");
-  const original = { controlPlane: old, infra: infraSha, cli: "1.0.0", supervisor: "1.0.0" };
-  const checkout = deployRepo(original);
-  const origin = `${checkout}.git`,
-    rc = "v1.0.1-rc.1";
-  const event = join(dir, "event.json");
-  write(event, { client_payload: { candidateId: "untrusted" } });
-  const assemble = (name) =>
-    node(checkout, "assemble-rc", [], {
-      GITHUB_REPOSITORY: "tumpel/deploy",
-      GITHUB_EVENT_NAME: name,
-      GITHUB_EVENT_PATH: event,
-    });
-  await assemble("repository_dispatch");
-  const candidate = checkedCandidate(JSON.parse(git(origin, "show", `${rc}:release-candidate.json`)));
-  assert.deepEqual(candidate.pins, { ...original, controlPlane: next });
-  assert.deepEqual(candidate.pins, JSON.parse(git(origin, "show", `${rc}:release-pins.json`)));
-  assert.equal(candidate.dashboard.sha, dashboardSha);
-  assert.equal(git(origin, "rev-parse", "main"), git(origin, "rev-parse", "v1.0.0"));
-  assert.equal(git(origin, "diff", "--name-only", "main", rc), "release-candidate.json\nrelease-pins.json");
-  git(checkout, "switch", "-q", "main");
-  await assemble("workflow_dispatch");
-  const manual = "v1.0.1-rc.2";
-  assert.equal(git(origin, "rev-parse", "main"), git(origin, "rev-parse", manual));
-  assert.equal(git(origin, "diff", "--name-only", "v1.0.0", manual), "release-pins.json");
 });

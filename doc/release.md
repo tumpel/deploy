@@ -4,17 +4,17 @@ A release puts tested component versions on the stage `dev`. Each component repo
 
 ## Candidate evidence
 
-A component dispatch assembles pins from published sources and freezes their candidate in `release-candidate.json`. Assembly commits the candidate with `release-pins.json` and tags that commit. The dispatch payload supplies no readiness evidence. Manual assembly, publication and deployment retain the default path when client evidence is absent. A manual pin PR that changes pins must delete `release-candidate.json` in the same commit.
+Component dispatches and manual runs use the same assembly path. Assembly advances the pins before starting publication. Publication and code deployment log a notice and use the default path when `release-candidate.json` is absent or carries no `clients` evidence.
 
 A candidate with `clients` evidence enables the strict path. Its frozen digest, stage, pins, exact client commits, protocol and checksums must match. Missing readiness, stale evidence, failed checks and authentication errors abort that path. They never select the default path.
 
 Strict publication verifies exact-SHA checks and fresh Tumpel-run CLI, supervisor and MCP readiness, including every online supervisor's version, before claiming the stage or changing `current.json`. It then publishes the manifest, reads back the stage's manifest and binary bytes, and writes the prepared receipt. A failed write releases the claim. A failed read-back or receipt write conditionally restores the old manifest and claim. A released claim, or a manifest that had no previous value, is stored as JSON null. Restoration uses [conditional R2 writes](https://developers.cloudflare.com/r2/api/s3/conditional-operations/). A failed restoration aborts and requires recovery of the same candidate before another release.
 
-The assembler tags and dispatches an evidenced candidate without waiting for its workflow. Successful tag publication advances main in the dependent promotion job, then advances the release branch. A failed release never reaches that job. Readiness polls observe at most ten times with nine sleeps of 1 through 256 seconds; publication completion uses the workflow dependency instead of a polling deadline.
+For an evidenced tag, successful publication advances main in the dependent promotion job, then advances the release branch. A failed release never reaches that job. Readiness polls observe at most ten times with nine sleeps of 1 through 256 seconds.
 
 Every code entry reads the same optional candidate, including retries and manual pins. Strict activation requires the prepared receipt, stage ownership, matching infra fingerprint and fresh readiness. It deploys and verifies dashboard bytes before migrations and API activation. It rechecks evidence between mutations and records successful Worker activation. A pin change with mismatched candidate evidence fails.
 
-Tumpel-run clients publish readiness to `readiness/<candidateId>.json` in the releases bucket. Publication and activation read readiness for the candidate carried by the tagged commit.
+This repository consumes readiness records; it does not produce trusted client acknowledgements. The default path remains active while the current pipeline supplies no candidate client evidence. The strict path requires the matching readiness producer and candidate artifact together.
 
 ```mermaid
 flowchart LR
