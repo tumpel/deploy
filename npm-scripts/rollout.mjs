@@ -86,7 +86,9 @@ export const candidateFor = (input, pins, stage) => {
   return candidate;
 };
 
-export const exactChecks = async (repository, sha, github, clock = { sleep: setTimeout }) => {
+export const rolloutClock = { now: Date.now, sleep: setTimeout };
+
+export const exactChecks = async (repository, sha, github, clock = rolloutClock) => {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const { workflow_runs: runs } = await github(
       `/repos/${repository}/actions/workflows/checks.yml/runs?head_sha=${sha}&event=push&per_page=100`,
@@ -125,7 +127,7 @@ export const verifyManifest = (candidate, manifest) => {
   }
 };
 
-export const readyClients = async (candidate, { read, clock = { now: Date.now, sleep: setTimeout } }) => {
+export const readyClients = async (candidate, { read, clock = rolloutClock }) => {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const input = await read();
     if (input === undefined || input === null)
@@ -219,7 +221,7 @@ export const activateCandidate = async (
     api,
     active,
     receipt,
-    clock = { now: Date.now, sleep: setTimeout },
+    clock = rolloutClock,
     transport = fetch,
     notice = console.log,
   },

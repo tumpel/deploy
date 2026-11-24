@@ -14,7 +14,7 @@ The assembler tags and dispatches an evidenced candidate without waiting for its
 
 Every code entry reads the same optional candidate, including retries and manual pins. Strict activation requires the prepared receipt, stage ownership, matching infra fingerprint and fresh readiness. It deploys and verifies dashboard bytes before migrations and API activation. It rechecks evidence between mutations and records successful Worker activation. A pin change with mismatched candidate evidence fails.
 
-This repository consumes readiness records; it does not produce trusted client acknowledgements. The default path remains active while the current pipeline supplies no candidate client evidence. The strict path requires the matching readiness producer and candidate artifact together.
+This repository consumes readiness records from Tumpel-run clients. Manual releases can follow the default path while the pipeline supplies no evidence. Automated assembly requires a matching candidate artifact, followed by fresh readiness records for publication and activation.
 
 ```mermaid
 flowchart LR
