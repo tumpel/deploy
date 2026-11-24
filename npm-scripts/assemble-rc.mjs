@@ -119,6 +119,8 @@ const main = async () => {
   const stage = process.env.TUMPEL_STAGE ?? "dev";
   const input = readCandidate(join(ROOT, "release-candidate.json"));
   const candidate = candidateFor(input, input?.pins ?? pins, stage);
+  if (process.env.GITHUB_EVENT_NAME === "repository_dispatch" && candidate === undefined)
+    die("Candidate client readiness evidence is missing. Supply it before starting automated assembly.");
   if (process.argv.includes("--published")) {
     await advancePublishedCandidate(candidateFor(input, pins, stage), async () =>
       run("git", ["push", "origin", "HEAD:refs/heads/main"]),

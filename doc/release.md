@@ -4,7 +4,7 @@ A release puts tested component versions on the stage `dev`. Each component repo
 
 ## Candidate evidence
 
-The default release path accepts today's manual pin PRs and tag-based dashboard releases. Assembly, publication and code deployment log a notice when `release-candidate.json` is absent or carries no `clients` evidence. They retain the existing pin, publication and deployment order. Dashboard `0.9.0` and pages `0.7.0` remain independent dependencies. Assembly does not create candidate evidence from those dependencies alone.
+Manual assembly, publication and code deployment log a notice when `release-candidate.json` is absent or carries no `clients` evidence. They retain the existing pin, publication and deployment order. A repository dispatch requires client evidence before assembly writes pins or tags. Dashboard `0.9.0` and pages `0.7.0` remain independent dependencies. Assembly does not create candidate evidence from those dependencies alone.
 
 A candidate with `clients` evidence enables the strict path. Its frozen digest, stage, pins, exact client commits, protocol and checksums must match. Missing readiness, stale evidence, failed checks and authentication errors abort that path. They never select the default path.
 
