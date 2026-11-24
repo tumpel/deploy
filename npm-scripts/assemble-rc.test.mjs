@@ -1,78 +1,60 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
+import { checkedCandidate, hash } from "./rollout.mjs";
+import { scenario, write } from "./test-support/release-scenario/workspace.mjs";
 
-test("dispatch requires client evidence before pin and tag writes, while manual assembly still releases", (t) => {
-  const dir = mkdtempSync(join(tmpdir(), "assemble-rc-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const checkout = join(dir, "deploy");
-  const origin = join(dir, "origin.git");
-  mkdirSync(checkout);
-  const git = (...args) => execFileSync("git", args, { cwd: checkout, encoding: "utf8", timeout: 10_000 }).trim();
-  git("init", "--quiet", "--bare", "--initial-branch=main", origin);
-  git("init", "--quiet", "--initial-branch=main");
-  git("config", "user.name", "Release Test");
-  git("config", "user.email", "release@example.test");
-  git("remote", "add", "origin", origin);
-
-  const pinsPath = join(checkout, "release-pins.json");
-  const originalPins = '{"cli":"1.0.0"}\n';
-  writeFileSync(pinsPath, originalPins);
-  git("add", "release-pins.json");
-  git("commit", "--quiet", "-m", "chore: pin release A");
-  git("tag", "v1.0.0");
-  git("push", "--quiet", "origin", "main", "v1.0.0");
-  const initialCommit = git("rev-parse", "HEAD");
-
-  cpSync(new URL(".", import.meta.url), join(checkout, "npm-scripts"), { recursive: true });
-  symlinkSync(fileURLToPath(new URL("../node_modules", import.meta.url)), join(checkout, "node_modules"), "dir");
-  const bin = join(dir, "bin");
-  const calls = join(dir, "github-calls");
-  mkdirSync(bin);
-  writeFileSync(calls, "");
-  writeFileSync(
-    join(bin, "gh"),
-    `#!/usr/bin/env node
-const { appendFileSync } = require("node:fs");
-const args = process.argv.slice(2);
-appendFileSync(${JSON.stringify(calls)}, args.join(" ") + "\\n");
-if (args.join(" ") === "api repos/tumpel/cli/releases?per_page=100") {
-  console.log(JSON.stringify([{ tag_name: "v1.0.1", draft: false }]));
-} else if (args.join(" ") !== "workflow run release.yml --ref v1.0.1-rc.1 -f stage=dev") {
-  throw new Error("Unexpected GitHub call: " + args.join(" "));
-}
-`,
-    { mode: 0o755 },
-  );
-
-  const assemble = (event) =>
-    spawnSync(process.execPath, ["npm-scripts/assemble-rc.mjs"], {
-      cwd: checkout,
-      env: { PATH: `${bin}${delimiter}${process.env.PATH}`, GITHUB_EVENT_NAME: event },
-      encoding: "utf8",
-      timeout: 10_000,
+test("dispatch tags the assembled candidate and manual assembly tags pins alone", async (t) => {
+  const { dir, cloud, git, run, node, repo, commit, clients, deployRepo } = await scenario(t);
+  const dashboard = repo("dashboard");
+  write(join(dashboard, "package.json"), { name: "dashboard", version: "1.0.0", files: ["dist"] });
+  write(join(dashboard, "dist/index.html"), "<head></head>");
+  const dashboardSha = commit(dashboard, "feat: ship dashboard");
+  git(dashboard, "push", "-q", "origin", "main", "HEAD:refs/tags/v1.0.0");
+  const { stdout } = await run(dashboard, "npm", ["pack", "--json"]);
+  const tarball = readFileSync(join(dashboard, JSON.parse(stdout)[0].filename));
+  const release = cloud.publish("dashboard", "v1.0.0", [
+    ["dashboard.tgz", tarball],
+    ["dashboard.tgz.sha256", hash(tarball)],
+  ]);
+  clients("1.0.0");
+  const cp = repo("control-plane"),
+    infra = repo("infra");
+  const old = commit(cp, "chore: start control plane");
+  write(join(cp, "packages/control-plane/package.json"), {
+    dependencies: { "@tumpel/schemas": "https://github.com/tumpel/protocol/releases/download/v1.0.0/schemas.tgz" },
+  });
+  write(join(cp, "packages/dashboard-site/package.json"), {
+    dependencies: { "@tumpel/dashboard": release.assets[0].url },
+  });
+  const next = commit(cp, "fix: update control plane");
+  const infraSha = commit(infra, "chore: start infra");
+  for (const cwd of [cp, infra]) git(cwd, "push", "-q", "origin", "main");
+  cloud.check("control-plane", next, "success");
+  cloud.check("infra", infraSha, "success");
+  const original = { controlPlane: old, infra: infraSha, cli: "1.0.0", supervisor: "1.0.0" };
+  const checkout = deployRepo(original);
+  const origin = `${checkout}.git`,
+    rc = "v1.0.1-rc.1";
+  const event = join(dir, "event.json");
+  write(event, { client_payload: { candidateId: "untrusted" } });
+  const assemble = (name) =>
+    node(checkout, "assemble-rc", [], {
+      GITHUB_REPOSITORY: "tumpel/deploy",
+      GITHUB_EVENT_NAME: name,
+      GITHUB_EVENT_PATH: event,
     });
-
-  for (const candidate of [undefined, {}]) {
-    if (candidate) writeFileSync(join(checkout, "release-candidate.json"), JSON.stringify(candidate));
-    const result = assemble("repository_dispatch");
-    assert.equal(result.status, 1, result.error?.message ?? result.stderr);
-    assert.match(result.stderr, /Candidate client readiness evidence is missing/);
-    assert.equal(readFileSync(pinsPath, "utf8"), originalPins);
-    assert.equal(git("symbolic-ref", "--short", "HEAD"), "main");
-    assert.equal(git("rev-parse", "HEAD", "origin/main"), `${initialCommit}\n${initialCommit}`);
-    assert.equal(git("tag", "--list"), "v1.0.0");
-    assert.equal(readFileSync(calls, "utf8"), "");
-  }
-
-  const result = assemble("workflow_dispatch");
-  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
-  assert.match(result.stdout, /advancing pins before starting the existing release workflow/);
-  assert.deepEqual(JSON.parse(git("show", "origin/main:release-pins.json")), { cli: "1.0.1" });
-  assert.equal(git("rev-parse", "origin/main"), git("rev-parse", "v1.0.1-rc.1"));
-  assert.match(readFileSync(calls, "utf8"), /^workflow run release\.yml --ref v1\.0\.1-rc\.1 -f stage=dev$/m);
+  await assemble("repository_dispatch");
+  const candidate = checkedCandidate(JSON.parse(git(origin, "show", `${rc}:release-candidate.json`)));
+  assert.deepEqual(candidate.pins, { ...original, controlPlane: next });
+  assert.deepEqual(candidate.pins, JSON.parse(git(origin, "show", `${rc}:release-pins.json`)));
+  assert.equal(candidate.dashboard.sha, dashboardSha);
+  assert.equal(git(origin, "rev-parse", "main"), git(origin, "rev-parse", "v1.0.0"));
+  assert.equal(git(origin, "diff", "--name-only", "main", rc), "release-candidate.json\nrelease-pins.json");
+  git(checkout, "switch", "-q", "main");
+  await assemble("workflow_dispatch");
+  const manual = "v1.0.1-rc.2";
+  assert.equal(git(origin, "rev-parse", "main"), git(origin, "rev-parse", manual));
+  assert.equal(git(origin, "diff", "--name-only", "v1.0.0", manual), "release-pins.json");
 });

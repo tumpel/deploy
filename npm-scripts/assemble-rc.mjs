@@ -3,10 +3,11 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { candidateSource } from "./candidate-source.mjs";
-import { candidateFor, checkedCandidate, exactChecks, readCandidate } from "./rollout.mjs";
+import { candidateFor, checkedCandidate, exactChecks, readCandidate, rolloutClock } from "./rollout.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const PINS_PATH = join(ROOT, "release-pins.json");
+const CANDIDATE_PATH = join(ROOT, "release-candidate.json");
 const RELEASE = /^\d+\.\d+\.\d+(-rc\.\d+)?$/;
 const RELEASE_TAG = /^v(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/;
 const SHA = /^[0-9a-f]{40}$/;
@@ -63,10 +64,10 @@ const latestRelease = (repository, pinned) => {
   return latest;
 };
 
-export const latestCheckedCommit = async (repository, pinned, github, candidate, clock) => {
+export const latestCheckedCommit = async (repository, pinned, github, strict, clock) => {
   if (!SHA.test(pinned)) die("The pinned commit is invalid; pin a full commit SHA.");
   let sha;
-  if (candidate) {
+  if (strict) {
     ({ sha } = await github(`/repos/${repository}/commits/main`));
     await exactChecks(repository, sha, github, clock);
   } else {
@@ -117,22 +118,22 @@ const main = async () => {
   const dryRun = process.argv.includes("--dry-run");
   const pins = JSON.parse(readFileSync(PINS_PATH, "utf8"));
   const stage = process.env.TUMPEL_STAGE ?? "dev";
-  const input = readCandidate(join(ROOT, "release-candidate.json"));
-  const candidate = candidateFor(input, input?.pins ?? pins, stage);
-  if (process.env.GITHUB_EVENT_NAME === "repository_dispatch" && candidate === undefined)
-    die("Candidate client readiness evidence is missing. Supply it before starting automated assembly.");
   if (process.argv.includes("--published")) {
-    await advancePublishedCandidate(candidateFor(input, pins, stage), async () =>
+    await advancePublishedCandidate(candidateFor(readCandidate(CANDIDATE_PATH), pins, stage), async () =>
       run("git", ["push", "origin", "HEAD:refs/heads/main"]),
     );
     return;
   }
+  const automated = process.env.GITHUB_EVENT_NAME === "repository_dispatch";
+  const input = automated ? undefined : readCandidate(CANDIDATE_PATH);
+  let candidate = candidateFor(input, input?.pins ?? pins, stage);
+  const strict = automated || candidate !== undefined;
   const github = async (path) => api(path.slice(1));
   const SOURCES = {
     supervisor: (pinned) => latestRelease("tumpel/supervisor", pinned),
     cli: (pinned) => latestRelease("tumpel/cli", pinned),
-    controlPlane: (pinned) => latestCheckedCommit("tumpel/control-plane", pinned, github, candidate),
-    infra: (pinned) => latestCheckedCommit("tumpel/infra", pinned, github, candidate),
+    controlPlane: (pinned) => latestCheckedCommit("tumpel/control-plane", pinned, github, strict),
+    infra: (pinned) => latestCheckedCommit("tumpel/infra", pinned, github, strict),
   };
   const unknown = Object.keys(pins).filter((name) => !(name in SOURCES));
   if (unknown.length > 0)
@@ -151,24 +152,28 @@ const main = async () => {
   const headTagged = run("git", ["tag", "--points-at", "HEAD"])
     .split("\n")
     .some((tag) => RELEASE_TAG.test(tag));
-  const tag = changed.length === 0 && headTagged ? "" : next;
+  const tag = !automated && changed.length === 0 && headTagged ? "" : next;
   console.log(
     tag === "" ? `no new RC: the pins are current and HEAD carries a release tag` : `RC ${tag} follows ${last}`,
   );
 
   if (dryRun || tag === "") process.exit(0);
-  if (candidate) {
-    candidateFor(candidate, assembled, stage);
-    const source = await candidateSource({ pins: assembled, stage, github, clock: { now: () => candidate.createdAt } });
-    if (source.candidateId !== candidate.candidateId)
+  if (strict) {
+    if (candidate) candidateFor(candidate, assembled, stage);
+    const createdAt = candidate?.createdAt;
+    const clock = createdAt === undefined ? rolloutClock : { now: () => createdAt };
+    const source = await candidateSource({ pins: assembled, stage, github, clock });
+    if (candidate && source.candidateId !== candidate.candidateId)
       die("The published source differs from candidate evidence; assemble matching evidence before continuing.");
+    candidate = source;
   }
   run("git", ["checkout", "--detach"]);
-  if (changed.length > 0) {
+  if (automated || changed.length > 0) {
     writeFileSync(PINS_PATH, `${JSON.stringify(assembled, null, 2)}\n`);
+    if (automated) writeFileSync(CANDIDATE_PATH, `${JSON.stringify(candidate, null, 2)}\n`);
     run("git", ["config", "user.name", "github-actions[bot]"]);
     run("git", ["config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"]);
-    run("git", ["add", "release-pins.json"]);
+    run("git", ["add", "release-pins.json", ...(automated ? ["release-candidate.json"] : [])]);
     run("git", ["commit", "-m", `chore(release): pin the latest releases for ${tag}`]);
   }
   await assembleCandidate(candidate, {

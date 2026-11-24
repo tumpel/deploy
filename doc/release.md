@@ -4,7 +4,7 @@ A release puts tested component versions on the stage `dev`. Each component repo
 
 ## Candidate evidence
 
-Manual assembly, publication and code deployment log a notice when `release-candidate.json` is absent or carries no `clients` evidence. They retain the existing pin, publication and deployment order. A repository dispatch requires client evidence before assembly writes pins or tags. Dashboard `0.9.0` and pages `0.7.0` remain independent dependencies. Assembly does not create candidate evidence from those dependencies alone.
+A component dispatch assembles pins from published sources and freezes their candidate in `release-candidate.json`. Assembly commits the candidate with `release-pins.json` and tags that commit. The dispatch payload supplies no readiness evidence. Manual assembly, publication and deployment retain the default path when client evidence is absent. A manual pin PR that changes pins must delete `release-candidate.json` in the same commit.
 
 A candidate with `clients` evidence enables the strict path. Its frozen digest, stage, pins, exact client commits, protocol and checksums must match. Missing readiness, stale evidence, failed checks and authentication errors abort that path. They never select the default path.
 
@@ -14,7 +14,7 @@ The assembler tags and dispatches an evidenced candidate without waiting for its
 
 Every code entry reads the same optional candidate, including retries and manual pins. Strict activation requires the prepared receipt, stage ownership, matching infra fingerprint and fresh readiness. It deploys and verifies dashboard bytes before migrations and API activation. It rechecks evidence between mutations and records successful Worker activation. A pin change with mismatched candidate evidence fails.
 
-This repository consumes readiness records from Tumpel-run clients. Manual releases can follow the default path while the pipeline supplies no evidence. Automated assembly requires a matching candidate artifact, followed by fresh readiness records for publication and activation.
+Tumpel-run clients publish readiness to `readiness/<candidateId>.json` in the releases bucket. Publication and activation read readiness for the candidate carried by the tagged commit.
 
 ```mermaid
 flowchart LR
