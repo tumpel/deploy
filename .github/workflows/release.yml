@@ -9,6 +9,10 @@ on:
         description: Stage whose releases bucket receives the release
         default: dev
         type: string
+      supervisor_rollout_approved:
+        description: The rollout owner approved the supervisor pin at this ref
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -112,6 +116,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
 
       - uses: actions/setup-node@v7
         with:
@@ -129,6 +134,7 @@ jobs:
       - id: manifest
         name: Write current.json with the supervisor and CLI release-pins.json names
         env:
+          SUPERVISOR_ROLLOUT_APPROVED: ${{ github.event_name == 'workflow_dispatch' && inputs.supervisor_rollout_approved }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
           R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}

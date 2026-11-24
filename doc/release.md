@@ -107,7 +107,7 @@ The control plane serves it at `GET /v1/releases/current` without sign-in and ca
 
 ## Host self-update
 
-Supervisor rollouts are on hold until the bootstrap release. The checks workflow blocks pull requests that change the supervisor pin. After the owner approves a rollout, add `supervisor-rollout-approved` to that pull request. Revert the pull request that added the hold to lift it for all pull requests.
+Supervisor rollouts are on hold until the bootstrap release. Before writing `current.json`, the release checks the pinned supervisor against the stage's live manifest. After the owner approves the rollout, dispatch the release workflow on the approved ref with `supervisor_rollout_approved` set to true. Tag runs and automated dispatches leave approval off by default. Revert the hold to lift it for all releases.
 
 A write of `current.json` raises an R2 event on the queue `tumpel-releases-<stage>`. The control plane consumes it and sends ReleasePublished to every Online host.
 

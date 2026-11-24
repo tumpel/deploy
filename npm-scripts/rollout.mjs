@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { setTimeout } from "node:timers/promises";
 import { z } from "zod";
+import { requireSupervisorRolloutApproval } from "./supervisor-rollout.mjs";
 
 const sha = z.string().regex(/^[0-9a-f]{40}$/);
 const digest = z.string().regex(/^[0-9a-f]{64}$/);
@@ -290,19 +291,24 @@ export const activateCandidate = async (
 export const publishCandidate = async (
   input,
   manifest,
-  { get, put, github, readiness, endpoint, clock, transport = fetch, notice = console.log },
+  { get, put, github, readiness, endpoint, clock, transport = fetch, notice = console.log, supervisorRolloutApproved },
 ) => {
-  if (input === undefined) {
+  const candidate = input === undefined ? undefined : checkedCandidate(input);
+  if (candidate) {
+    await exactChecks("tumpel/control-plane", candidate.pins.controlPlane, github, clock);
+    for (const name of ["cli", "supervisor"])
+      await exactChecks(`tumpel/${name}`, candidate.clients[name].sha, github, clock);
+    verifyManifest(candidate, manifest);
+    await readyClients(candidate, { read: readiness, clock });
+  }
+  const previousManifest = await get("current.json");
+  requireSupervisorRolloutApproval(previousManifest?.value, manifest, supervisorRolloutApproved);
+  const manifestConditions = previousManifest ? { "if-match": previousManifest.etag } : { "if-none-match": "*" };
+  if (candidate === undefined) {
     notice("::notice::Candidate client evidence is absent; publishing the manifest through the existing release path.");
-    await put("current.json", manifest);
+    await put("current.json", manifest, manifestConditions);
     return;
   }
-  const candidate = checkedCandidate(input);
-  await exactChecks("tumpel/control-plane", candidate.pins.controlPlane, github, clock);
-  for (const name of ["cli", "supervisor"])
-    await exactChecks(`tumpel/${name}`, candidate.clients[name].sha, github, clock);
-  verifyManifest(candidate, manifest);
-  await readyClients(candidate, { read: readiness, clock });
   const previous = await get("rollout.json");
   if (
     previous?.value &&
@@ -310,7 +316,6 @@ export const publishCandidate = async (
     !(await get(`activated/${previous.value.candidateId}.json`))
   )
     throw new Error("Another candidate owns this stage; finish its Worker activation before publishing.");
-  const previousManifest = await get("current.json");
   const leaseEtag =
     previous?.value?.candidateId === candidate.candidateId
       ? previous.etag
@@ -322,11 +327,7 @@ export const publishCandidate = async (
   const restore = async (key, record, etag) => {
     await put(key, record?.value ?? null, { "if-match": etag });
   };
-  const manifestEtag = await put(
-    "current.json",
-    manifest,
-    previousManifest ? { "if-match": previousManifest.etag } : { "if-none-match": "*" },
-  ).catch(async (error) => {
+  const manifestEtag = await put("current.json", manifest, manifestConditions).catch(async (error) => {
     const current = await get("current.json");
     if (current && hash(JSON.stringify(current.value)) === hash(JSON.stringify(manifest)))
       await restore("current.json", previousManifest, current.etag);

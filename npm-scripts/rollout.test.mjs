@@ -36,10 +36,17 @@ test("today's pin PR and release without evidence retain their deployment and pu
       migrate: async () => mutations.push("migrations"),
       api: async () => mutations.push("API"),
     });
-    const manifest = { releaseVersion: "0.0.0-aaaaaaaaaaaa", clis: [{ cliVersion: pins.cli }] };
+    const manifest = {
+      releaseVersion: "0.0.0-aaaaaaaaaaaa",
+      clis: [{ cliVersion: pins.cli }],
+      supervisors: [{ supervisorVersion: pins.supervisor }],
+    };
     await publishCandidate(candidate, manifest, {
       notice: (message) => notices.push(message),
-      get: async () => assert.fail("the legacy release does not read or claim rollout ownership"),
+      get: async (key) => {
+        assert.equal(key, "current.json");
+        return { value: manifest, etag: '"live"' };
+      },
       github: async () => assert.fail("the legacy release adds no exact-SHA gate"),
       readiness: async () => assert.fail("the legacy release adds no readiness gate"),
       put: async (key, value) => mutations.push([key, value]),
@@ -162,9 +169,38 @@ test("candidate gates use explicit published client and consumer inputs", async 
     }
   });
 
+  await t.test("a supervisor hold blocks evidenced publication before the stage claim", async () => {
+    const current = { supervisors: [{ supervisorVersion: "1.0.0-rc.1" }] };
+    await assert.rejects(
+      publishCandidate(candidate, manifest, {
+        github: async (path) => ({
+          workflow_runs: [
+            {
+              id: 1,
+              head_sha: new URL(`https://api.github.com${path}`).searchParams.get("head_sha"),
+              head_branch: "main",
+              event: "push",
+              status: "completed",
+              conclusion: "success",
+            },
+          ],
+        }),
+        readiness: async () => ready,
+        get: async (key) => {
+          assert.equal(key, "current.json");
+          return { value: current, etag: '"live"' };
+        },
+        put: async () => assert.fail("a refused rollout cannot claim or write"),
+        clock: { now: () => 1000, sleep: async () => assert.fail("ready publication cannot wait") },
+      }),
+      /supervisor rollouts are on hold until the bootstrap release/,
+    );
+  });
+
   await t.test("publication orders readiness, claim, manifest, stage read-back and prepared receipt", async () => {
     const effects = [];
     await publishCandidate(candidate, manifest, {
+      supervisorRolloutApproved: true,
       github: async (path) => ({
         workflow_runs: [
           {
@@ -209,7 +245,7 @@ test("candidate gates use explicit published client and consumer inputs", async 
   await t.test("failed publication restores the old manifest and frees its stage claim", async () => {
     for (const failure of ["write", "read-back", "prepared"]) {
       const effects = [];
-      const old = { releaseVersion: "old" };
+      const old = { releaseVersion: "old", supervisors: manifest.supervisors };
       await assert.rejects(
         publishCandidate(candidate, manifest, {
           github: async (path) => ({
@@ -301,7 +337,8 @@ test("candidate gates use explicit published client and consumer inputs", async 
         ],
       }),
       readiness: async () => ({ ...ready, candidateId: next.candidateId, observedAt: 2000 }),
-      get: async (key) => (key === "rollout.json" ? { value: null, etag: '"released"' } : undefined),
+      get: async (key) =>
+        key === "rollout.json" ? { value: null, etag: '"released"' } : { value: manifest, etag: '"live"' },
       put: async (key, value, conditions) => {
         if (key === "rollout.json") claims.push({ value, conditions });
         return '"written"';

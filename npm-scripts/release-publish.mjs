@@ -551,6 +551,7 @@ const publishRelease = async (layerFragmentDir) => {
     stage,
   );
   await publishCandidate(candidate, manifest, {
+    supervisorRolloutApproved: process.env.SUPERVISOR_ROLLOUT_APPROVED === "true",
     get: async (key) => {
       const url = await presignUrl(store.credentials, "GET", store.origin, segmentsOf(key), SIGNED_SECONDS, new Date());
       const response = await send(url, "GET", {});
