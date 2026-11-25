@@ -3,10 +3,10 @@ import { spawnSync } from "node:child_process";
 import { createPublicKey } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { fetched, github } from "./candidate-source.mjs";
+import { pinnedCommit, readPin } from "./pinned-source.mjs";
 import { activateCandidate, candidateFor, readCandidate } from "./rollout.mjs";
 
 const API = "https://api.cloudflare.com/client/v4";
@@ -28,11 +28,14 @@ const token =
 const accountId =
   process.env.TUMPEL_ACCOUNT_ID ||
   die("TUMPEL_ACCOUNT_ID is not set; cloudflare-builds-bootstrap sets it on the Workers Builds trigger");
-const PINS = join(dirname(dirname(fileURLToPath(import.meta.url))), "release-pins.json");
-const pins = JSON.parse(readFileSync(PINS, "utf8"));
+const pin = pinnedCommit("control-plane");
+const pins = {
+  controlPlane: pin,
+  infra: pinnedCommit("infra"),
+  supervisor: readPin("supervisor").release,
+  cli: readPin("cli").release,
+};
 const candidate = candidateFor(readCandidate(new URL("../release-candidate.json", import.meta.url)), pins, STAGE);
-const pin = pins.controlPlane;
-if (!pin) die("release-pins.json names no controlPlane");
 const ROOT = mkdtempSync(join(tmpdir(), "control-plane-"));
 const PACKAGE = join(ROOT, "packages", "control-plane");
 const DASHBOARD = join(ROOT, "packages", "dashboard-site");

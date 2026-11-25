@@ -1,14 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 export const TOFU_VERSION = "1.13.2";
 export const INFRA_REPOSITORY = "https://github.com/tumpel/infra.git";
 export const CONTROL_PLANE_REPOSITORY = "https://github.com/tumpel/control-plane.git";
 
-const PINS = join(dirname(dirname(fileURLToPath(import.meta.url))), "release-pins.json");
+export const readPin = (name) => JSON.parse(readFileSync(new URL(`../pins/${name}.json`, import.meta.url), "utf8"));
 
 const run = (command, args, cwd, die) => {
   const result = spawnSync(command, args, { cwd, stdio: ["ignore", "inherit", "inherit"], timeout: 600_000 });
@@ -16,10 +15,10 @@ const run = (command, args, cwd, die) => {
   if (result.status !== 0) die(`${command} ${args.join(" ")} exited with ${result.status}`);
 };
 
-export const pinnedCommit = (name, die) => {
-  const pin = JSON.parse(readFileSync(PINS, "utf8"))[name];
-  if (!/^[0-9a-f]{40}$/.test(String(pin))) die(`${PINS} names ${name} ${pin}, not a commit sha`);
-  return pin;
+export const pinnedCommit = (name) => {
+  const { commit } = readPin(name);
+  if (!/^[0-9a-f]{40}$/.test(String(commit))) throw new Error(`pins/${name}.json needs a 40-character commit SHA`);
+  return commit;
 };
 
 export const checkoutPinned = (repository, pin, dir, die) => {

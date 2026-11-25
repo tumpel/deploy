@@ -3,9 +3,9 @@ import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "no
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ReleaseManifestSchema, SupervisorReleaseSchema } from "@tumpel/schemas";
+import { readPin } from "./pinned-source.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-export const PINS_PATH = join(ROOT, "release-pins.json");
 export const RELEASE_CACHE = process.env.TUMPEL_RELEASE_CACHE ?? join(ROOT, ".tmp", "releases");
 const VERSION = /^\d+\.\d+\.\d+$/;
 const CANDIDATE = /^\d+\.\d+\.\d+-rc\.\d+$/;
@@ -68,10 +68,12 @@ export const downloadRelease = async ({ endpoint, stage, release, kind, entries,
 const checkedPin = (name, repository, version, stage) => {
   if (VERSION.test(String(version))) return;
   if (!CANDIDATE.test(String(version)))
-    throw new Error(`${PINS_PATH} names ${name} ${version}, not X.Y.Z or X.Y.Z-rc.N; pin a release of ${repository}`);
+    throw new Error(
+      `pins/${name}.json names ${name} ${version}, not X.Y.Z or X.Y.Z-rc.N; pin a release of ${repository}`,
+    );
   if (stage !== "dev")
     throw new Error(
-      `${PINS_PATH} names the ${name} release candidate ${version}, and only stage dev runs release candidates; pin a stable X.Y.Z for ${stage}`,
+      `pins/${name}.json names the ${name} release candidate ${version}, and only stage dev runs release candidates; pin a stable X.Y.Z for ${stage}`,
     );
 };
 
@@ -82,7 +84,10 @@ export const checkedPins = (pins, stage) => {
 };
 
 export const releasePins = () =>
-  checkedPins(JSON.parse(readFileSync(PINS_PATH, "utf8")), process.env.TUMPEL_STAGE || "dev");
+  checkedPins(
+    { supervisor: readPin("supervisor").release, cli: readPin("cli").release },
+    process.env.TUMPEL_STAGE || "dev",
+  );
 
 const fetched = async (url, fix) => {
   const response = await fetch(url);
@@ -92,7 +97,7 @@ const fetched = async (url, fix) => {
 
 export const downloadAsset = async (repository, version, asset, cacheDir) => {
   const url = releaseAssetUrl(repository, version, asset);
-  const fix = `pin a release of ${repository} in ${PINS_PATH} that attaches ${asset} and ${asset}.sha256`;
+  const fix = `pin a release of ${repository} in pins/${repository.split("/")[1]}.json that attaches ${asset} and ${asset}.sha256`;
   const digest = (await (await fetched(`${url}.sha256`, fix)).text()).split(/\s+/)[0];
   if (!/^[0-9a-f]{64}$/.test(digest)) throw new Error(`${url}.sha256 holds no sha256; ${fix}`);
   const path = join(cacheDir, repository, `v${version}`, asset);
@@ -102,7 +107,7 @@ export const downloadAsset = async (repository, version, asset, cacheDir) => {
 
 export const supervisorRelease = async (version) => {
   const url = releaseAssetUrl(SUPERVISOR_REPOSITORY, version, "release.json");
-  const fix = `pin a release of ${SUPERVISOR_REPOSITORY} in ${PINS_PATH} that attaches release.json`;
+  const fix = `pin a release of ${SUPERVISOR_REPOSITORY} in pins/supervisor.json that attaches release.json`;
   const release = SupervisorReleaseSchema.parse(await (await fetched(url, fix)).json());
   if (release.supervisorVersion !== version)
     throw new Error(`${url} names supervisor ${release.supervisorVersion}, not ${version}; ${fix}`);
@@ -113,7 +118,7 @@ const overlaps = (oldest, version, window) => oldest <= window.Version && versio
 
 export const supervisorRefusal = (release, channel, guest, imageGuestProtocolVersion) => {
   const pinned = `supervisor ${release.supervisorVersion}`;
-  const fix = `pin a supervisor release in ${PINS_PATH} whose window meets it`;
+  const fix = "pin a supervisor release in pins/supervisor.json whose window meets it";
   if (!overlaps(release.channelProtocolOldest, release.channelProtocolVersion, channel))
     return `${pinned} speaks channel protocol ${release.channelProtocolOldest} to ${release.channelProtocolVersion}, and the pinned control plane accepts ${channel.Oldest} to ${channel.Version}; ${fix}`;
   if (!overlaps(release.guestProtocolOldest, release.guestProtocolVersion, guest))
@@ -130,7 +135,7 @@ export const cliSource = async (version, cacheDir) => {
   const path = join(cacheDir, CLI_REPOSITORY, `v${version}`, "src", "main.rs");
   if (existsSync(path)) return path;
   const url = `https://raw.githubusercontent.com/${CLI_REPOSITORY}/v${version}/src/main.rs`;
-  const source = await (await fetched(url, `pin a release of ${CLI_REPOSITORY} in ${PINS_PATH} that exists`)).text();
+  const source = await (await fetched(url, `pin a release of ${CLI_REPOSITORY} in pins/cli.json that exists`)).text();
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, source);
   return path;

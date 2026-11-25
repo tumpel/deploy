@@ -66,7 +66,7 @@ jobs:
       - name: Install npm workspaces
         run: npm ci --prefer-offline --no-audit --no-fund
 
-      - name: Fetch the guest of the supervisor release-pins.json names
+      - name: Fetch the guest from the pinned supervisor release
         run: npm run release:fetch -- guest
 
       - name: Build the guest images

@@ -25,6 +25,7 @@ import {
 import { fetched, github } from "./candidate-source.mjs";
 import { controlPlaneModule, controlPlanePackage } from "./control-plane-source.mjs";
 import { layerHarnesses, layerPrefix, layerRecipe, recipeKey } from "./harness-recipes.mjs";
+import { pinnedCommit } from "./pinned-source.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 import {
   CLI_REPOSITORY,
@@ -44,7 +45,7 @@ const { ChannelProtocol } = await controlPlanePackage("@tumpel/schemas");
 for (const bound of ["Oldest", "Version"])
   if (!Number.isInteger(ChannelProtocol?.[bound]))
     throw new Error(
-      `release:publish: the pinned control plane's @tumpel/schemas exports no integer ChannelProtocol.${bound}; update release-pins.json controlPlane or read the channel window from where that commit now keeps it`,
+      `release:publish: the pinned control plane's @tumpel/schemas exports no integer ChannelProtocol.${bound}; update pins/control-plane.json or read the channel window from where that commit now keeps it`,
     );
 const CONTROL_PLANE_CHANNEL = { Oldest: ChannelProtocol.Oldest, Version: ChannelProtocol.Version };
 
@@ -547,7 +548,7 @@ const publishRelease = async (layerFragmentDir) => {
   });
   const candidate = candidateFor(
     readCandidate(new URL("../release-candidate.json", import.meta.url)),
-    JSON.parse(readFileSync(new URL("../release-pins.json", import.meta.url), "utf8")),
+    { ...pins, controlPlane: pinnedCommit("control-plane"), infra: pinnedCommit("infra") },
     stage,
   );
   await publishCandidate(candidate, manifest, {

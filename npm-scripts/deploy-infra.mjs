@@ -48,7 +48,7 @@ const token = process.env.CLOUDFLARE_TOFU_TOKEN;
 const accountId = process.env.TUMPEL_ACCOUNT_ID;
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const pin = pinnedCommit("infra", die);
+const pin = pinnedCommit("infra");
 const ROOT = checkoutPinned(INFRA_REPOSITORY, pin, join(mkdtempSync(join(tmpdir(), "infra-")), "infra"), die);
 
 const run = (command, args, { cwd = ROOT, env = process.env, capture = false, input } = {}) => {

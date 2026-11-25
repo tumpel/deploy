@@ -127,7 +127,7 @@ jobs:
           path: .tmp/layer-fragments
 
       - id: manifest
-        name: Write current.json with the supervisor and CLI release-pins.json names
+        name: Write current.json with the pinned supervisor and CLI releases
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
