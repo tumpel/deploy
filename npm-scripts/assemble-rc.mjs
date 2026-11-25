@@ -1,8 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { candidateFor, checkedCandidate, readCandidate } from "./rollout.mjs";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const RELEASE = /^\d+\.\d+\.\d+(-rc\.\d+)?$/;
@@ -86,12 +85,6 @@ const nextTag = (git) => {
   return { last, next: `v${major}.${minor}.${Number(patch) + 1}-rc.1` };
 };
 
-export const advancePublishedCandidate = async (candidate, advance) => {
-  if (candidate === undefined) return;
-  checkedCandidate(candidate);
-  await advance();
-};
-
 export const assembleRc = async ({ root, github, command, dryRun, stage }) => {
   const git = (args) => command("git", args);
   const pinsPath = join(root, "release-pins.json");
@@ -133,9 +126,6 @@ export const assembleRc = async ({ root, github, command, dryRun, stage }) => {
     git(["add", "release-pins.json"]);
     git(["commit", "-m", `chore(release): pin the latest releases for ${tag}`]);
   }
-  console.log(
-    "::notice::Candidate client evidence is absent; advancing pins before starting the existing release workflow.",
-  );
   git(["push", "origin", "HEAD:refs/heads/main"]);
   git(["tag", tag]);
   git(["push", "origin", `refs/tags/${tag}`]);
@@ -145,16 +135,7 @@ export const assembleRc = async ({ root, github, command, dryRun, stage }) => {
 
 const main = async () => {
   const stage = process.env.TUMPEL_STAGE ?? "dev";
-  if (process.argv.includes("--published")) {
-    const pins = JSON.parse(readFileSync(join(ROOT, "release-pins.json"), "utf8"));
-    const candidate = readCandidate(join(ROOT, "release-candidate.json"));
-    await advancePublishedCandidate(candidateFor(candidate, pins, stage), async () =>
-      run("git", ["push", "origin", "HEAD:refs/heads/main"]),
-    );
-    return;
-  }
   const dryRun = process.argv.includes("--dry-run");
-  const tag = await assembleRc({ root: ROOT, github: githubApi, command: run, dryRun, stage });
-  if (tag && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `tag=\n`);
+  await assembleRc({ root: ROOT, github: githubApi, command: run, dryRun, stage });
 };
 if (process.argv[1] === fileURLToPath(import.meta.url)) await main();

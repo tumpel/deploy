@@ -4,7 +4,6 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { advancePublishedCandidate } from "./assemble-rc.mjs";
 import { candidateSource } from "./candidate-source.mjs";
 import {
   activateCandidate,
@@ -238,13 +237,6 @@ test("candidate gates use explicit published client and consumer inputs", async 
           : ["claim", "publish manifest", "restore old manifest", "free stage"],
       );
     }
-  });
-
-  await t.test("successful publication advances evidenced pins", async () => {
-    const effects = [];
-    await advancePublishedCandidate(candidate, async () => effects.push("main after publication"));
-    assert.deepEqual(effects, ["main after publication"]);
-    await advancePublishedCandidate(undefined, async () => assert.fail("main was already advanced"));
   });
 
   await t.test("a different candidate can claim a stage released by failed publication", async () => {
