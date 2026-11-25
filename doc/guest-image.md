@@ -1,6 +1,6 @@
 # Guest image
 
-`npm run release:fetch -- guest` puts the `tumpel-guest` of the supervisor release that `release-pins.json` names at `.tmp/release-binaries/tumpel-guest`, and `TUMPEL_GUEST_BIN` names another. `npm run guest:image -- <harness> [amd64|arm64]` then builds a read-only ext4 rootfs without root, for `ClaudeCode` from the harness catalog, `Shell` for tests, or `all` for both, for the given architecture, by default the build machine's. It refuses arm64 unless `BUILD_ARM64=true`. It writes `<digest>.ext4`, `<digest>.json` (`GuestImageManifest`) and `<kernelDigest>.vmlinux` to `$TUMPEL_IMAGE_DIR`, by default `~/development/.tmp/tumpel-images`.
+`npm run release:fetch -- guest` puts the `tumpel-guest` of the supervisor release that `pins/supervisor.json` names at `.tmp/release-binaries/tumpel-guest`, and `TUMPEL_GUEST_BIN` names another. `npm run guest:image -- <harness> [amd64|arm64]` then builds a read-only ext4 rootfs without root, for `ClaudeCode` from the harness catalog, `Shell` for tests, or `all` for both, for the given architecture, by default the build machine's. It refuses arm64 unless `BUILD_ARM64=true`. It writes `<digest>.ext4`, `<digest>.json` (`GuestImageManifest`) and `<kernelDigest>.vmlinux` to `$TUMPEL_IMAGE_DIR`, by default `~/development/.tmp/tumpel-images`.
 
 The build:
 

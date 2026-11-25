@@ -152,10 +152,7 @@ tofu(["apply", "-input=false", planPath]);
 
 const outputs = JSON.parse(tofu(["output", "-json"], { capture: true }));
 const output = (name) => outputs[name]?.value ?? die(`tofu output ${name} is missing`);
-const handoff = {
-  ...Object.fromEntries(HANDOFF_OUTPUTS.map((name) => [name, output(name)])),
-  infra_fingerprint: pin,
-};
+const handoff = Object.fromEntries(HANDOFF_OUTPUTS.map((name) => [name, output(name)]));
 if (handoff.d1_database_id !== databaseId)
   die(`the infra of ${STAGE} names D1 database ${handoff.d1_database_id}, not ${databaseId}`);
 

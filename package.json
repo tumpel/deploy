@@ -31,9 +31,7 @@
     "release:secrets": "node npm-scripts/release-secrets.mjs",
     "history:split": "node npm-scripts/split/split.mjs",
     "split:sync": "node npm-scripts/split/sync.mjs",
-    "release:rc": "node npm-scripts/assemble-rc.mjs",
-    "churn": "sh npm-scripts/churn.sh",
-    "test:rollout": "node --test --test-timeout=30000 npm-scripts/rollout.test.mjs"
+    "churn": "sh npm-scripts/churn.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.0",

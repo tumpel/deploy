@@ -1,6 +1,6 @@
 # Architecture
 
-1. The host supervisor and the guest live in [tumpel/supervisor](https://github.com/tumpel/supervisor), the CLI in [tumpel/cli](https://github.com/tumpel/cli); `release-pins.json` pins the releases tumpel ships. TypeScript for the Cloudflare Workers (`packages/control-plane`) and the Worker that serves the dashboard (`packages/dashboard-site`). The dashboard and `@tumpel/pages` live in [tumpel/dashboard](https://github.com/tumpel/dashboard); tumpel pins their release tarballs.
+1. The host supervisor and the guest live in [tumpel/supervisor](https://github.com/tumpel/supervisor), the CLI in [tumpel/cli](https://github.com/tumpel/cli); the control plane in [tumpel/control-plane](https://github.com/tumpel/control-plane); the dashboard and `@tumpel/pages` in [tumpel/dashboard](https://github.com/tumpel/dashboard). One file per package in `pins/` pins the release tumpel ships, and only that package's pipeline deploys it. The dashboard is an assets-only Worker (`packages/dashboard-site`).
 2. Every config file and every input is defined by a schema.
 3. Every platform-specific piece starts as a provider-agnostic interface in TypeSpec or a schema. One swappable backend implements it. Cloudflare is the first backend.
 4. Lifecycle is event-driven. No sweeps and no polling.
@@ -11,4 +11,4 @@
 9. Every Cloudflare token, secret and resource is a tofu resource in `packages/control-plane/infra`. Never create one with a script or a manual wrangler step.
 10. On the dev stage, apply the tofu with `npm run deploy:infra`, without a plan review.
 11. Decisions live in `doc/adr`, designs in `doc/RFC` and `doc/EDD`.
-12. Candidate client evidence enables the strict rollout path for assembly, release publication and every code deployment, including retries and manual pins. Require matching published clients, fresh Tumpel-run consumer readiness, every online stage supervisor on the candidate version and the matching infra fingerprint. Check readiness before claiming the stage or publishing its manifest. Publish and read back clients before advancing evidenced pins. Verify served dashboard bytes before migrations and API activation. When candidate client evidence is absent, log a notice and retain the existing release and deployment path. Never downgrade invalid or failed evidence to that path.
+12. Back end and front end deploy in whatever order their merges land. Roll back by reverting one pin commit; never cross a Durable Object migration backwards.
