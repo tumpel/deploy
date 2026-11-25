@@ -4,7 +4,12 @@ const PublishedSupervisorSchema = ReleaseManifestSchema.pick({ supervisors: true
 
 const order = (version) => {
   const [, major, minor, patch, candidate] = /^(\d+)\.(\d+)\.(\d+)(?:-rc\.(\d+))?$/.exec(version);
-  return [Number(major), Number(minor), Number(patch), candidate === undefined ? Infinity : Number(candidate)];
+  return [
+    Number(major),
+    Number(minor),
+    Number(patch),
+    candidate === undefined ? Number.MAX_SAFE_INTEGER : Number(candidate),
+  ];
 };
 
 const compare = (left, right) => {

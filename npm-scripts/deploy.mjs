@@ -29,6 +29,13 @@ const accountId =
 const commit = pinnedCommit("control-plane");
 const { release } = readPin("control-plane");
 if (!/^rc\.[1-9]\d*$/.test(String(release))) die("pins/control-plane.json needs a release rc.<N>");
+const tagged = await fetch(`https://api.github.com/repos/tumpel/control-plane/commits/refs%2Ftags%2F${release}`, {
+  headers: { accept: "application/vnd.github+json" },
+  signal: AbortSignal.timeout(30_000),
+});
+if (!tagged.ok) die(`GitHub GET of control plane ${release} returned ${tagged.status}`);
+const taggedCommit = (await tagged.json()).sha;
+if (taggedCommit !== commit) die(`control plane ${release} tags ${taggedCommit}, not the pinned commit ${commit}`);
 
 const wranglerEnv = {
   ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("WRANGLER_CI_"))),

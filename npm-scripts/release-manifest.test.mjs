@@ -49,6 +49,15 @@ test("a supervisor downgrade sets rollback, a CLI-only publish keeps it, and a s
   assert.equal(forward.rollback, undefined);
 });
 
+test("a stable supervisor downgrade keeps rollback through a CLI-only publish", () => {
+  const upgraded = releaseManifest(fields("1".repeat(40), supervisor("0.3.0"), cli("1.0.0")), undefined);
+  const reverted = releaseManifest(fields("2".repeat(40), supervisor("0.2.9"), cli("1.0.0")), upgraded);
+  assert.equal(reverted.rollback, true);
+
+  const cliOnly = releaseManifest(fields("3".repeat(40), supervisor("0.2.9"), cli("1.0.1")), reverted);
+  assert.equal(cliOnly.rollback, true);
+});
+
 test("an unchanged supervisor without rollback stays without it", () => {
   const before = releaseManifest(fields("1".repeat(40), supervisor("0.3.0-rc.34"), cli("1.0.0-rc.24")), undefined);
   const after = releaseManifest(fields("2".repeat(40), supervisor("0.3.0-rc.34"), cli("1.0.0-rc.25")), before);
