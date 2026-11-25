@@ -1,15 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  appendFileSync,
-  createReadStream,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { basename, dirname, join } from "node:path";
 import {
@@ -569,7 +561,6 @@ const publishRelease = async (layerFragmentDir) => {
         )
       ).json(),
   });
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `candidate=${candidate !== undefined}\n`);
   console.log(
     `published ${bucket}/${CURRENT} for ${releaseVersion} with supervisor ${pins.supervisor}, CLI ${pins.cli} and the images of ${imageReleaseVersion}`,
   );
