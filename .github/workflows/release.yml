@@ -2,7 +2,10 @@ name: release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+    paths:
+      - pins/supervisor.json
+      - pins/cli.json
   workflow_dispatch:
     inputs:
       stage:
@@ -103,8 +106,6 @@ jobs:
     needs: layers
     runs-on: ubuntu-latest
     timeout-minutes: 50
-    outputs:
-      candidate: ${{ steps.manifest.outputs.candidate }}
     concurrency:
       group: release-publish-${{ inputs.stage || 'dev' }}
       cancel-in-progress: false
@@ -126,41 +127,9 @@ jobs:
           pattern: layers-*
           path: .tmp/layer-fragments
 
-      - id: manifest
-        name: Write current.json with the supervisor and CLI release-pins.json names
+      - name: Write current.json with the pinned supervisor and CLI releases
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_RELEASES_ACCESS_KEY_ID: ${{ secrets.R2_RELEASES_ACCESS_KEY_ID }}
           R2_RELEASES_SECRET_ACCESS_KEY: ${{ secrets.R2_RELEASES_SECRET_ACCESS_KEY }}
         run: npm run release:publish -- manifest .tmp/layer-fragments
-
-  promote:
-    needs: publish
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: write
-    concurrency:
-      group: release-promote
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      - if: needs.publish.outputs.candidate == 'true'
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          package-manager-cache: false
-
-      - if: needs.publish.outputs.candidate == 'true'
-        name: Install the script dependencies
-        run: npm ci --prefer-offline --no-audit --no-fund
-
-      - if: needs.publish.outputs.candidate == 'true'
-        name: Advance evidenced candidate pins after successful publication
-        run: npm run release:rc -- --published
-
-      - name: Move the release branch to the tag
-        run: git push origin "$GITHUB_SHA:refs/heads/release"

@@ -13,9 +13,10 @@
     "fix": "biome check --write .",
     "check": "npm run lint",
     "prepare": "git config core.hooksPath .githooks",
-    "test": "node --test --test-timeout=30000 npm-scripts/*.test.mjs",
+    "test": "node --test --test-timeout=30000 npm-scripts/*.test.mjs packages/*/test/*.test.ts",
     "deploy:code": "node npm-scripts/deploy.mjs a0febfa5-2ef3-4593-a922-1a1c909e91f3",
     "deploy:infra": "node npm-scripts/deploy-infra.mjs a0febfa5-2ef3-4593-a922-1a1c909e91f3",
+    "deploy:dashboard": "node npm-scripts/deploy-dashboard.mjs",
     "proof": "node npm-scripts/proof-env.mjs",
     "ticket": "node npm-scripts/ticket-run.mjs",
     "proof:e2e": "node npm-scripts/proof-env.mjs node npm-scripts/e2e-proof.mjs",
@@ -30,9 +31,7 @@
     "release:secrets": "node npm-scripts/release-secrets.mjs",
     "history:split": "node npm-scripts/split/split.mjs",
     "split:sync": "node npm-scripts/split/sync.mjs",
-    "release:rc": "node npm-scripts/assemble-rc.mjs",
-    "churn": "sh npm-scripts/churn.sh",
-    "test:rollout": "node --test --test-timeout=30000 npm-scripts/rollout.test.mjs"
+    "churn": "sh npm-scripts/churn.sh"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.0",

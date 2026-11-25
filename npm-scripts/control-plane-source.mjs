@@ -1,15 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { pinnedCommit } from "./pinned-source.mjs";
 
 const REPOSITORY = "https://github.com/tumpel/control-plane.git";
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const PINS = join(ROOT, "release-pins.json");
-
-const pin = JSON.parse(readFileSync(PINS, "utf8")).controlPlane;
-if (!/^[0-9a-f]{40}$/.test(String(pin))) throw new Error(`${PINS} names controlPlane ${pin}, not a commit sha`);
+const pin = pinnedCommit("control-plane");
 
 const SOURCE = join(ROOT, ".tmp", "control-plane", pin);
 

@@ -32,8 +32,8 @@ if (!command) die("pass the command to run, e.g. npm run proof -- tumpel login -
 if (!/^[a-z][a-z0-9]{1,15}$/.test(STAGE)) die(`TUMPEL_STAGE ${STAGE} must be 2 to 16 lower-case letters and digits`);
 if (!existsSync(ENV_FILE)) die(`${ENV_FILE} is missing; write it as doc/deploy.md describes`);
 
-const infraPin = pinnedCommit("infra", die);
-const controlPlanePin = pinnedCommit("controlPlane", die);
+const infraPin = pinnedCommit("infra");
+const controlPlanePin = pinnedCommit("control-plane");
 const INFRA = checkoutPinned(INFRA_REPOSITORY, infraPin, join(WORK, `infra-${infraPin}`), die);
 const CONTROL_PLANE = checkoutPinned(
   CONTROL_PLANE_REPOSITORY,
