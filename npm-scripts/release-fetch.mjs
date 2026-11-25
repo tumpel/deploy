@@ -41,8 +41,8 @@ mkdirSync(RELEASE_BINARIES, { recursive: true });
 for (const name of wanted) {
   const { repository, asset, out } = BINARIES[name];
   const version = name === "cli" ? pins.cli : pins.supervisor;
-  const { path, digest } = await downloadAsset(repository, version, asset(ARCHITECTURE), RELEASE_CACHE).catch((error) =>
-    die(error.message),
+  const { path, digest } = await downloadAsset(repository, `v${version}`, asset(ARCHITECTURE), RELEASE_CACHE).catch(
+    (error) => die(error.message),
   );
   const target = join(RELEASE_BINARIES, out);
   copyFileSync(path, target);

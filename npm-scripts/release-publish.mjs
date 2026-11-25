@@ -1,15 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import {
-  appendFileSync,
-  createReadStream,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { createReadStream, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { basename, dirname, join } from "node:path";
 import {
@@ -22,10 +14,8 @@ import {
   ReleaseHarnessLayerSchema,
   ReleaseManifestSchema,
 } from "@tumpel/schemas";
-import { fetched, github } from "./candidate-source.mjs";
 import { controlPlaneModule, controlPlanePackage } from "./control-plane-source.mjs";
 import { layerHarnesses, layerPrefix, layerRecipe, recipeKey } from "./harness-recipes.mjs";
-import { pinnedCommit } from "./pinned-source.mjs";
 import { disabledReason, RELEASE_ARCHITECTURES } from "./release-architectures.mjs";
 import {
   CLI_REPOSITORY,
@@ -38,7 +28,7 @@ import {
   supervisorRefusal,
   supervisorRelease,
 } from "./release-download.mjs";
-import { candidateFor, publishCandidate, readCandidate } from "./rollout.mjs";
+import { releaseManifest } from "./release-manifest.mjs";
 
 const { CHECKSUM_HEADER, checksumOf, presignUrl } = await controlPlaneModule("packages/control-plane/src/presign.ts");
 const { ChannelProtocol } = await controlPlanePackage("@tumpel/schemas");
@@ -470,8 +460,8 @@ const pinnedBinaries = async (imageGuestProtocolVersion) => {
     const listed = release.binaries.find((binary) => binary.architecture === architecture);
     if (!listed) die(`supervisor ${pins.supervisor} carries no ${architecture} binary; pin a release that does`);
     const [supervisor, cli] = await Promise.all([
-      downloadAsset(SUPERVISOR_REPOSITORY, pins.supervisor, supervisorAsset(architecture), RELEASE_CACHE),
-      downloadAsset(CLI_REPOSITORY, pins.cli, cliAsset(architecture), RELEASE_CACHE),
+      downloadAsset(SUPERVISOR_REPOSITORY, `v${pins.supervisor}`, supervisorAsset(architecture), RELEASE_CACHE),
+      downloadAsset(CLI_REPOSITORY, `v${pins.cli}`, cliAsset(architecture), RELEASE_CACHE),
     ]).catch((error) => die(error.message));
     if (supervisor.digest !== listed.sha256)
       die(
@@ -528,49 +518,16 @@ const publishRelease = async (layerFragmentDir) => {
   if (current !== undefined) {
     const published = PublishedCommitSchema.parse(current).commit;
     if (supersededBy(commit, published)) {
-      if (process.env.GITHUB_REF_TYPE === "tag")
-        die(`${bucket}/${CURRENT} holds ${published}, which descends from ${commit}; tag a newer commit`);
       console.log(`kept ${bucket}/${CURRENT}: it holds ${published}, which descends from ${commit}`);
       return;
     }
   }
-  const releaseVersion =
-    process.env.GITHUB_REF_TYPE === "tag" ? required("GITHUB_REF_NAME") : `0.0.0-${commit.slice(0, 12)}`;
-  const manifest = ReleaseManifestSchema.parse({
-    releaseVersion,
-    commit,
-    channelProtocolVersion,
-    supervisors,
-    clis,
-    images,
-    harnessLayers,
-    bases,
-  });
-  const candidate = candidateFor(
-    readCandidate(new URL("../release-candidate.json", import.meta.url)),
-    { ...pins, controlPlane: pinnedCommit("control-plane"), infra: pinnedCommit("infra") },
-    stage,
+  const releaseVersion = `0.0.0-${commit.slice(0, 12)}`;
+  const manifest = releaseManifest(
+    { releaseVersion, commit, channelProtocolVersion, supervisors, clis, images, harnessLayers, bases },
+    current,
   );
-  await publishCandidate(candidate, manifest, {
-    get: async (key) => {
-      const url = await presignUrl(store.credentials, "GET", store.origin, segmentsOf(key), SIGNED_SECONDS, new Date());
-      const response = await send(url, "GET", {});
-      if (response.status === 404) return undefined;
-      if (response.status !== 200)
-        throw new Error(`Release evidence read failed (${response.status}); keep main pins unchanged.`);
-      return { value: JSON.parse(response.text), etag: response.headers.etag };
-    },
-    put: (key, value, conditions) => putJson(store, key, value, conditions),
-    github,
-    readiness: () => readJson(store, `readiness/${candidate.candidateId}.json`),
-    endpoint: async () =>
-      (
-        await fetched(
-          `https://api.${stage === "prod" ? "" : `${stage}.`}tumpel.dev/v1/releases/current?candidate=${candidate.candidateId}`,
-        )
-      ).json(),
-  });
-  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `candidate=${candidate !== undefined}\n`);
+  await putJson(store, CURRENT, manifest);
   console.log(
     `published ${bucket}/${CURRENT} for ${releaseVersion} with supervisor ${pins.supervisor}, CLI ${pins.cli} and the images of ${imageReleaseVersion}`,
   );

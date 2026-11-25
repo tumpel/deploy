@@ -58,3 +58,15 @@ export const installTofu = async (dir, die) => {
   chmodSync(binary, 0o755);
   return binary;
 };
+
+export const readHandoff = async ({ stage, accountId, token }, die) => {
+  const object = `infra-outputs-${stage}.json`;
+  const path = `/accounts/${accountId}/r2/buckets/tumpel-builder-secrets/objects/${encodeURIComponent(object)}`;
+  const response = await fetch(`https://api.cloudflare.com/client/v4${path}`, {
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (response.status === 404) die(`tumpel-builder-secrets holds no ${object}; apply the infra of ${stage} first`);
+  if (!response.ok) die(`GET ${path} returned ${response.status}; the token needs Workers R2 Storage Read`);
+  return response.json();
+};

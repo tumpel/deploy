@@ -95,12 +95,12 @@ const fetched = async (url, fix) => {
   return response;
 };
 
-export const downloadAsset = async (repository, version, asset, cacheDir) => {
-  const url = releaseAssetUrl(repository, version, asset);
+export const downloadAsset = async (repository, tag, asset, cacheDir) => {
+  const url = `https://github.com/${repository}/releases/download/${tag}/${asset}`;
   const fix = `pin a release of ${repository} in pins/${repository.split("/")[1]}.json that attaches ${asset} and ${asset}.sha256`;
   const digest = (await (await fetched(`${url}.sha256`, fix)).text()).split(/\s+/)[0];
   if (!/^[0-9a-f]{64}$/.test(digest)) throw new Error(`${url}.sha256 holds no sha256; ${fix}`);
-  const path = join(cacheDir, repository, `v${version}`, asset);
+  const path = join(cacheDir, repository, tag, asset);
   if (!cached(path, digest)) await fetchVerified(url, digest, path, fix);
   return { url, path, digest, sizeBytes: statSync(path).size };
 };
