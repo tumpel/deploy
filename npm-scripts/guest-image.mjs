@@ -306,7 +306,7 @@ const withBinary = (harness, binary) =>
 const recipeFor = (name, pins) => {
   const { harness, install } = layerRecipe(name, pins.arch);
   if (install.kind === "None") return { harness, install: async () => [] };
-  if (install.kind === "Archive") {
+  if (install.kind === "Archive" || install.kind === "Zip") {
     const component = { name: install.binary, version: install.version, url: install.url, digest: install.digest };
     return {
       harness: withBinary(harness, `${HARNESS_PREFIX}/bin/${install.binary}`),

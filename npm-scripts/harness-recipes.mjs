@@ -81,7 +81,7 @@ const installOf = (entry, run, arch) => {
       `the install recipe of ${entry.harness} ${entry.harnessVersion} names no archive for ${LAYER_ARCHITECTURES[arch]}; add one in harness-catalog.ts`,
     );
   return {
-    kind: "Archive",
+    kind: recipe.kind,
     url: archive.url,
     digest: archive.sha256,
     stripComponents: recipe.stripComponents,
@@ -92,14 +92,19 @@ const installOf = (entry, run, arch) => {
   };
 };
 
+const unpackCommand = (archive, bin, install) => {
+  if (install.kind === "Archive")
+    return ["tar", ["-xzf", archive, "-C", bin, `--strip-components=${install.stripComponents}`, "--no-same-owner"]];
+  if (install.stripComponents !== 0)
+    throw new Error(`unzip cannot strip path components; set stripComponents to 0 for ${install.url}`);
+  return ["unzip", ["-q", archive, "-d", bin]];
+};
+
 export const extractArchive = (archive, bin, install) => {
-  const result = spawnSync(
-    "tar",
-    ["-xzf", archive, "-C", bin, `--strip-components=${install.stripComponents}`, "--no-same-owner"],
-    { stdio: ["ignore", "inherit", "inherit"] },
-  );
+  const [command, args] = unpackCommand(archive, bin, install);
+  const result = spawnSync(command, args, { stdio: ["ignore", "inherit", "inherit"] });
   if (result.status !== 0)
-    throw new Error(`tar could not unpack ${install.url}; it exited with ${result.status ?? result.signal}`);
+    throw new Error(`${command} could not unpack ${install.url}; it exited with ${result.status ?? result.signal}`);
   const place = (path, name) => {
     const unpacked = join(bin, path);
     if (!existsSync(unpacked))
