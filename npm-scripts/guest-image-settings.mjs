@@ -101,7 +101,7 @@ export const HARNESS_RUNS = {
   Gemini: {
     protocol: "GeminiStreamJson",
     binary: "gemini.js",
-    flags: ["--skip-trust"],
+    flags: ["--skip-trust", "--output-format", "stream-json", "--approval-mode", "yolo"],
     fixedVariables: [],
   },
 };
