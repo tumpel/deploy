@@ -98,5 +98,11 @@ export const HARNESS_RUNS = {
     flags: ["run", "--format", "json", "--auto"],
     fixedVariables: [{ name: "OPENCODE_DISABLE_AUTOUPDATE", value: "1" }],
   },
+  Gemini: {
+    protocol: "GeminiStreamJson",
+    binary: "gemini.js",
+    flags: ["--skip-trust"],
+    fixedVariables: [],
+  },
 };
 export const TURN_PROTOCOLS = new Set(Object.keys(HARNESS_RUNS));

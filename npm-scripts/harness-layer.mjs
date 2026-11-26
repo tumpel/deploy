@@ -83,7 +83,7 @@ const installArchive = async (install, tree, work) => {
   const response = await fetch(install.url);
   if (!response.ok)
     die(`downloading ${install.url} answered ${response.status}; check the install recipe in harness-catalog.ts`);
-  const archive = join(work, "archive.tar.gz");
+  const archive = join(work, "archive");
   writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
   const actual = await sha256(archive);
   if (actual !== install.digest)
@@ -99,7 +99,8 @@ const buildLayer = async (name, arch) => {
   mkdirSync(join(tree, "bin"), { recursive: true });
   try {
     if (recipe.install.kind === "NpmNative") installNpmNative(recipe.install, tree, work);
-    if (recipe.install.kind === "Archive") await installArchive(recipe.install, tree, work);
+    if (recipe.install.kind === "Archive" || recipe.install.kind === "Zip")
+      await installArchive(recipe.install, tree, work);
     writeFileSync(join(tree, "tumpel-harness.json"), `${JSON.stringify(recipe.harness, null, 2)}\n`);
     run("chmod", ["-R", "u+rwX,go+rX,go-w", tree]);
     const layer = join(work, "layer.squashfs");
